@@ -87,8 +87,7 @@ schema = ["dep:oo7-macros"]
 
 [package.metadata.docs.rs]
 features = ["unstable"]
-rustc-args = ["--cfg", "docsrs"]
-rustdoc-args = ["--cfg", "docsrs", "--generate-link-to-definition"]
+rustdoc-args = ["--generate-link-to-definition"]
 
 [[example]]
 name = "basic"
