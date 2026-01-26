@@ -15,46 +15,24 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: --cfg docsrs -Zunstable-options --generate-link-to-definition
+      DOCS_RS: 1
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: dtolnay/install@cargo-docs-rs
-
-      - name: Fetch dependencies and patch generic-array
-        run: |
-          # Fetch dependencies first to download the crates
-          cargo fetch
-
-          # Now patch crates that use doc_auto_cfg
-          # Patch generic-array crate
-          find ~/.cargo/registry/src -name "lib.rs" -path "*/generic-array-*/src/lib.rs" -exec \
-            sed -i 's/doc_auto_cfg/doc_cfg/g' {} \; || true
-
-          # Patch getrandom crate
-          find ~/.cargo/registry/src -name "lib.rs" -path "*/getrandom-*/src/lib.rs" -exec \
-            sed -i 's/doc_auto_cfg/doc_cfg/g' {} \; || true
-
-          # Patch winnow crate (remove doc_auto_cfg line entirely since it already has doc_cfg)
-          find ~/.cargo/registry/src -name "lib.rs" -path "*/winnow-*/src/lib.rs" -exec \
-            sed -i '/doc_auto_cfg/d' {} \; || true
-
-          # Patch toml_datetime crate
-          find ~/.cargo/registry/src -name "lib.rs" -path "*/toml_datetime-*/src/lib.rs" -exec \
-            sed -i 's/doc_auto_cfg/doc_cfg/g' {} \; || true
-
-          # Patch toml_edit crate
-          find ~/.cargo/registry/src -name "lib.rs" -path "*/toml_edit-*/src/lib.rs" -exec \
-            sed -i 's/doc_auto_cfg/doc_cfg/g' {} \; || true
-
-          # Patch rand_core crate
-          find ~/.cargo/registry/src -name "lib.rs" -path "*/rand_core-*/src/lib.rs" -exec \
-            sed -i 's/doc_auto_cfg/doc_cfg/g' {} \; || true
-
-          # Patch socket2 crate
-          find ~/.cargo/registry/src -name "lib.rs" -path "*/socket2-*/src/lib.rs" -exec \
-            sed -i 's/doc_auto_cfg/doc_cfg/g' {} \; || true
-
-      - run: cargo docs-rs --package oo7
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: rustfmt
+      - uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: >
+            -p oo7
+            --no-deps
+            --features unstable
 
       - name: Fix permissions
         run: |
