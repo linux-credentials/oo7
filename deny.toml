@@ -20,7 +20,6 @@ allow = [
 
 [sources]
 allow-git = [
-  "https://github.com/bilelmoussaoui/ashpd"
 ]
 
 [bans]
