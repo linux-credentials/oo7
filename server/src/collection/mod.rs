@@ -498,10 +498,10 @@ impl Collection {
                         Ok(unlocked) => unlocked,
                         Err(err) => {
                             // Reload the locked keyring from disk before returning error
-                            if let Some(path) = keyring_path {
-                                if let Ok(reloaded) = oo7::file::LockedKeyring::load(&path).await {
-                                    *keyring_guard = Some(Keyring::Locked(reloaded));
-                                }
+                            if let Some(path) = keyring_path
+                                && let Ok(reloaded) = oo7::file::LockedKeyring::load(&path).await
+                            {
+                                *keyring_guard = Some(Keyring::Locked(reloaded));
                             }
                             return Err(custom_service_error(&format!(
                                 "Failed to unlock keyring: {err}"

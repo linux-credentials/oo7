@@ -135,10 +135,10 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
             }
 
             // Clear bounding set if we have CAP_SETPCAP (do this before dropping caps)
-            if caps.effective.contains(CapabilitySet::SETPCAP) {
-                if let Err(err) = set_bounding_set(CapabilitySet::IPC_LOCK) {
-                    tracing::warn!("Failed to set bounding set: {}", err);
-                }
+            if caps.effective.contains(CapabilitySet::SETPCAP)
+                && let Err(err) = set_bounding_set(CapabilitySet::IPC_LOCK)
+            {
+                tracing::warn!("Failed to set bounding set: {}", err);
             }
 
             set_capabilities(

@@ -228,11 +228,11 @@ pub unsafe extern "C" fn pam_sm_open_session(
         let arg_ptr = unsafe { *argv.offset(i as isize) };
         if !arg_ptr.is_null() {
             let arg_cstr = unsafe { CStr::from_ptr(arg_ptr) };
-            if let Ok(arg_str) = arg_cstr.to_str() {
-                if arg_str == "auto_start" {
-                    auto_start = true;
-                    tracing::debug!("auto_start argument detected");
-                }
+            if let Ok(arg_str) = arg_cstr.to_str()
+                && arg_str == "auto_start"
+            {
+                auto_start = true;
+                tracing::debug!("auto_start argument detected");
             }
         }
     }

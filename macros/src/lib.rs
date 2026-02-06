@@ -175,18 +175,14 @@ pub fn derive_secret_schema(input: TokenStream) -> TokenStream {
 /// Extract the schema name from #[schema(name = "...")] attribute
 fn extract_schema_name(attrs: &[syn::Attribute]) -> Option<String> {
     for attr in attrs {
-        if attr.path().is_ident("schema") {
-            if let Meta::List(meta_list) = &attr.meta {
-                if let Ok(name_value) = meta_list.parse_args::<MetaNameValue>() {
-                    if name_value.path.is_ident("name") {
-                        if let syn::Expr::Lit(expr_lit) = &name_value.value {
-                            if let Lit::Str(lit_str) = &expr_lit.lit {
-                                return Some(lit_str.value());
-                            }
-                        }
-                    }
-                }
-            }
+        if attr.path().is_ident("schema")
+            && let Meta::List(meta_list) = &attr.meta
+            && let Ok(name_value) = meta_list.parse_args::<MetaNameValue>()
+            && name_value.path.is_ident("name")
+            && let syn::Expr::Lit(expr_lit) = &name_value.value
+            && let Lit::Str(lit_str) = &expr_lit.lit
+        {
+            return Some(lit_str.value());
         }
     }
     None
@@ -194,10 +190,10 @@ fn extract_schema_name(attrs: &[syn::Attribute]) -> Option<String> {
 
 /// Check if a type is Option<T>
 fn is_option_type(ty: &Type) -> bool {
-    if let Type::Path(TypePath { path, .. }) = ty {
-        if let Some(segment) = path.segments.last() {
-            return segment.ident == "Option";
-        }
+    if let Type::Path(TypePath { path, .. }) = ty
+        && let Some(segment) = path.segments.last()
+    {
+        return segment.ident == "Option";
     }
     false
 }
@@ -210,16 +206,13 @@ fn is_option_type(ty: &Type) -> bool {
 /// with is_option_type(). If called with a non-Option type, it will cause a
 /// compile error in the generated code.
 fn extract_option_inner_type(ty: &Type) -> &Type {
-    if let Type::Path(TypePath { path, .. }) = ty {
-        if let Some(segment) = path.segments.last() {
-            if segment.ident == "Option" {
-                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                    if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
-                        return inner_ty;
-                    }
-                }
-            }
-        }
+    if let Type::Path(TypePath { path, .. }) = ty
+        && let Some(segment) = path.segments.last()
+        && segment.ident == "Option"
+        && let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+        && let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first()
+    {
+        return inner_ty;
     }
     // This should never be reached if is_option_type() returned true
     // Return the original type as a fallback - this will cause a compile error

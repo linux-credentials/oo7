@@ -994,10 +994,10 @@ impl Service {
         // assumes all items are from the same collection
         if let Some(path_str) = objects.first().and_then(|p| p.as_str().rsplit_once('/')) {
             let collection_path = path_str.0;
-            if let Ok(obj_path) = ObjectPath::try_from(collection_path) {
-                if let Some(collection) = self.collection_from_path(&obj_path).await {
-                    return collection.label().await;
-                }
+            if let Ok(obj_path) = ObjectPath::try_from(collection_path)
+                && let Some(collection) = self.collection_from_path(&obj_path).await
+            {
+                return collection.label().await;
             }
         }
 
@@ -1102,18 +1102,17 @@ impl Service {
                         .await
                         .insert(collection_path.clone(), collection.clone());
 
-                    if alias == oo7::dbus::Service::DEFAULT_COLLECTION {
-                        if let Err(e) = self
+                    if alias == oo7::dbus::Service::DEFAULT_COLLECTION
+                        && let Err(e) = self
                             .object_server()
                             .at(DEFAULT_COLLECTION_ALIAS_PATH, collection)
                             .await
-                        {
-                            tracing::error!(
-                                "Failed to register default alias for migrated collection '{}': {}",
-                                name,
-                                e
-                            );
-                        }
+                    {
+                        tracing::error!(
+                            "Failed to register default alias for migrated collection '{}': {}",
+                            name,
+                            e
+                        );
                     }
 
                     if let Ok(signal_emitter) =

@@ -190,13 +190,13 @@ impl Item {
         let signal_emitter = self.service.signal_emitter(&self.collection_path)?;
         Collection::item_changed(&signal_emitter, &self.path).await?;
 
-        if let Ok(signal_emitter) = self.service.signal_emitter(&self.path) {
-            if let Err(err) = self.modified_changed(&signal_emitter).await {
-                tracing::error!(
-                    "Failed to emit PropertiesChanged signal for Modified: {}",
-                    err
-                );
-            }
+        if let Ok(signal_emitter) = self.service.signal_emitter(&self.path)
+            && let Err(err) = self.modified_changed(&signal_emitter).await
+        {
+            tracing::error!(
+                "Failed to emit PropertiesChanged signal for Modified: {}",
+                err
+            );
         }
 
         Ok(())

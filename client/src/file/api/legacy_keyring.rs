@@ -195,7 +195,7 @@ impl Keyring {
         if size > cursor.get_ref()[pos..].len() {
             return Err(Error::NoData);
         }
-        if size % 16 != 0 {
+        if !size.is_multiple_of(16) {
             size = (size / 16) * 16;
         }
         let encrypted_content = Vec::from(&cursor.get_ref()[pos..pos + size]);
