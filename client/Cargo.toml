@@ -25,7 +25,7 @@ digest = { version = "0.10", optional = true }
 endi.workspace = true
 futures-lite = { workspace = true, optional = true }
 futures-util.workspace = true
-getrandom = "0.3"
+getrandom = "0.4"
 oo7-macros = { path = "../macros", version = "0.6.0-alpha", optional = true }
 hkdf = { version = "0.12", optional = true }
 hmac = { version = "0.12", optional = true }
