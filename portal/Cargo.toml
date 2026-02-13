@@ -13,7 +13,7 @@ version.workspace = true
 description = "Secret portal implementation using oo7"
 
 [dependencies]
-ashpd = {workspace = true, features = ["backend_secret", "tracing"]}
+ashpd = {workspace = true, features = ["backend", "secret", "tracing"]}
 clap.workspace = true
 oo7 = { workspace = true, features = ["tokio"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
