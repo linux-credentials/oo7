@@ -1156,6 +1156,8 @@ dependencies = [
  "hex",
  "oo7",
  "rpassword",
+ "serde",
+ "serde_json",
  "time",
  "tokio",
 ]
