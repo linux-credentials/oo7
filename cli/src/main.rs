@@ -9,6 +9,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand};
 use oo7::dbus::Service;
+use serde::Serialize;
 use time::{OffsetDateTime, UtcOffset};
 
 const BINARY_NAME: &str = env!("CARGO_BIN_NAME");
@@ -58,9 +59,120 @@ impl Termination for Error {
     }
 }
 
+#[derive(Serialize)]
+struct ItemOutput {
+    label: String,
+    secret: String,
+    created_at: String,
+    modified_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_type: Option<String>,
+    attributes: HashMap<String, String>,
+}
+
+impl ItemOutput {
+    fn new(
+        secret: &oo7::Secret,
+        label: &str,
+        mut attributes: HashMap<String, String>,
+        created: Duration,
+        modified: Duration,
+        as_hex: bool,
+    ) -> Self {
+        let bytes = secret.as_bytes();
+        let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+
+        let created = OffsetDateTime::from_unix_timestamp(created.as_secs() as i64)
+            .unwrap()
+            .to_offset(local_offset);
+        let modified = OffsetDateTime::from_unix_timestamp(modified.as_secs() as i64)
+            .unwrap()
+            .to_offset(local_offset);
+
+        let format = time::format_description::parse_borrowed::<2>(
+            "[year]-[month]-[day] [hour]:[minute]:[second]",
+        )
+        .unwrap();
+
+        let secret_str = if as_hex {
+            hex::encode(bytes)
+        } else {
+            match std::str::from_utf8(bytes) {
+                Ok(s) => s.to_string(),
+                Err(_) => hex::encode(bytes),
+            }
+        };
+
+        let schema = attributes.remove(oo7::XDG_SCHEMA_ATTRIBUTE);
+        let content_type = attributes.remove(oo7::CONTENT_TYPE_ATTRIBUTE);
+
+        Self {
+            label: label.to_string(),
+            secret: secret_str,
+            created_at: created.format(&format).unwrap(),
+            modified_at: modified.format(&format).unwrap(),
+            schema,
+            content_type,
+            attributes,
+        }
+    }
+
+    fn from_file_item(item: &oo7::file::Item, as_hex: bool) -> Self {
+        let unlocked = item.as_unlocked();
+        Self::new(
+            &unlocked.secret(),
+            unlocked.label(),
+            unlocked
+                .attributes()
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            unlocked.created(),
+            unlocked.modified(),
+            as_hex,
+        )
+    }
+
+    async fn from_dbus_item(item: &oo7::dbus::Item, as_hex: bool) -> Result<Self, Error> {
+        Ok(Self::new(
+            &item.secret().await?,
+            &item.label().await?,
+            item.attributes().await?,
+            item.created().await?,
+            item.modified().await?,
+            as_hex,
+        ))
+    }
+}
+
+impl fmt::Display for ItemOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "[{}]", self.label)?;
+        writeln!(f, "secret = {}", self.secret)?;
+        writeln!(f, "created = {}", self.created_at)?;
+        writeln!(f, "modified = {}", self.modified_at)?;
+        if let Some(schema) = &self.schema {
+            writeln!(f, "schema = {schema}")?;
+        }
+        if let Some(content_type) = &self.content_type {
+            writeln!(f, "content_type = {content_type}")?;
+        }
+        writeln!(f, "attributes = {:?}", self.attributes)?;
+        Ok(())
+    }
+}
+
 enum Keyring {
     File(oo7::file::UnlockedKeyring),
     Collection(oo7::dbus::Collection),
+}
+
+enum Output {
+    None,
+    SecretOnly(Vec<oo7::Secret>, bool), // secrets and hex flag
+    Items(Vec<ItemOutput>, bool),       // items and json flag
 }
 
 #[derive(Subcommand)]
@@ -96,6 +208,8 @@ enum Commands {
         secret_only: bool,
         #[arg(long, help = "Print the secret in hexadecimal.")]
         hex: bool,
+        #[arg(long, help = "Format the output as json.")]
+        json: bool,
     },
 
     #[command(
@@ -119,6 +233,8 @@ enum Commands {
         secret_only: bool,
         #[arg(long, help = "Print the secret in hexadecimal.")]
         hex: bool,
+        #[arg(long, help = "Format the output as json.")]
+        json: bool,
     },
 
     #[command(
@@ -141,6 +257,8 @@ enum Commands {
     List {
         #[arg(long, help = "Print the secret in hexadecimal.")]
         hex: bool,
+        #[arg(long, help = "Format the output as json.")]
+        json: bool,
     },
 
     #[command(name = "lock", about = "Lock the keyring")]
@@ -223,34 +341,49 @@ impl Commands {
             }
         };
 
-        match self {
-            Commands::Delete { attributes } => match keyring {
-                Keyring::Collection(collection) => {
-                    let items = collection.search_items(&attributes).await?;
-                    for item in items {
-                        item.delete(None).await?;
+        let output = match self {
+            Commands::Delete { attributes } => {
+                match keyring {
+                    Keyring::Collection(collection) => {
+                        let items = collection.search_items(&attributes).await?;
+                        for item in items {
+                            item.delete(None).await?;
+                        }
+                    }
+                    Keyring::File(keyring) => {
+                        keyring.delete(&attributes).await?;
                     }
                 }
-                Keyring::File(keyring) => {
-                    keyring.delete(&attributes).await?;
-                }
-            },
+                Output::None
+            }
             Commands::Lookup {
                 attributes,
                 secret_only,
                 hex,
+                json,
             } => match keyring {
                 Keyring::Collection(collection) => {
                     let items = collection.search_items(&attributes).await?;
-
                     if let Some(item) = items.first() {
-                        print_item_dbus(item, secret_only, hex).await?;
+                        if secret_only {
+                            Output::SecretOnly(vec![item.secret().await?], hex)
+                        } else {
+                            Output::Items(vec![ItemOutput::from_dbus_item(item, hex).await?], json)
+                        }
+                    } else {
+                        Output::None
                     }
                 }
                 Keyring::File(keyring) => {
                     let items = keyring.search_items(&attributes).await?;
                     if let Some(item) = items.first() {
-                        print_item_keyring(item, secret_only, hex)?;
+                        if secret_only {
+                            Output::SecretOnly(vec![item.as_unlocked().secret().clone()], hex)
+                        } else {
+                            Output::Items(vec![ItemOutput::from_file_item(item, hex)], json)
+                        }
+                    } else {
+                        Output::None
                     }
                 }
             },
@@ -259,26 +392,52 @@ impl Commands {
                 attributes,
                 secret_only,
                 hex,
+                json,
             } => match keyring {
                 Keyring::File(keyring) => {
                     let items = keyring.search_items(&attributes).await?;
-                    if all {
-                        for item in items {
-                            print_item_keyring(&item, secret_only, hex)?;
-                        }
-                    } else if let Some(item) = items.first() {
-                        print_item_keyring(item, secret_only, hex)?;
+                    let items_to_print: Vec<_> = if all {
+                        items.iter().collect()
+                    } else {
+                        items.first().into_iter().collect()
+                    };
+
+                    if secret_only {
+                        let secrets = items_to_print
+                            .into_iter()
+                            .map(|item| item.as_unlocked().secret().clone())
+                            .collect();
+
+                        Output::SecretOnly(secrets, hex)
+                    } else {
+                        let outputs = items_to_print
+                            .into_iter()
+                            .map(|item| ItemOutput::from_file_item(item, hex))
+                            .collect();
+                        Output::Items(outputs, json)
                     }
                 }
                 Keyring::Collection(collection) => {
                     let items = collection.search_items(&attributes).await?;
+                    let items_to_print: Vec<_> = if all {
+                        items.iter().collect()
+                    } else {
+                        items.first().into_iter().collect()
+                    };
 
-                    if all {
-                        for item in items {
-                            print_item_dbus(&item, secret_only, hex).await?;
+                    if secret_only {
+                        let mut secrets = Vec::new();
+                        for item in items_to_print {
+                            secrets.push(item.secret().await?);
                         }
-                    } else if let Some(item) = items.first() {
-                        print_item_dbus(item, secret_only, hex).await?;
+
+                        Output::SecretOnly(secrets, hex)
+                    } else {
+                        let mut outputs = Vec::new();
+                        for item in items_to_print {
+                            outputs.push(ItemOutput::from_dbus_item(item, hex).await?);
+                        }
+                        Output::Items(outputs, json)
                     }
                 }
             },
@@ -308,51 +467,89 @@ impl Commands {
                             .await?;
                     }
                 }
+                Output::None
             }
-            Commands::List { hex } => match keyring {
-                Keyring::File(keyring) => {
-                    let items = keyring.items().await?;
-                    for item in items {
-                        if let Ok(item) = item {
-                            print_item_keyring(&item, false, hex)?;
-                        } else {
-                            println!("Item is not valid and cannot be decrypted");
+            Commands::List { hex, json } => {
+                let items = match keyring {
+                    Keyring::File(keyring) => {
+                        let items = keyring.items().await?;
+                        let mut outputs = Vec::new();
+                        for item in items {
+                            if let Ok(item) = item {
+                                outputs.push(ItemOutput::from_file_item(&item, hex));
+                            } else if !json {
+                                // Only print error message in text mode, skip in JSON mode
+                                println!("Item is not valid and cannot be decrypted");
+                            }
                         }
+                        outputs
+                    }
+                    Keyring::Collection(collection) => {
+                        let items = collection.items().await?;
+                        let mut outputs = Vec::new();
+                        for item in items {
+                            outputs.push(ItemOutput::from_dbus_item(&item, hex).await?);
+                        }
+                        outputs
+                    }
+                };
+                Output::Items(items, json)
+            }
+            Commands::Lock => {
+                match keyring {
+                    Keyring::File(_) => {
+                        return Err(Error::new("Keyring file doesn't support locking."));
+                    }
+                    Keyring::Collection(collection) => {
+                        collection.lock(None).await?;
                     }
                 }
-                Keyring::Collection(collection) => {
-                    let items = collection.items().await?;
-                    for item in items {
-                        print_item_dbus(&item, false, hex).await?;
+                Output::None
+            }
+            Commands::Unlock => {
+                match keyring {
+                    Keyring::File(_) => {
+                        return Err(Error::new("Keyring file doesn't support unlocking."));
+                    }
+                    Keyring::Collection(collection) => {
+                        collection.unlock(None).await?;
                     }
                 }
-            },
-            Commands::Lock => match keyring {
-                Keyring::File(_) => {
-                    return Err(Error::new("Keyring file doesn't support locking."));
+                Output::None
+            }
+            Commands::Repair => {
+                match keyring {
+                    Keyring::File(keyring) => {
+                        let deleted_items = keyring.delete_broken_items().await?;
+                        println!("{deleted_items} broken items were deleted");
+                    }
+                    Keyring::Collection(_) => {
+                        return Err(Error::new("Only a keyring file can be repaired."));
+                    }
                 }
-                Keyring::Collection(collection) => {
-                    collection.lock(None).await?;
-                }
-            },
-            Commands::Unlock => match keyring {
-                Keyring::File(_) => {
-                    return Err(Error::new("Keyring file doesn't support unlocking."));
-                }
-                Keyring::Collection(collection) => {
-                    collection.unlock(None).await?;
-                }
-            },
-            Commands::Repair => match keyring {
-                Keyring::File(keyring) => {
-                    let deleted_items = keyring.delete_broken_items().await?;
-                    println!("{deleted_items} broken items were deleted");
-                }
-                Keyring::Collection(_) => {
-                    return Err(Error::new("Only a keyring file can be repaired."));
-                }
-            },
+                Output::None
+            }
         };
+
+        // Unified output printing
+        match output {
+            Output::None => {}
+            Output::SecretOnly(secrets, hex) => {
+                for secret in secrets {
+                    print_secret_only(&secret, hex)?;
+                }
+            }
+            Output::Items(items, json) => {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&items).unwrap());
+                } else {
+                    for item in items {
+                        print!("{}", item);
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -423,134 +620,19 @@ where
     Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }
 
-fn print_item_common(
-    secret: &oo7::Secret,
-    label: &str,
-    mut attributes: HashMap<String, String>,
-    created: Duration,
-    modified: Duration,
-    secret_only: bool,
-    as_hex: bool,
-) -> Result<(), Error> {
-    use std::fmt::Write;
+fn print_secret_only(secret: &oo7::Secret, as_hex: bool) -> Result<(), Error> {
     let bytes = secret.as_bytes();
-    if secret_only {
-        let mut stdout = std::io::stdout().lock();
-        if as_hex {
-            let hex = hex::encode(bytes);
-            stdout.write_all(hex.as_bytes())?;
-        } else {
-            stdout.write_all(bytes)?;
-        }
-        // Add a new line if we are writing to a tty
-        if stdout.is_terminal() {
-            stdout.write_all(b"\n")?;
-        }
+    let mut stdout = std::io::stdout().lock();
+    if as_hex {
+        let hex = hex::encode(bytes);
+        stdout.write_all(hex.as_bytes())?;
     } else {
-        let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
-
-        let created = OffsetDateTime::from_unix_timestamp(created.as_secs() as i64)
-            .unwrap()
-            .to_offset(local_offset);
-        let modified = OffsetDateTime::from_unix_timestamp(modified.as_secs() as i64)
-            .unwrap()
-            .to_offset(local_offset);
-
-        let mut result = format!("[{label}]\n");
-
-        // we still fallback to hex if it is not a string
-        if as_hex {
-            let hex = hex::encode(bytes);
-            writeln!(&mut result, "hex encoded secret = {hex}").unwrap();
-        } else {
-            match std::str::from_utf8(bytes) {
-                Ok(secret) => {
-                    writeln!(&mut result, "secret = {secret}").unwrap();
-                }
-                Err(_) => {
-                    let hex = hex::encode(bytes);
-                    writeln!(&mut result, "hex encoded secret = {hex}").unwrap();
-                }
-            }
-        }
-
-        let format = time::format_description::parse_borrowed::<2>(
-            "[year]-[month]-[day] [hour]:[minute]:[second]",
-        )
-        .unwrap();
-
-        writeln!(
-            &mut result,
-            "created = {}",
-            created.format(&format).unwrap()
-        )
-        .unwrap();
-        writeln!(
-            &mut result,
-            "modified = {}",
-            modified.format(&format).unwrap()
-        )
-        .unwrap();
-        if let Some(schema) = attributes.remove(oo7::XDG_SCHEMA_ATTRIBUTE) {
-            writeln!(&mut result, "schema = {schema} ").unwrap();
-        }
-        if let Some(content_type) = attributes.remove(oo7::CONTENT_TYPE_ATTRIBUTE) {
-            writeln!(&mut result, "content_type = {content_type} ").unwrap();
-        }
-        writeln!(&mut result, "attributes = {attributes:?} ").unwrap();
-        print!("{result}");
+        stdout.write_all(bytes)?;
     }
-    Ok(())
-}
-
-fn print_item_keyring(
-    item: &oo7::file::Item,
-    secret_only: bool,
-    as_hex: bool,
-) -> Result<(), Error> {
-    let item = item.as_unlocked();
-    let secret = item.secret();
-    let label = item.label();
-    let attributes = item
-        .attributes()
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect::<HashMap<String, String>>();
-    let created = item.created();
-    let modified = item.modified();
-    print_item_common(
-        &secret,
-        label,
-        attributes,
-        created,
-        modified,
-        secret_only,
-        as_hex,
-    )?;
-    Ok(())
-}
-
-async fn print_item_dbus(
-    item: &oo7::dbus::Item,
-    secret_only: bool,
-    as_hex: bool,
-) -> Result<(), Error> {
-    let secret = item.secret().await?;
-    let label = item.label().await?;
-    let attributes = item.attributes().await?;
-    let created = item.created().await?;
-    let modified = item.modified().await?;
-
-    print_item_common(
-        &secret,
-        &label,
-        attributes,
-        created,
-        modified,
-        secret_only,
-        as_hex,
-    )?;
-
+    // Add a new line if we are writing to a tty
+    if stdout.is_terminal() {
+        stdout.write_all(b"\n")?;
+    }
     Ok(())
 }
 
