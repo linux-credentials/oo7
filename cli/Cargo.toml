@@ -20,6 +20,8 @@ hex = "0.4"
 oo7 = { workspace = true, features = ["tokio"] }
 rpassword = "7.4.0"
 tokio = { workspace = true, features = [ "macros", "rt"] }
+serde_json = "1.0"
+serde = "1.0"
 
 [features]
 default = ["native_crypto"]
