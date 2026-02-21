@@ -1,6 +1,6 @@
 # OO7
 
-[![docs](https://docs.rs/oo7/badge.svg)](https://docs.rs/oo7/) [![crates.io](https://img.shields.io/crates/v/oo7)](https://crates.io/crates/oo7) ![CI](https://github.com/bilelmoussaoui/oo7/workflows/CI/badge.svg) [![Coverage](https://bilelmoussaoui.github.io/oo7/coverage/badges/flat.svg)](https://bilelmoussaoui.github.io/oo7/coverage/)
+[![docs](https://docs.rs/oo7/badge.svg)](https://docs.rs/oo7/) [![crates.io](https://img.shields.io/crates/v/oo7)](https://crates.io/crates/oo7) ![CI](https://github.com/linux-credentials/oo7/workflows/CI/badge.svg) [![Coverage](https://linux-credentials.github.io/oo7/coverage/badges/flat.svg)](https://linux-credentials.github.io/oo7/coverage/)
 
 James Bond went on a new mission and this time as a [Secret Service provider](https://specifications.freedesktop.org/secret-service-spec/latest/).
 
