@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.6.0-alpha"
+version = "0.6.0"
 edition = "2024"
 authors = ["Bilal Elmoussaoui", "Sophie Herold", "Maximiliano Sandoval"]
 keywords = ["keyring", "secret", "service", "portal", "keychain"]
@@ -33,7 +33,7 @@ futures-channel = "0.3"
 futures-lite = "2.6"
 futures-util = "0.3"
 num-bigint-dig = { version = "0.9", features = ["zeroize"] }
-oo7 = { path = "client", version = "0.6.0-alpha", default-features = false, features = ["unstable", "tracing"]}
+oo7 = { path = "client", version = "0.6", default-features = false, features = ["unstable", "tracing"]}
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.48", default-features = false }
 tempfile = "3.25"
