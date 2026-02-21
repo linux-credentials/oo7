@@ -1,6 +1,7 @@
 [package]
 name = "oo7-daemon"
 authors = ["Bilal Elmoussaoui", "Dhanuka Warusadura"]
+description = "Server side implementation of the freedesktop Secret Service"
 edition.workspace = true
 exclude.workspace = true
 homepage.workspace = true
