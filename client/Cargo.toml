@@ -21,7 +21,7 @@ async-lock = { version = "3.4.2", optional = true }
 blocking = { version = "1.5.1", optional = true }
 cbc = { version = "0.1", features = ["zeroize"], optional = true }
 cipher = { version = "0.4", features = ["zeroize"], optional = true }
-digest = { version = "0.10", optional = true }
+digest = { version = "0.11", optional = true }
 endi.workspace = true
 futures-lite = { workspace = true, optional = true }
 futures-util.workspace = true
