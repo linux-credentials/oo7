@@ -50,7 +50,7 @@ zvariant.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-serial_test = "3.3"
+serial_test = "3.4"
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
