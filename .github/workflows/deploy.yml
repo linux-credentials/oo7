@@ -85,7 +85,7 @@ jobs:
 
       - name: Download docs artifact
         if: steps.find-runs.outputs.has-docs == 'true'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: docs-reports
           path: ./site/
@@ -95,7 +95,7 @@ jobs:
 
       - name: Download coverage artifact
         if: steps.find-runs.outputs.has-coverage == 'true'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: coverage-reports
           path: ./site/coverage/
