@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload baseline coverage
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-baseline
           path: coverage-baseline/main-coverage.txt
@@ -225,7 +225,7 @@ jobs:
 
       - name: Upload coverage artifacts
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-reports
           path: site/coverage/html/
