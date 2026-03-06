@@ -294,7 +294,7 @@ async fn test_search_performance() -> oo7::Result<()> {
     let start = Instant::now();
     let items = keyring.items().await?;
     let all_items_time = start.elapsed();
-    let valid_items = items.iter().filter(|r| r.is_ok()).count();
+    let valid_items = items.iter().count();
     info!(
         "Get all items: {:?} (found {} valid items)",
         all_items_time, valid_items

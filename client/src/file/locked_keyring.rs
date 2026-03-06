@@ -18,8 +18,8 @@ use tokio::{
     sync::{Mutex, RwLock},
 };
 
-use super::{Error, Item, LockedItem, UnlockedKeyring, api};
-use crate::{Secret, file::InvalidItemError};
+use super::{Error, LockedItem, UnlockedKeyring, api};
+use crate::Secret;
 
 /// A locked keyring that requires a secret to unlock.
 #[derive(Debug)]
@@ -56,16 +56,14 @@ impl LockedKeyring {
 
     /// Retrieve the list of available [`LockedItem`]s without decrypting them.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub async fn items(&self) -> Result<Vec<Result<Item, InvalidItemError>>, Error> {
+    pub async fn items(&self) -> Result<Vec<LockedItem>, Error> {
         let keyring = self.keyring.read().await;
 
         Ok(keyring
             .items
             .iter()
-            .map(|encrypted_item| {
-                Ok(Item::Locked(LockedItem {
-                    inner: encrypted_item.clone(),
-                }))
+            .map(|encrypted_item| LockedItem {
+                inner: encrypted_item.clone(),
             })
             .collect())
     }

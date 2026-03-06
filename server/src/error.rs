@@ -12,8 +12,6 @@ pub enum Error {
     IO(std::io::Error),
     // Empty password error
     EmptyPassword,
-    // Invalid item error
-    InvalidItem(oo7::file::InvalidItemError),
     // Capability error
     Capability(rustix::io::Errno),
 }
@@ -51,7 +49,6 @@ impl fmt::Display for Error {
             Self::Zbus(err) => write!(f, "Zbus error {err}"),
             Self::IO(err) => write!(f, "IO error {err}"),
             Self::EmptyPassword => write!(f, "Login password can't be empty"),
-            Self::InvalidItem(err) => write!(f, "Item cannot be decrypted {err}"),
             Self::Capability(err) => write!(f, "Capability error {err}"),
         }
     }

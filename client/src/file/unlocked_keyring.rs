@@ -19,7 +19,7 @@ use tokio::{
 
 use crate::{
     AsAttributes, Key, Secret,
-    file::{Error, InvalidItemError, Item, LockedItem, LockedKeyring, UnlockedItem, api},
+    file::{Error, InvalidItemError, LockedItem, LockedKeyring, UnlockedItem, api},
 };
 
 /// Definition for batch item creation: (label, attributes, secret, replace)
@@ -243,45 +243,55 @@ impl UnlockedKeyring {
         self.keyring.read().await.items.len()
     }
 
-    /// Retrieve the list of available [`UnlockedItem`]s.
+    /// Retrieve all items including those that cannot be decrypted.
     ///
-    /// If items cannot be decrypted, [`InvalidItemError`]s are returned for
-    /// them instead of [`UnlockedItem`]s.
+    /// Returns a [`Vec`] where each element is either an [`UnlockedItem`] or an
+    /// [`InvalidItemError`] for items that failed to decrypt.
+    ///
+    /// Use this method when you need to know about or handle decryption
+    /// failures. For most use cases, [`items()`](Self::items) is more
+    /// convenient as it only returns successfully decrypted items.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub async fn items(&self) -> Result<Vec<Result<Item, InvalidItemError>>, Error> {
+    pub async fn all_items(&self) -> Result<Vec<Result<UnlockedItem, InvalidItemError>>, Error> {
         let key = self.derive_key().await?;
         let keyring = self.keyring.read().await;
 
         #[cfg(feature = "tracing")]
-        let _span = tracing::debug_span!("decrypt", total_items = keyring.items.len());
+        let _span = tracing::debug_span!("decrypt_all", total_items = keyring.items.len());
 
         Ok(keyring
             .items
             .iter()
             .map(|e| {
-                (*e).clone()
-                    .decrypt(&key)
-                    .map_err(|err| {
-                        InvalidItemError::new(
-                            err,
-                            e.hashed_attributes.keys().map(|x| x.to_string()).collect(),
-                        )
-                    })
-                    .map(Item::Unlocked)
+                (*e).clone().decrypt(&key).map_err(|err| {
+                    InvalidItemError::new(
+                        err,
+                        e.hashed_attributes.keys().map(|x| x.to_string()).collect(),
+                    )
+                })
             })
             .collect())
     }
 
+    /// Retrieve the list of available [`UnlockedItem`]s.
+    ///
+    /// Items that cannot be decrypted are silently skipped. Use
+    /// [`all_items()`](Self::all_items) if you need access to decryption
+    /// errors.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
+    pub async fn items(&self) -> Result<Vec<UnlockedItem>, Error> {
+        Ok(self.all_items().await?.into_iter().flatten().collect())
+    }
+
     /// Search items matching the attributes.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, attributes)))]
-    pub async fn search_items(&self, attributes: &impl AsAttributes) -> Result<Vec<Item>, Error> {
+    pub async fn search_items(
+        &self,
+        attributes: &impl AsAttributes,
+    ) -> Result<Vec<UnlockedItem>, Error> {
         let key = self.derive_key().await?;
         let keyring = self.keyring.read().await;
-        let results = keyring
-            .search_items(attributes, &key)?
-            .into_iter()
-            .map(Item::Unlocked)
-            .collect::<Vec<Item>>();
+        let results = keyring.search_items(attributes, &key)?;
 
         #[cfg(feature = "tracing")]
         tracing::debug!("Found {} matching items", results.len());
@@ -291,13 +301,14 @@ impl UnlockedKeyring {
 
     /// Find the first item matching the attributes.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, attributes)))]
-    pub async fn lookup_item(&self, attributes: &impl AsAttributes) -> Result<Option<Item>, Error> {
+    pub async fn lookup_item(
+        &self,
+        attributes: &impl AsAttributes,
+    ) -> Result<Option<UnlockedItem>, Error> {
         let key = self.derive_key().await?;
         let keyring = self.keyring.read().await;
 
-        keyring
-            .lookup_item(attributes, &key)
-            .map(|maybe_item| maybe_item.map(Item::Unlocked))
+        keyring.lookup_item(attributes, &key)
     }
 
     /// Find the index in the list of items of the first item matching the
@@ -354,7 +365,7 @@ impl UnlockedKeyring {
         attributes: &impl AsAttributes,
         secret: impl Into<Secret>,
         replace: bool,
-    ) -> Result<Item, Error> {
+    ) -> Result<UnlockedItem, Error> {
         let item = {
             let key = self.derive_key().await?;
             let mut keyring = self.keyring.write().await;
@@ -375,7 +386,7 @@ impl UnlockedKeyring {
             Ok(_) => {
                 #[cfg(feature = "tracing")]
                 tracing::info!("Successfully created item");
-                Ok(Item::Unlocked(item))
+                Ok(item)
             }
         }
     }

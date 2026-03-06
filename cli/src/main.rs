@@ -119,18 +119,16 @@ impl ItemOutput {
         }
     }
 
-    fn from_file_item(item: &oo7::file::Item, as_hex: bool) -> Self {
-        let unlocked = item.as_unlocked();
+    fn from_file_item(item: &oo7::file::UnlockedItem, as_hex: bool) -> Self {
         Self::new(
-            &unlocked.secret(),
-            unlocked.label(),
-            unlocked
-                .attributes()
+            &item.secret(),
+            item.label(),
+            item.attributes()
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
-            unlocked.created(),
-            unlocked.modified(),
+            item.created(),
+            item.modified(),
             as_hex,
         )
     }
@@ -378,7 +376,7 @@ impl Commands {
                     let items = keyring.search_items(&attributes).await?;
                     if let Some(item) = items.first() {
                         if secret_only {
-                            Output::SecretOnly(vec![item.as_unlocked().secret().clone()], hex)
+                            Output::SecretOnly(vec![item.secret().clone()], hex)
                         } else {
                             Output::Items(vec![ItemOutput::from_file_item(item, hex)], json)
                         }
@@ -405,7 +403,7 @@ impl Commands {
                     if secret_only {
                         let secrets = items_to_print
                             .into_iter()
-                            .map(|item| item.as_unlocked().secret().clone())
+                            .map(|item| item.secret().clone())
                             .collect();
 
                         Output::SecretOnly(secrets, hex)
@@ -472,14 +470,15 @@ impl Commands {
             Commands::List { hex, json } => {
                 let items = match keyring {
                     Keyring::File(keyring) => {
-                        let items = keyring.items().await?;
+                        let items = keyring.all_items().await?;
                         let mut outputs = Vec::new();
                         for item in items {
-                            if let Ok(item) = item {
-                                outputs.push(ItemOutput::from_file_item(&item, hex));
-                            } else if !json {
-                                // Only print error message in text mode, skip in JSON mode
-                                println!("Item is not valid and cannot be decrypted");
+                            match item {
+                                Ok(item) => outputs.push(ItemOutput::from_file_item(&item, hex)),
+                                Err(_) if !json => {
+                                    println!("Item is not valid and cannot be decrypted");
+                                }
+                                Err(_) => {} // Skip invalid items in JSON mode
                             }
                         }
                         outputs

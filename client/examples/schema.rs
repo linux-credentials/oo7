@@ -52,15 +52,14 @@ async fn main() -> oo7::Result<()> {
     println!("Found {} item(s)", items.len());
 
     for item in &items {
-        let unlocked = item.as_unlocked();
-        println!("  Label: {}", unlocked.label());
-        println!("  Secret: {:?}", unlocked.secret());
+        println!("  Label: {}", item.label());
+        println!("  Secret: {:?}", item.secret());
     }
 
     println!("\n=== Typed attributes ===");
 
     if let Some(item) = items.first() {
-        let schema = item.as_unlocked().attributes_as::<PasswordSchema>()?;
+        let schema = item.attributes_as::<PasswordSchema>()?;
         println!("Username: {}", schema.username);
         println!("Server: {}", schema.server);
         println!("Port: {:?}", schema.port);

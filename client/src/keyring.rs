@@ -174,9 +174,7 @@ impl Keyring {
                         let items = backend.items().await.map_err(crate::Error::File)?;
                         items
                             .into_iter()
-                            // Ignore invalid items
-                            .flatten()
-                            .map(|i| Item::for_file(i, Arc::clone(keyring)))
+                            .map(|i| Item::for_file(i.into(), Arc::clone(keyring)))
                             .collect::<Vec<_>>()
                     }
                     Some(file::Keyring::Locked(_)) => {
@@ -239,7 +237,7 @@ impl Keyring {
                             .map_err(crate::Error::File)?;
                         items
                             .into_iter()
-                            .map(|i| Item::for_file(i, Arc::clone(keyring)))
+                            .map(|i| Item::for_file(i.into(), Arc::clone(keyring)))
                             .collect::<Vec<_>>()
                     }
                     Some(file::Keyring::Locked(_)) => {

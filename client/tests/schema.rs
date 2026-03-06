@@ -41,7 +41,7 @@ async fn schema_content_type_and_attributes() {
         .await
         .unwrap();
 
-    let text_items = keyring
+    let mut text_items = keyring
         .search_items(&TestSchema {
             username: "alice".to_string(),
             ..Default::default()
@@ -50,7 +50,7 @@ async fn schema_content_type_and_attributes() {
         .unwrap();
 
     assert_eq!(text_items.len(), 1);
-    let text_item = text_items[0].as_unlocked();
+    let text_item = &text_items[0];
 
     assert_eq!(
         text_item.attributes().get("xdg:content-type").unwrap(),
@@ -62,7 +62,7 @@ async fn schema_content_type_and_attributes() {
     assert_eq!(schema.username, "alice");
     assert_eq!(schema.port, Some(8080));
 
-    let mut unlocked_item = text_items[0].as_unlocked().clone();
+    let unlocked_item = &mut text_items[0];
     unlocked_item.set_attributes(&TestSchema {
         username: "alice".to_string(),
         port: Some(9090),
@@ -87,7 +87,7 @@ async fn schema_content_type_and_attributes() {
         .unwrap();
 
     assert_eq!(blob_items.len(), 1);
-    let blob_item = blob_items[0].as_unlocked();
+    let blob_item = &blob_items[0];
 
     assert_eq!(
         blob_item.attributes().get("xdg:content-type").unwrap(),

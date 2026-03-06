@@ -10,10 +10,7 @@
 //!     .await?;
 //!
 //! let items = keyring.search_items(&[("account", "alice")]).await?;
-//! assert_eq!(
-//!     items[0].as_unlocked().secret(),
-//!     oo7::Secret::blob("My Password")
-//! );
+//! assert_eq!(items[0].secret(), oo7::Secret::blob("My Password"));
 //!
 //! keyring.delete(&[("account", "alice")]).await?;
 //! #   Ok(())
@@ -44,6 +41,18 @@ use crate::{AsAttributes, Key, Secret};
 pub enum Item {
     Locked(LockedItem),
     Unlocked(UnlockedItem),
+}
+
+impl From<UnlockedItem> for Item {
+    fn from(item: UnlockedItem) -> Self {
+        Self::Unlocked(item)
+    }
+}
+
+impl From<LockedItem> for Item {
+    fn from(item: LockedItem) -> Self {
+        Self::Locked(item)
+    }
 }
 
 impl Item {
@@ -102,6 +111,18 @@ pub enum Keyring {
     Unlocked(UnlockedKeyring),
 }
 
+impl From<LockedKeyring> for Keyring {
+    fn from(keyring: LockedKeyring) -> Self {
+        Self::Locked(keyring)
+    }
+}
+
+impl From<UnlockedKeyring> for Keyring {
+    fn from(keyring: UnlockedKeyring) -> Self {
+        Self::Unlocked(keyring)
+    }
+}
+
 impl Keyring {
     /// Validate that a secret can decrypt the items in this keyring.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, secret)))]
@@ -136,10 +157,20 @@ impl Keyring {
             .and_then(|time| time.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
     }
 
-    pub async fn items(&self) -> Result<Vec<Result<Item, InvalidItemError>>, Error> {
+    pub async fn items(&self) -> Result<Vec<Item>, Error> {
         match self {
-            Self::Locked(keyring) => keyring.items().await,
-            Self::Unlocked(keyring) => keyring.items().await,
+            Self::Locked(keyring) => Ok(keyring
+                .items()
+                .await?
+                .into_iter()
+                .map(Item::Locked)
+                .collect()),
+            Self::Unlocked(keyring) => Ok(keyring
+                .items()
+                .await?
+                .into_iter()
+                .map(Item::Unlocked)
+                .collect()),
         }
     }
 

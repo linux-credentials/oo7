@@ -259,7 +259,7 @@ impl Collection {
         let item_path = OwnedObjectPath::try_from(format!("{}/{n_items}", self.path)).unwrap();
 
         let item = item::Item::new(
-            item,
+            item.into(),
             self.service.clone(),
             self.path.clone(),
             item_path.clone(),
@@ -553,7 +553,7 @@ impl Collection {
         for keyring_item in keyring_items {
             let item_path = OwnedObjectPath::try_from(format!("{}/{n_items}", self.path)).unwrap();
             let item = item::Item::new(
-                keyring_item.map_err(Error::InvalidItem)?,
+                keyring_item,
                 self.service.clone(),
                 self.path.clone(),
                 item_path.clone(),
