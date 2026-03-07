@@ -5,7 +5,6 @@ echo "🧪 Generating coverage for oo7::native_crypto/tokio..."
 mkdir -p coverage-raw
 cargo tarpaulin \
   --package oo7 \
-  --lib \
   --no-default-features \
   --features "tracing,tokio,native_crypto" \
   --ignore-panics \
@@ -17,7 +16,6 @@ echo ""
 echo "🧪 Generating coverage for oo7::openssl_crypto/tokio..."
 cargo tarpaulin \
   --package oo7 \
-  --lib \
   --no-default-features \
   --features "tracing,tokio,openssl_crypto" \
   --ignore-panics \
