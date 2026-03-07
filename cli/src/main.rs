@@ -62,84 +62,130 @@ impl Termination for Error {
 #[derive(Serialize)]
 struct ItemOutput {
     label: String,
-    secret: String,
-    created_at: String,
-    modified_at: String,
+    /// Those are None if the item is locked
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    modified_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     schema: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     content_type: Option<String>,
-    attributes: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attributes: Option<HashMap<String, String>>,
+    is_locked: bool,
 }
 
 impl ItemOutput {
     fn new(
-        secret: &oo7::Secret,
+        secret: Option<&oo7::Secret>,
         label: &str,
-        mut attributes: HashMap<String, String>,
-        created: Duration,
-        modified: Duration,
+        mut attributes: Option<HashMap<String, String>>,
+        created: Option<Duration>,
+        modified: Option<Duration>,
+        is_locked: bool,
         as_hex: bool,
     ) -> Self {
-        let bytes = secret.as_bytes();
         let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
 
-        let created = OffsetDateTime::from_unix_timestamp(created.as_secs() as i64)
-            .unwrap()
-            .to_offset(local_offset);
-        let modified = OffsetDateTime::from_unix_timestamp(modified.as_secs() as i64)
-            .unwrap()
-            .to_offset(local_offset);
+        let created = created.map(|created| {
+            OffsetDateTime::from_unix_timestamp(created.as_secs() as i64)
+                .unwrap()
+                .to_offset(local_offset)
+        });
+        let modified = modified.map(|modified| {
+            OffsetDateTime::from_unix_timestamp(modified.as_secs() as i64)
+                .unwrap()
+                .to_offset(local_offset)
+        });
 
         let format = time::format_description::parse_borrowed::<2>(
             "[year]-[month]-[day] [hour]:[minute]:[second]",
         )
         .unwrap();
 
-        let secret_str = if as_hex {
-            hex::encode(bytes)
-        } else {
-            match std::str::from_utf8(bytes) {
-                Ok(s) => s.to_string(),
-                Err(_) => hex::encode(bytes),
+        let secret_str = secret.map(|s| {
+            let bytes = s.as_bytes();
+            if as_hex {
+                hex::encode(bytes)
+            } else {
+                match std::str::from_utf8(bytes) {
+                    Ok(s) => s.to_string(),
+                    Err(_) => hex::encode(bytes),
+                }
             }
-        };
+        });
 
-        let schema = attributes.remove(oo7::XDG_SCHEMA_ATTRIBUTE);
-        let content_type = attributes.remove(oo7::CONTENT_TYPE_ATTRIBUTE);
+        let schema = attributes
+            .as_mut()
+            .and_then(|attrs| attrs.remove(oo7::XDG_SCHEMA_ATTRIBUTE));
+        let content_type = attributes
+            .as_mut()
+            .and_then(|attrs| attrs.remove(oo7::CONTENT_TYPE_ATTRIBUTE));
 
         Self {
             label: label.to_string(),
             secret: secret_str,
-            created_at: created.format(&format).unwrap(),
-            modified_at: modified.format(&format).unwrap(),
+            created_at: created.map(|created| created.format(&format).unwrap()),
+            modified_at: modified.map(|modified| modified.format(&format).unwrap()),
             schema,
             content_type,
             attributes,
+            is_locked,
         }
     }
 
     fn from_file_item(item: &oo7::file::UnlockedItem, as_hex: bool) -> Self {
         Self::new(
-            &item.secret(),
+            Some(&item.secret()),
             item.label(),
-            item.attributes()
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
-            item.created(),
-            item.modified(),
+            Some(
+                item.attributes()
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            ),
+            Some(item.created()),
+            Some(item.modified()),
+            false,
             as_hex,
         )
     }
 
     async fn from_dbus_item(item: &oo7::dbus::Item, as_hex: bool) -> Result<Self, Error> {
+        use oo7::dbus::ServiceError;
+
+        let is_locked = item.is_locked().await?;
+        let secret = match item.secret().await {
+            Ok(secret) => Ok(Some(secret)),
+            Err(oo7::dbus::Error::Service(ServiceError::IsLocked(_))) => Ok(None),
+            Err(e) => Err(e),
+        }?;
+        let attributes = match item.attributes().await {
+            Ok(attributes) => Ok(Some(attributes)),
+            Err(oo7::dbus::Error::Service(ServiceError::IsLocked(_))) => Ok(None),
+            Err(e) => Err(e),
+        }?;
+        let created = match item.created().await {
+            Ok(created) => Ok(Some(created)),
+            Err(oo7::dbus::Error::Service(ServiceError::IsLocked(_))) => Ok(None),
+            Err(e) => Err(e),
+        }?;
+        let modified = match item.modified().await {
+            Ok(modified) => Ok(Some(modified)),
+            Err(oo7::dbus::Error::Service(ServiceError::IsLocked(_))) => Ok(None),
+            Err(e) => Err(e),
+        }?;
+
         Ok(Self::new(
-            &item.secret().await?,
+            secret.as_ref(),
             &item.label().await?,
-            item.attributes().await?,
-            item.created().await?,
-            item.modified().await?,
+            attributes,
+            created,
+            modified,
+            is_locked,
             as_hex,
         ))
     }
@@ -148,16 +194,29 @@ impl ItemOutput {
 impl fmt::Display for ItemOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "[{}]", self.label)?;
-        writeln!(f, "secret = {}", self.secret)?;
-        writeln!(f, "created = {}", self.created_at)?;
-        writeln!(f, "modified = {}", self.modified_at)?;
+        if let Some(ref secret) = self.secret {
+            writeln!(f, "secret = {}", secret)?;
+        }
+        if let Some(ref created_at) = self.created_at {
+            writeln!(f, "created = {}", created_at)?;
+        }
+        if let Some(ref modified_at) = self.modified_at {
+            writeln!(f, "modified = {}", modified_at)?;
+        }
         if let Some(schema) = &self.schema {
             writeln!(f, "schema = {schema}")?;
         }
         if let Some(content_type) = &self.content_type {
             writeln!(f, "content_type = {content_type}")?;
         }
-        writeln!(f, "attributes = {:?}", self.attributes)?;
+        if let Some(attributes) = &self.attributes {
+            writeln!(f, "attributes = {:?}", attributes)?;
+        }
+        if self.is_locked {
+            writeln!(f, "locked = true")?;
+        } else {
+            writeln!(f, "locked = false")?;
+        }
         Ok(())
     }
 }
