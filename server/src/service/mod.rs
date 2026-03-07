@@ -22,6 +22,8 @@ use zbus::{
     zvariant::{ObjectPath, Optional, OwnedObjectPath, OwnedValue, Value},
 };
 
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+pub use crate::gnome::internal::{INTERNAL_INTERFACE_PATH, InternalInterface};
 use crate::{
     collection::Collection,
     error::{Error, custom_service_error},
@@ -403,6 +405,15 @@ impl Service {
             .build()
             .await?;
 
+        #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+        connection
+            .object_server()
+            .at(
+                INTERNAL_INTERFACE_PATH,
+                InternalInterface::new(service.clone()),
+            )
+            .await?;
+
         // Discover existing keyrings
         let discovered_keyrings = service.discover_keyrings(secret).await?;
 
@@ -435,6 +446,15 @@ impl Service {
             .at(
                 oo7::dbus::api::Service::PATH.as_deref().unwrap(),
                 service.clone(),
+            )
+            .await?;
+
+        #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+        connection
+            .object_server()
+            .at(
+                INTERNAL_INTERFACE_PATH,
+                InternalInterface::new(service.clone()),
             )
             .await?;
 
@@ -903,18 +923,12 @@ impl Service {
             .cloned()
     }
 
-    pub async fn complete_collection_creation(
+    pub async fn create_collection_with_secret(
         &self,
-        prompt_path: &ObjectPath<'_>,
+        label: &str,
+        alias: &str,
         secret: Secret,
     ) -> Result<OwnedObjectPath, ServiceError> {
-        // Retrieve the pending collection metadata
-        let Some((label, alias)) = self.pending_collection(prompt_path).await else {
-            return Err(ServiceError::NoSuchObject(format!(
-                "No pending collection for prompt `{prompt_path}`"
-            )));
-        };
-
         // Create a persistent keyring with the provided secret
         let keyring = UnlockedKeyring::open(&label.to_lowercase(), secret)
             .await
@@ -929,7 +943,7 @@ impl Service {
         let keyring = Keyring::Unlocked(keyring);
 
         // Create the collection
-        let collection = Collection::new(&label, &alias, self.clone(), keyring).await;
+        let collection = Collection::new(label, alias, self.clone(), keyring).await;
         let collection_path: OwnedObjectPath = collection.path().to_owned().into();
 
         // Register with object server
@@ -942,9 +956,6 @@ impl Service {
             .lock()
             .await
             .insert(collection_path.clone(), collection);
-
-        // Clean up pending collection
-        self.pending_collections.lock().await.remove(prompt_path);
 
         // Emit CollectionCreated signal
         let service_path = oo7::dbus::api::Service::PATH.as_ref().unwrap();
@@ -959,6 +970,26 @@ impl Service {
             collection_path,
             label
         );
+
+        Ok(collection_path)
+    }
+
+    pub async fn complete_collection_creation(
+        &self,
+        prompt_path: &ObjectPath<'_>,
+        secret: Secret,
+    ) -> Result<OwnedObjectPath, ServiceError> {
+        let Some((label, alias)) = self.pending_collection(prompt_path).await else {
+            return Err(ServiceError::NoSuchObject(format!(
+                "No pending collection for prompt `{prompt_path}`"
+            )));
+        };
+
+        let collection_path = self
+            .create_collection_with_secret(&label, &alias, secret)
+            .await?;
+
+        self.pending_collections.lock().await.remove(prompt_path);
 
         Ok(collection_path)
     }
