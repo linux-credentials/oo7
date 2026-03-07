@@ -202,6 +202,13 @@ impl PlasmaPrompterCallback {
                         .await
                 });
             }
+            PromptRole::ChangePassword => {
+                tokio::spawn(async move {
+                    prompter
+                        .unlock_collection_prompt(&path, &window_id, "", collection_name.as_str())
+                        .await
+                });
+            }
         }
 
         Ok(())
@@ -234,6 +241,10 @@ impl PlasmaPrompterCallback {
             }
             PromptRole::CreateCollection => {
                 prompt.on_create_collection(secret).await?;
+                Ok(CallbackAction::Dismiss)
+            }
+            PromptRole::ChangePassword => {
+                prompt.on_change_password(secret).await?;
                 Ok(CallbackAction::Dismiss)
             }
         }

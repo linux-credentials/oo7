@@ -334,6 +334,10 @@ impl PrompterCallback {
                 Properties::for_create_collection(label, self.window_id.as_ref()),
                 PromptType::Password,
             ),
+            PromptRole::ChangePassword => (
+                Properties::for_unlock(label, None, self.window_id.as_ref()),
+                PromptType::Password,
+            ),
         };
 
         let prompter = PrompterProxy::new(connection).await?;
@@ -394,6 +398,12 @@ impl PrompterCallback {
             }
             PromptRole::CreateCollection => {
                 prompt.on_create_collection(secret).await?;
+
+                let path = self.path.clone();
+                tokio::spawn(async move { prompter.stop_prompting(&path).await });
+            }
+            PromptRole::ChangePassword => {
+                prompt.on_change_password(secret).await?;
 
                 let path = self.path.clone();
                 tokio::spawn(async move { prompter.stop_prompting(&path).await });
