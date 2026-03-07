@@ -20,6 +20,7 @@ use crate::{error::custom_service_error, service::Service};
 pub enum PromptRole {
     Unlock,
     CreateCollection,
+    ChangePassword,
 }
 
 /// A boxed future that represents the action to be taken when a prompt
@@ -320,6 +321,34 @@ impl Prompt {
             }
             Err(err) => Err(custom_service_error(&format!(
                 "Failed to create collection: {err}."
+            ))),
+        }
+    }
+
+    pub async fn on_change_password(&self, secret: Secret) -> Result<(), ServiceError> {
+        debug_assert_eq!(self.role, PromptRole::ChangePassword);
+
+        let Some(action) = self.take_action().await else {
+            return Err(custom_service_error(
+                "Prompt action was already executed or not set",
+            ));
+        };
+
+        // Execute the change password action with the new secret
+        match action.execute(secret).await {
+            Ok(result) => {
+                tracing::info!("ChangePassword action completed successfully");
+
+                let signal_emitter = self.service.signal_emitter(self.path().to_owned())?;
+
+                tokio::spawn(async move {
+                    tracing::debug!("ChangePassword prompt completed.");
+                    let _ = Prompt::completed(&signal_emitter, false, result).await;
+                });
+                Ok(())
+            }
+            Err(err) => Err(custom_service_error(&format!(
+                "Failed to change password: {err}."
             ))),
         }
     }

@@ -127,6 +127,28 @@ pub struct Properties {
 }
 
 impl Properties {
+    fn for_change_password(keyring: &str, window_id: Option<&WindowIdentifierType>) -> Self {
+        Self {
+            title: Some(gettext("Change Keyring Password")),
+            message: Some(gettext("Authentication required")),
+            description: Some(
+                formatx!(
+                    gettext("An application wants to change the keyring password '{}'"),
+                    keyring,
+                )
+                .expect("Wrong format in translatable string"),
+            ),
+            warning: Some(gettext("This operation cannot be reverted")),
+            password_new: None,
+            password_strength: None,
+            choice_label: None,
+            choice_chosen: None,
+            caller_window: window_id.map(ToOwned::to_owned),
+            continue_label: Some(gettext("Continue")),
+            cancel_label: Some(gettext("Cancel")),
+        }
+    }
+
     fn for_unlock(
         keyring: &str,
         warning: Option<&str>,
@@ -334,6 +356,10 @@ impl PrompterCallback {
                 Properties::for_create_collection(label, self.window_id.as_ref()),
                 PromptType::Password,
             ),
+            PromptRole::ChangePassword => (
+                Properties::for_change_password(label, self.window_id.as_ref()),
+                PromptType::Password,
+            ),
         };
 
         let prompter = PrompterProxy::new(connection).await?;
@@ -394,6 +420,12 @@ impl PrompterCallback {
             }
             PromptRole::CreateCollection => {
                 prompt.on_create_collection(secret).await?;
+
+                let path = self.path.clone();
+                tokio::spawn(async move { prompter.stop_prompting(&path).await });
+            }
+            PromptRole::ChangePassword => {
+                prompt.on_change_password(secret).await?;
 
                 let path = self.path.clone();
                 tokio::spawn(async move { prompter.stop_prompting(&path).await });

@@ -56,10 +56,7 @@ impl DBusSecret {
         })
     }
 
-    pub(crate) async fn from_inner(
-        cnx: &zbus::Connection,
-        inner: DBusSecretInner,
-    ) -> Result<Self, Error> {
+    pub async fn from_inner(cnx: &zbus::Connection, inner: DBusSecretInner) -> Result<Self, Error> {
         Ok(Self {
             session: Arc::new(Session::new(cnx, inner.0).await?),
             parameters: inner.1,
@@ -94,6 +91,17 @@ impl DBusSecret {
     /// Content type of the secret
     pub fn content_type(&self) -> ContentType {
         self.content_type
+    }
+}
+
+impl From<DBusSecret> for DBusSecretInner {
+    fn from(secret: DBusSecret) -> Self {
+        Self(
+            secret.session().inner().path().to_owned().into(),
+            secret.parameters().to_vec(),
+            secret.value().to_vec(),
+            secret.content_type(),
+        )
     }
 }
 
