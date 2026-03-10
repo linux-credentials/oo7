@@ -130,10 +130,10 @@ impl Properties {
     fn for_change_password(keyring: &str, window_id: Option<&WindowIdentifierType>) -> Self {
         Self {
             title: Some(gettext("Change Keyring Password")),
-            message: Some(gettext("Authentication required")),
+            message: Some(formatx!(gettext("Choose a new password for the “{}” keyring"), keyring).expect("Wrong format in translatable string")),
             description: Some(
                 formatx!(
-                    gettext("An application wants to change the keyring password '{}'"),
+                    gettext("An application wants to change the password for the “{}” keyring. Choose the new password you want to use for it."),
                     keyring,
                 )
                 .expect("Wrong format in translatable string"),
@@ -181,7 +181,7 @@ impl Properties {
             message: Some(gettext("Choose password for new keyring")),
             description: Some(
                 formatx!(
-                    gettext("An application wants to create a new keyring called '{}'. Choose the password you want to use for it."),
+                    gettext("An application wants to create a new keyring called “{}”. Choose the password you want to use for it."),
                     &label
                 )
                 .expect("Wrong format in translatable string")
