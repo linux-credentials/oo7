@@ -28,10 +28,7 @@ pub enum CallbackAction {
 #[must_use]
 pub async fn in_plasma_environment(_connection: &zbus::Connection) -> bool {
     #[cfg(test)]
-    return match env::var("OO7_DAEMON_PROMPTER_TEST").map(|v| v.to_lowercase() == "plasma") {
-        Ok(_) => true,
-        Err(_) => false,
-    };
+    return env::var("OO7_DAEMON_PROMPTER_TEST").is_ok_and(|v| v.to_lowercase() == "plasma");
 
     #[cfg(not(test))]
     {
@@ -41,10 +38,9 @@ pub async fn in_plasma_environment(_connection: &zbus::Connection) -> bool {
         }
 
         let is_plasma = async {
-            match env::var("XDG_CURRENT_DESKTOP").map(|v| v.to_lowercase() == "kde") {
-                Ok(_) => (),
-                Err(_) => return false,
-            };
+            if !env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| v.to_lowercase() == "kde") {
+                return false;
+            }
 
             let proxy = match zbus::fdo::DBusProxy::new(_connection).await {
                 Ok(proxy) => proxy,
