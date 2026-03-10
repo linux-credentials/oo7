@@ -1,49 +1,41 @@
 #!/usr/bin/env bash
 set -e
 
-echo "🧪 Generating coverage for oo7::native_crypto/tokio..."
+# Crypto features to test
+CRYPTO_FEATURES=("native_crypto" "openssl_crypto")
+PROMPTERS=("gnome" "plasma")
+
 mkdir -p coverage-raw
-cargo tarpaulin \
-  --package oo7 \
-  --no-default-features \
-  --features "tracing,tokio,native_crypto" \
-  --ignore-panics \
-  --out Lcov \
-  --output-dir coverage-raw
-mv coverage-raw/lcov.info coverage-raw/native-tokio.info
 
-echo ""
-echo "🧪 Generating coverage for oo7::openssl_crypto/tokio..."
-cargo tarpaulin \
-  --package oo7 \
-  --no-default-features \
-  --features "tracing,tokio,openssl_crypto" \
-  --ignore-panics \
-  --out Lcov \
-  --output-dir coverage-raw
-mv coverage-raw/lcov.info coverage-raw/openssl-tokio.info
+# Test oo7 package with all crypto features
+for crypto in "${CRYPTO_FEATURES[@]}"; do
+  echo "🧪 Generating coverage for oo7::${crypto}/tokio..."
+  cargo tarpaulin \
+    --package oo7 \
+    --no-default-features \
+    --features "tracing,tokio,${crypto}" \
+    --ignore-panics \
+    --out Lcov \
+    --output-dir coverage-raw
+  mv coverage-raw/lcov.info "coverage-raw/${crypto}-tokio.info"
+  echo ""
+done
 
-echo ""
-echo "🧪 Generating coverage for oo7-daemon::native_crypto..."
-cargo tarpaulin \
-  --package oo7-daemon \
-  --no-default-features \
-  --features "native_crypto" \
-  --ignore-panics \
-  --out Lcov \
-  --output-dir coverage-raw
-mv coverage-raw/lcov.info coverage-raw/daemon-native_crypto.info
-
-echo ""
-echo "🧪 Generating coverage for oo7-daemon::openssl_crypto..."
-cargo tarpaulin \
-  --package oo7-daemon \
-  --no-default-features \
-  --features "openssl_crypto" \
-  --ignore-panics \
-  --out Lcov \
-  --output-dir coverage-raw
-mv coverage-raw/lcov.info coverage-raw/daemon-openssl_crypto.info
+# Test daemon with all prompter/crypto combinations
+for prompter in "${PROMPTERS[@]}"; do
+  for crypto in "${CRYPTO_FEATURES[@]}"; do
+    echo ""
+    echo "🧪 Generating coverage for oo7-daemon::${prompter}_${crypto}..."
+    OO7_DAEMON_PROMPTER_TEST="${prompter}" cargo tarpaulin \
+      --package oo7-daemon \
+      --no-default-features \
+      --features "${crypto}" \
+      --ignore-panics \
+      --out Lcov \
+      --output-dir coverage-raw
+    mv coverage-raw/lcov.info "coverage-raw/daemon-${prompter}_${crypto}.info"
+  done
+done
 
 echo ""
 echo "📊 Merging coverage reports..."
