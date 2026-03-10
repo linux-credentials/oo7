@@ -11,7 +11,7 @@ use zbus::{
 };
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-use crate::gnome::prompter::{PrompterCallback, PrompterProxy};
+use crate::gnome::prompter::{GNOMEPrompterCallback, GNOMEPrompterProxy};
 #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
 use crate::plasma::prompter::{PlasmaPrompterCallback, in_plasma_environment};
 use crate::{error::custom_service_error, service::Service};
@@ -64,10 +64,10 @@ pub struct Prompt {
     collection: Option<crate::collection::Collection>,
     /// GNOME Specific
     #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-    callback: Arc<OnceCell<PrompterCallback>>,
+    gnome_callback: Arc<OnceCell<GNOMEPrompterCallback>>,
     /// KDE Plasma Specific
     #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-    callback_plasma: Arc<OnceCell<PlasmaPrompterCallback>>,
+    plasma_callback: Arc<OnceCell<PlasmaPrompterCallback>>,
     /// The action to execute when the prompt completes
     action: Arc<Mutex<Option<PromptAction>>>,
 }
@@ -94,11 +94,10 @@ impl std::fmt::Debug for Prompt {
 #[interface(name = "org.freedesktop.Secret.Prompt")]
 impl Prompt {
     pub async fn prompt(&self, window_id: Optional<&str>) -> Result<(), ServiceError> {
+        let window_id = (*window_id).and_then(|w| ashpd::WindowIdentifierType::from_str(w).ok());
         #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
         if in_plasma_environment(self.service.connection()).await {
-            use ashpd::WindowIdentifierType;
-
-            if self.callback_plasma.get().is_some() {
+            if self.plasma_callback.get().is_some() {
                 return Err(custom_service_error(
                     "A prompt callback is ongoing already.",
                 ));
@@ -108,7 +107,7 @@ impl Prompt {
                 PlasmaPrompterCallback::new(self.service.clone(), self.path.clone()).await;
             let path = OwnedObjectPath::from(callback.path().clone());
 
-            self.callback_plasma
+            self.plasma_callback
                 .set(callback.clone())
                 .expect("A prompt callback is only set once");
             self.service
@@ -117,36 +116,29 @@ impl Prompt {
                 .await?;
             tracing::debug!("Prompt `{}` created.", self.path);
 
-            return callback
-                .start(
-                    &self.role,
-                    WindowIdentifierType::from_str(window_id.unwrap_or("")).ok(),
-                    &self.label,
-                )
-                .await;
+            return callback.start(&self.role, window_id, &self.label).await;
         }
 
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
         {
-            if self.callback.get().is_some() {
+            if self.gnome_callback.get().is_some() {
                 return Err(custom_service_error(
-                    "A prompt callback is ongoing already.",
+                    "A GNOME prompt callback is ongoing already.",
                 ));
             };
 
-            let callback = PrompterCallback::new(
-                (*window_id).and_then(|w| ashpd::WindowIdentifierType::from_str(w).ok()),
-                self.service.clone(),
-                self.path.clone(),
-            )
-            .await
-            .map_err(|err| {
-                custom_service_error(&format!("Failed to create PrompterCallback {err}."))
-            })?;
+            let callback =
+                GNOMEPrompterCallback::new(window_id, self.service.clone(), self.path.clone())
+                    .await
+                    .map_err(|err| {
+                        custom_service_error(&format!(
+                            "Failed to create GNOMEPrompterCallback {err}."
+                        ))
+                    })?;
 
             let path = OwnedObjectPath::from(callback.path().clone());
 
-            self.callback
+            self.gnome_callback
                 .set(callback.clone())
                 .expect("A prompt callback is only set once");
 
@@ -156,7 +148,7 @@ impl Prompt {
             // Starts GNOME System Prompting.
             // Spawned separately to avoid blocking the early return of the current
             // execution.
-            let prompter = PrompterProxy::new(self.service.connection()).await?;
+            let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
             tokio::spawn(async move { prompter.begin_prompting(&path).await });
 
             return Ok(());
@@ -170,16 +162,16 @@ impl Prompt {
 
     pub async fn dismiss(&self) -> Result<(), ServiceError> {
         #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-        if let Some(callback_plasma) = self.callback_plasma.get() {
+        if let Some(callback) = self.plasma_callback.get() {
             let emitter = SignalEmitter::from_parts(
                 self.service.connection().clone(),
-                callback_plasma.path().clone(),
+                callback.path().clone(),
             );
             PlasmaPrompterCallback::dismiss(&emitter).await?;
         }
 
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-        if let Some(_callback) = self.callback.get() {
+        if let Some(_callback) = self.gnome_callback.get() {
             // TODO: figure out if we should destroy the un-export the callback
             // here?
         }
@@ -217,9 +209,9 @@ impl Prompt {
             label,
             collection,
             #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-            callback: Default::default(),
+            gnome_callback: Default::default(),
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-            callback_plasma: Default::default(),
+            plasma_callback: Default::default(),
             action: Arc::new(Mutex::new(None)),
         }
     }

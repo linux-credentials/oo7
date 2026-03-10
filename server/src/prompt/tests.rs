@@ -72,7 +72,7 @@ async fn prompt_not_found_error() -> Result<(), Box<dyn std::error::Error>> {
     setup.server.remove_prompt(&prompt_path).await;
 
     // Manually serve a callback to trigger the error path
-    let callback = crate::gnome::prompter::PrompterCallback::new(
+    let callback = crate::gnome::prompter::GNOMEPrompterCallback::new(
         None,
         setup.server.clone(),
         prompt_path.clone(),

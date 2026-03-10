@@ -240,7 +240,7 @@ pub enum PromptType {
     default_path = "/org/gnome/keyring/Prompter",
     gen_blocking = false
 )]
-pub trait Prompter {
+pub trait GNOMEPrompter {
     fn begin_prompting(&self, callback: &ObjectPath<'_>) -> Result<(), ServiceError>;
 
     fn perform_prompt(
@@ -255,7 +255,7 @@ pub trait Prompter {
 }
 
 #[derive(Debug, Clone)]
-pub struct PrompterCallback {
+pub struct GNOMEPrompterCallback {
     window_id: Option<WindowIdentifierType>,
     private_key: Arc<Key>,
     public_key: Arc<Key>,
@@ -266,7 +266,7 @@ pub struct PrompterCallback {
 }
 
 #[zbus::interface(name = "org.gnome.keyring.internal.Prompter.Callback")]
-impl PrompterCallback {
+impl GNOMEPrompterCallback {
     pub async fn prompt_ready(
         &self,
         reply: Optional<Reply>,
@@ -317,7 +317,7 @@ impl PrompterCallback {
     }
 }
 
-impl PrompterCallback {
+impl GNOMEPrompterCallback {
     pub async fn new(
         window_id: Option<WindowIdentifierType>,
         service: Service,
@@ -362,7 +362,7 @@ impl PrompterCallback {
             ),
         };
 
-        let prompter = PrompterProxy::new(connection).await?;
+        let prompter = GNOMEPrompterProxy::new(connection).await?;
         let path = self.path.clone();
         let exchange = self.exchange.get().unwrap().clone();
         tokio::spawn(async move {
@@ -374,7 +374,7 @@ impl PrompterCallback {
     }
 
     async fn prompter_done(&self, prompt: &Prompt, exchange: &str) -> Result<(), ServiceError> {
-        let prompter = PrompterProxy::new(self.service.connection()).await?;
+        let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
         let aes_key = secret_exchange::handshake(&self.private_key, exchange).map_err(|err| {
             custom_service_error(&format!(
                 "Failed to generate AES key for SecretExchange {err}."
@@ -436,7 +436,7 @@ impl PrompterCallback {
 
     async fn prompter_dismissed(&self, prompt_path: OwnedObjectPath) -> Result<(), ServiceError> {
         let path = self.path.clone();
-        let prompter = PrompterProxy::new(self.service.connection()).await?;
+        let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
 
         tokio::spawn(async move { prompter.stop_prompting(&path).await });
         let signal_emitter = self.service.signal_emitter(prompt_path)?;

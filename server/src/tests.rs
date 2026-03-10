@@ -414,7 +414,8 @@ impl MockPrompterService {
             callback,
             type_
         );
-        // This is called by PrompterCallback.prompter_init() with the server's exchange
+        // This is called by GNOMEPrompterCallback.prompter_init() with the server's
+        // exchange
         let callback_path = callback.to_owned();
         let unlock_password = self.unlock_password.clone();
         let should_accept = self.should_accept.clone();
