@@ -139,7 +139,7 @@ impl Properties {
                 .expect("Wrong format in translatable string"),
             ),
             warning: Some(gettext("This operation cannot be reverted")),
-            password_new: None,
+            password_new: Some(true),
             password_strength: None,
             choice_label: None,
             choice_chosen: None,
