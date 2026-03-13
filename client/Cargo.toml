@@ -20,15 +20,12 @@ async-io = { version = "2.6.0", optional = true }
 async-lock = { version = "3.4.2", optional = true }
 blocking = { version = "1.5.1", optional = true }
 cbc = { version = "0.1", features = ["zeroize"], optional = true }
-cipher = { version = "0.4", features = ["zeroize"], optional = true }
-digest = { version = "0.10", optional = true }
 endi.workspace = true
 futures-lite = { workspace = true, optional = true }
 futures-util.workspace = true
 getrandom = "0.4"
 oo7-macros = { path = "../macros", version = "0.6.0-alpha", optional = true }
 hkdf = { version = "0.12", optional = true }
-hmac = { version = "0.12", optional = true }
 md-5 = { version = "0.10", optional = true }
 num = "0.4.0"
 num-bigint-dig.workspace = true
@@ -72,10 +69,7 @@ tokio = ["zbus/tokio", "dep:tokio", "ashpd/tokio"]
 native_crypto = [
     "dep:aes",
     "dep:cbc",
-    "dep:cipher",
-    "dep:digest",
     "dep:hkdf",
-    "dep:hmac",
     "dep:md-5",
     "dep:pbkdf2",
     "dep:sha2",

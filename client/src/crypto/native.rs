@@ -3,15 +3,18 @@ use std::{
     sync::LazyLock,
 };
 
-use cipher::{
+use cbc::cipher::{
     BlockDecryptMut, BlockEncryptMut, BlockSizeUser, IvSizeUser, KeyIvInit, KeySizeUser,
     block_padding::{NoPadding, Pkcs7},
 };
-use digest::{Digest, FixedOutput, Mac, Output, OutputSizeUser};
 use hkdf::Hkdf;
 use md5::Md5;
 use num::{FromPrimitive, Integer, One, Zero};
 use num_bigint_dig::BigUint;
+use pbkdf2::hmac::{
+    Mac,
+    digest::{Digest, FixedOutput, Output, OutputSizeUser},
+};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, Zeroizing};
@@ -20,7 +23,7 @@ use crate::{Key, file};
 
 type EncAlg = cbc::Encryptor<aes::Aes128>;
 type DecAlg = cbc::Decryptor<aes::Aes128>;
-type MacAlg = hmac::Hmac<sha2::Sha256>;
+type MacAlg = pbkdf2::hmac::Hmac<sha2::Sha256>;
 
 pub fn encrypt(
     data: impl AsRef<[u8]>,
@@ -156,7 +159,7 @@ pub(crate) fn derive_key(
 ) -> Result<Key, super::Error> {
     let mut key = Key::new_with_strength(vec![0; EncAlg::block_size()], key_strength);
 
-    pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha256>>(
+    pbkdf2::pbkdf2::<pbkdf2::hmac::Hmac<sha2::Sha256>>(
         secret.as_ref(),
         salt.as_ref(),
         iteration_count.try_into().unwrap(),

@@ -1,3 +1,6 @@
+#[cfg(feature = "native_crypto")]
+use cbc::cipher;
+
 /// Cryptography specific errors.
 #[derive(Debug)]
 pub enum Error {
