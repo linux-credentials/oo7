@@ -3,7 +3,17 @@ name: Code Coverage
 on:
   push:
     branches: [main]
+    paths:
+      - 'server/src/**'
+      - 'client/src/**'
+      - 'coverage.sh'
+      - '.github/workflows/coverage.yml'
   pull_request:
+    paths:
+      - 'server/src/**'
+      - 'client/src/**'
+      - 'coverage.sh'
+      - '.github/workflows/coverage.yml'
 
 permissions:
   contents: read
