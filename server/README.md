@@ -2,7 +2,9 @@
 
 ![CI](https://github.com/linux-credentials/oo7/workflows/CI/badge.svg)
 
-The new D-Bus Secret Service provider. Replacement of the `gnome-keyring-daemon`
+Service providing the [Secret Service][secret-service] D-Bus API.
+
+[secret-service]: https://www.freedesktop.org/wiki/Specifications/secret-storage-spec/
 
 ## Unlocking the session keyring
 
