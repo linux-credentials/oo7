@@ -84,6 +84,12 @@ If more output is required, the later can be replaced with:
 /usr/libexec/xdg-desktop-portal --replace --verbose
 ```
 
+## Translations
+
+Helping to translate oo7 or add support to a new language is very welcome. You
+can find everything you need at:
+[l10n.gnome.org/module/oo7/](https://l10n.gnome.org/module/oo7/)
+
 ## License
 
 The project is released under the MIT license.
