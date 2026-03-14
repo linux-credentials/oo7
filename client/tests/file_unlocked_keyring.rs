@@ -13,7 +13,8 @@ fn strong_key() -> Secret {
 
 #[tokio::test]
 async fn repeated_write() -> Result<(), Error> {
-    let path = PathBuf::from("../../tests/test.keyring");
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("test.keyring");
 
     let secret = Secret::from(vec![1, 2]);
     let keyring = UnlockedKeyring::load(&path, secret).await?;
@@ -26,7 +27,8 @@ async fn repeated_write() -> Result<(), Error> {
 
 #[tokio::test]
 async fn delete() -> Result<(), Error> {
-    let path = PathBuf::from("../../tests/test-delete.keyring");
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("test-delete.keyring");
 
     let keyring = UnlockedKeyring::load(&path, strong_key()).await?;
     let attributes: HashMap<&str, &str> = HashMap::default();
@@ -45,7 +47,8 @@ async fn delete() -> Result<(), Error> {
 
 #[tokio::test]
 async fn write_with_weak_key() -> Result<(), Error> {
-    let path = PathBuf::from("../../tests/write_with_weak_key.keyring");
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("write_with_weak_key.keyring");
 
     let secret = Secret::from(vec![1, 2]);
     let keyring = UnlockedKeyring::load(&path, secret).await?;
@@ -65,7 +68,8 @@ async fn write_with_weak_key() -> Result<(), Error> {
 
 #[tokio::test]
 async fn write_with_strong_key() -> Result<(), Error> {
-    let path = PathBuf::from("../../tests/write_with_strong_key.keyring");
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("write_with_strong_key.keyring");
 
     let keyring = UnlockedKeyring::load(&path, strong_key()).await?;
     let attributes: HashMap<&str, &str> = HashMap::default();
@@ -79,7 +83,8 @@ async fn write_with_strong_key() -> Result<(), Error> {
 
 #[tokio::test]
 async fn concurrent_writes() -> Result<(), Error> {
-    let path = PathBuf::from("../../tests/concurrent_writes.keyring");
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("concurrent_writes.keyring");
 
     let keyring = Arc::new(UnlockedKeyring::load(&path, strong_key()).await?);
 
