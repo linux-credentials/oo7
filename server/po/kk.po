@@ -1,0 +1,88 @@
+# Kazakh translation for oo7.
+# Copyright (C) 2026 oo7's COPYRIGHT HOLDER
+# This file is distributed under the same license as the oo7 package.
+# Baurzhan Muftakhidinov <baurthefirst@gmail.com>,  2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: oo7 main\n"
+"Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
+"POT-Creation-Date: 2026-03-14 15:32+0000\n"
+"PO-Revision-Date: 2026-03-14 22:27+0500\n"
+"Last-Translator: Baurzhan Muftakhidinov <baurthefirst@gmail.com>\n"
+"Language-Team: Kazakh <Kazakh>\n"
+"Language: kk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.9\n"
+
+#: ../src/gnome/prompter.rs:132
+msgid "Change Keyring Password"
+msgstr "Кілттер бауының паролін өзгерту"
+
+#: ../src/gnome/prompter.rs:133
+#, rust-format
+msgid "Choose a new password for the “{}” keyring"
+msgstr "«{}» кілттер бауы үшін жаңа парольді таңдаңыз"
+
+#: ../src/gnome/prompter.rs:136
+#, rust-format
+msgid ""
+"An application wants to change the password for the “{}” keyring. Choose "
+"the new password you want to use for it."
+msgstr ""
+"Қолданба «{}» кілттер бауының паролін өзгерткісі келеді. Ол үшін "
+"қолданылатын жаңа парольді таңдаңыз."
+
+#: ../src/gnome/prompter.rs:141
+msgid "This operation cannot be reverted"
+msgstr "Бұл әрекетті болдырмау мүмкін емес"
+
+#: ../src/gnome/prompter.rs:147
+msgid "Continue"
+msgstr "Жалғастыру"
+
+#: ../src/gnome/prompter.rs:148 ../src/gnome/prompter.rs:174
+#: ../src/gnome/prompter.rs:196
+msgid "Cancel"
+msgstr "Бас тарту"
+
+#: ../src/gnome/prompter.rs:158
+msgid "Unlock Keyring"
+msgstr "Кілттер бауының құлпын ашу"
+
+#: ../src/gnome/prompter.rs:159
+msgid "Authentication required"
+msgstr "Аутентификация қажет"
+
+#: ../src/gnome/prompter.rs:162
+#, rust-format
+msgid "An application wants access to the keyring '{}', but it is locked"
+msgstr ""
+"Қолданба '{}' кілттер бауына қол жеткізгісі келеді, бірақ ол құлыпталған"
+
+#: ../src/gnome/prompter.rs:173
+msgid "Unlock"
+msgstr "Құлпын ашу"
+
+#: ../src/gnome/prompter.rs:180
+msgid "New Keyring Password"
+msgstr "Кілттер бауының жаңа паролі"
+
+#: ../src/gnome/prompter.rs:181
+msgid "Choose password for new keyring"
+msgstr "Жаңа кілттер бауы үшін парольді таңдаңыз"
+
+#: ../src/gnome/prompter.rs:184
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called “{}”. Choose the "
+"password you want to use for it."
+msgstr ""
+"Қолданба «{}» деп аталатын жаңа кілттер бауын жасағысы келеді. Ол үшін "
+"қолданылатын парольді таңдаңыз."
+
+#: ../src/gnome/prompter.rs:195
+msgid "Create"
+msgstr "Жасау"
