@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Project
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+    xmlns:foaf="http://xmlns.com/foaf/0.1/"
+    xmlns:gnome="http://api.gnome.org/doap-extensions#"
+    xmlns="http://usefulinc.com/ns/doap#">
+
+  <name xml:lang="en">oo7</name>
+  <shortdesc xml:lang="en">Secret Service and Secret Portal library</shortdesc>
+  <description>oo7 provides libraries to interact with the Secret Service and
+  the XDG Desktop Portal Secret D-Bus APIs for clients and services who want to
+  implement such interfaces. It also provides services that implements these
+  APIs</description>
+
+  <bug-database rdf:resource="https://github.com/linux-credentials/oo7/issues" />
+
+  <category rdf:resource="http://api.gnome.org/doap-extensions#core" />
+  <programming-language>Rust</programming-language>
+
+  <maintainer>
+    <foaf:Person>
+      <foaf:name>Bilal Elmoussaoui</foaf:name>
+      <foaf:mbox rdf:resource="mailto:bilal.elmoussaoui@gnome.org" />
+      <gnome:userid>bilelmoussaoui</gnome:userid>
+    </foaf:Person>
+  </maintainer>
+
+  <maintainer>
+    <foaf:Person>
+      <foaf:name>Maximiliano Sandoval</foaf:name>
+      <foaf:mbox rdf:resource="mailto:msandova@gnome.org" />
+      <gnome:userid>msandova</gnome:userid>
+      <foaf:account>
+        <foaf:OnlineAccount>
+          <foaf:accountServiceHomepage rdf:resource="https://gitlab.gnome.org" />
+          <foaf:accountName>msandova</foaf:accountName>
+        </foaf:OnlineAccount>
+      </foaf:account>
+    </foaf:Person>
+  </maintainer>
+
+</Project>
