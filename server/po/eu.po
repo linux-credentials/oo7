@@ -1,0 +1,81 @@
+# Basque translation for oo7.
+# Copyright (C) 2026 oo7's COPYRIGHT HOLDER
+# This file is distributed under the same license as the oo7 package.
+# Asier Saratsua Garmendia <asiersarasua@ni.eus>,  2026.
+#
+msgid ""
+msgstr "Project-Id-Version: oo7 main\n"
+"Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
+"POT-Creation-Date: 2026-03-16 03:32+0000\n"
+"PO-Revision-Date: 2026-03-16 03:32+0000\n"
+"Last-Translator: Asier Saratsua Garmendia <asiersarasua@ni.eus>\n"
+"Language-Team: Basque <eu@li.org>\n"
+"Language: eu\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: ../src/gnome/prompter.rs:132
+msgid "Change Keyring Password"
+msgstr "Aldatu gako sortaren pasahitza"
+
+#: ../src/gnome/prompter.rs:133
+#, rust-format
+msgid "Choose a new password for the “{}” keyring"
+msgstr "Aukeratu pasahitz berria “{}” gako sortarako"
+
+#: ../src/gnome/prompter.rs:136
+#, rust-format
+msgid ""
+"An application wants to change the password for the “{}” keyring. Choose the "
+"new password you want to use for it."
+msgstr "Aplikazio batek “{}” gako sortaren pasahitza aldatu nahi du. Aukeratu erabili nahi duzun pasahitz berria."
+
+#: ../src/gnome/prompter.rs:141
+msgid "This operation cannot be reverted"
+msgstr "Eragiketa hau ezin da desegin"
+
+#: ../src/gnome/prompter.rs:147
+msgid "Continue"
+msgstr "Jarraitu"
+
+#: ../src/gnome/prompter.rs:148 ../src/gnome/prompter.rs:174
+#: ../src/gnome/prompter.rs:196
+msgid "Cancel"
+msgstr "Utzi"
+
+#: ../src/gnome/prompter.rs:158
+msgid "Unlock Keyring"
+msgstr "Desblokeatu gako sorta"
+
+#: ../src/gnome/prompter.rs:159
+msgid "Authentication required"
+msgstr "Autentifikazioa behar da"
+
+#: ../src/gnome/prompter.rs:162
+#, rust-format
+msgid "An application wants access to the keyring '{}', but it is locked"
+msgstr "Aplikazio batek '{}' gako sorta atzitu nahi du, baina blokeatuta dago"
+
+#: ../src/gnome/prompter.rs:173
+msgid "Unlock"
+msgstr "Desblokeatu"
+
+#: ../src/gnome/prompter.rs:180
+msgid "New Keyring Password"
+msgstr "Gako sorta berriaren pasahitza"
+
+#: ../src/gnome/prompter.rs:181
+msgid "Choose password for new keyring"
+msgstr "Aukeratu gako sorta berriaren pasahitza"
+
+#: ../src/gnome/prompter.rs:184
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called “{}”. Choose the "
+"password you want to use for it."
+msgstr "Aplikazio batek “{}” izeneko gako sorta berria sortu nahi du. Aukeratu erabili nahi duzun pasahitz berria."
+
+#: ../src/gnome/prompter.rs:195
+msgid "Create"
+msgstr "Sortu"
