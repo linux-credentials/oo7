@@ -39,6 +39,14 @@ jobs:
         run: |
           cargo build --manifest-path ./cli/Cargo.toml
 
+      - name: Build kwallet-parser
+        run: |
+          cargo build --manifest-path ./kwallet/parser/Cargo.toml --features serde
+
+      - name: Build kwallet-cli
+        run: |
+          cargo build --manifest-path ./kwallet/cli/Cargo.toml
+
       - name: Build Server (native)
         run: |
           cargo build --manifest-path ./server/Cargo.toml
@@ -67,6 +75,10 @@ jobs:
       - name: Test Server (OpenSSL)
         run: |
           cargo test --manifest-path ./server/Cargo.toml --no-default-features --features openssl_crypto
+
+      - name: Test kwallet-parser
+        run: |
+          cargo test --manifest-path ./kwallet/parser/Cargo.toml --features serde
 
   cargo-deny:
       runs-on: ubuntu-latest

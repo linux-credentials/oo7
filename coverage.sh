@@ -58,6 +58,7 @@ grcov coverage-raw/combined.info \
   --ignore "**/pam/*" \
   --ignore "**/tests/*" \
   --ignore "**/examples/*" \
+  --ignore "**/kwallet/*" \
   --ignore "**/target/*" \
   --ignore "**/error.rs"
 
@@ -75,6 +76,7 @@ grcov coverage-raw/combined.info \
   --ignore "**/pam/*" \
   --ignore "**/tests/*" \
   --ignore "**/examples/*" \
+  --ignore "**/kwallet/*" \
   --ignore "**/target/*" \
   --ignore "**/error.rs"
 

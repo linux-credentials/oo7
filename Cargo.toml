@@ -5,6 +5,8 @@ members = [
   "cargo-credential",
   "client",
   "cli",
+  "kwallet/cli",
+  "kwallet/parser",
   "macros",
   "pam",
   "portal",

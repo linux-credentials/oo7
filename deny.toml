@@ -27,4 +27,6 @@ multiple-versions = "deny"
 wildcards = "deny"
 highlight = "all"
 skip = [
+    { name = "rand_core" },
+    { name = "winnow" },
 ]
