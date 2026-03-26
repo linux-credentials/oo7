@@ -1193,6 +1193,7 @@ dependencies = [
  "formatx",
  "gettext-rs",
  "hkdf",
+ "kwallet-parser",
  "libc",
  "num",
  "num-bigint-dig",

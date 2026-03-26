@@ -27,6 +27,7 @@ enumflags2 = "0.7"
 formatx = "0.2"
 gettext-rs = {version = "0.7", features = ["gettext-system"]}
 hkdf = { version = "0.12", optional = true }
+kwallet-parser = { version = "0.6.0-alpha", path = "../kwallet/parser", optional = true }
 libc = "0.2"
 rustix = { version = "1.1", default-features = false, features = ["process", "std", "thread", "mm"] }
 num = "0.4.0"
@@ -47,9 +48,10 @@ tempfile = { workspace = true, optional = true }
 
 [features]
 test-util = ["dep:tempfile"]
-default = ["native_crypto"]
+default = ["native_crypto", "kwallet_migration"]
 native_crypto = ["gnome_native_crypto", "plasma_native_crypto"]
 openssl_crypto = ["gnome_openssl_crypto", "plasma_openssl_crypto"]
+kwallet_migration = ["dep:kwallet-parser"]
 gnome_native_crypto = [
     "dep:base64",
     "dep:hkdf",

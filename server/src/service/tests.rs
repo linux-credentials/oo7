@@ -1291,3 +1291,121 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[tokio::test]
+#[serial_test::serial(xdg_env)]
+#[cfg(feature = "kwallet_migration")]
+async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
+    let service = Service::default();
+    let temp_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("XDG_DATA_HOME", temp_dir.path()) };
+
+    let kwallet_dir = temp_dir.path().join("kwalletd");
+    let v1_dir = temp_dir.path().join("keyrings/v1");
+    tokio::fs::create_dir_all(&kwallet_dir).await?;
+    tokio::fs::create_dir_all(&v1_dir).await?;
+
+    // Copy KWallet test fixture
+    let kwallet_secret = Secret::from("password");
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("kwallet/parser/tests/blowfish_cbc_pbkdf2_sha512_manual.kwl");
+    let kwallet_path = kwallet_dir.join("kdewallet.kwl");
+    tokio::fs::copy(&fixture_path, &kwallet_path).await?;
+
+    // Copy the salt file too (required for PBKDF2-SHA512)
+    let salt_fixture = fixture_path.with_extension("salt");
+    let salt_path = kwallet_path.with_extension("salt");
+    tokio::fs::copy(&salt_fixture, &salt_path).await?;
+
+    // Create a v1 keyring for mixed scenario
+    let v1_secret = Secret::from("v1-password");
+    let v1_keyring = UnlockedKeyring::open("modern", v1_secret.clone()).await?;
+    v1_keyring
+        .create_item(
+            "V1 Item",
+            &[("type", "v1")],
+            Secret::text("v1-secret"),
+            false,
+        )
+        .await?;
+    v1_keyring.write().await?;
+
+    // Test 1: Discover without secret, KWallet marked for migration, v1 locked
+    let discovered = service.discover_keyrings(None).await?;
+    assert_eq!(discovered.len(), 1, "Should discover v1 keyring only");
+    assert!(discovered[0].2.is_locked(), "V1 should be locked");
+
+    let pending = service.pending_migrations.lock().await;
+    assert_eq!(pending.len(), 1, "KWallet should be pending migration");
+    assert!(pending.contains_key("kdewallet"));
+    drop(pending);
+
+    // Test 2: Discover with KWallet secret, KWallet migrated, v1 locked
+    service.pending_migrations.lock().await.clear();
+    let discovered = service
+        .discover_keyrings(Some(kwallet_secret.clone()))
+        .await?;
+    assert_eq!(discovered.len(), 2, "Should discover both keyrings");
+
+    let kdewallet = discovered
+        .iter()
+        .find(|(l, _, _)| l == "Kdewallet")
+        .unwrap();
+    assert!(
+        !kdewallet.2.is_locked(),
+        "KWallet should be migrated and unlocked"
+    );
+    assert_eq!(
+        kdewallet.1,
+        oo7::dbus::Service::DEFAULT_COLLECTION,
+        "kdewallet should get default alias"
+    );
+    assert_eq!(
+        service.pending_migrations.lock().await.len(),
+        0,
+        "No pending after successful migration"
+    );
+
+    // Verify v1 file was created
+    let v1_migrated = temp_dir.path().join("keyrings/v1/kdewallet.keyring");
+    assert!(v1_migrated.exists(), "V1 file should exist after migration");
+
+    // Verify old KWallet files were removed
+    assert!(
+        !kwallet_path.exists(),
+        "Original .kwl file should be removed"
+    );
+    assert!(!salt_path.exists(), "Original .salt file should be removed");
+
+    // Test 3: Discover with wrong KWallet secret, marked for pending migration
+    tokio::fs::remove_file(&v1_migrated).await?;
+    service.pending_migrations.lock().await.clear();
+
+    // Restore the KWallet files for this test
+    tokio::fs::copy(&fixture_path, &kwallet_path).await?;
+    tokio::fs::copy(&salt_fixture, &salt_path).await?;
+
+    let wrong_secret = Secret::from("wrong-password");
+    let discovered = service.discover_keyrings(Some(wrong_secret)).await?;
+    assert_eq!(
+        discovered.len(),
+        1,
+        "Only v1 should be discovered with wrong KWallet password"
+    );
+    assert_eq!(
+        service.pending_migrations.lock().await.len(),
+        1,
+        "KWallet should be pending with wrong password"
+    );
+
+    // Verify the pending migration has the correct type
+    let pending = service.pending_migrations.lock().await;
+    let migration = pending.get("kdewallet").unwrap();
+    assert_eq!(migration.label(), "Kdewallet");
+    assert_eq!(migration.alias(), oo7::dbus::Service::DEFAULT_COLLECTION);
+
+    unsafe { std::env::remove_var("XDG_DATA_HOME") };
+    Ok(())
+}

@@ -29,6 +29,7 @@ use crate::plasma::prompter::in_plasma_environment;
 use crate::{
     collection::Collection,
     error::{Error, custom_service_error},
+    migration::PendingMigration,
     prompt::{Prompt, PromptAction, PromptRole},
     session::Session,
 };
@@ -58,10 +59,8 @@ pub struct Service {
     prompt_index: Arc<RwLock<u32>>,
     // pending collection creations: prompt_path -> (label, alias)
     pending_collections: Arc<Mutex<HashMap<OwnedObjectPath, (String, String)>>>,
-    // pending v0 keyring migrations: name -> (path, label, alias)
-    #[allow(clippy::type_complexity)]
-    pub(crate) pending_migrations:
-        Arc<Mutex<HashMap<String, (std::path::PathBuf, String, String)>>>,
+    // pending keyring migrations: name -> migration
+    pub(crate) pending_migrations: Arc<Mutex<HashMap<String, PendingMigration>>>,
     // Data directory for keyrings (e.g., ~/.local/share or test temp dir)
     data_dir: std::path::PathBuf,
     // PAM socket path (None for tests that don't need PAM listener)
@@ -615,19 +614,109 @@ impl Service {
             }
         }
 
+        // Discover KWallet keyrings for migration
+        #[cfg(feature = "kwallet_migration")]
+        self.discover_kwallet_keyrings(&self.data_dir, secret.as_ref(), &mut discovered)
+            .await;
+
         let pending_count = self.pending_migrations.lock().await.len();
 
         if discovered.is_empty() && pending_count == 0 {
             tracing::info!("No keyrings discovered in data directory");
         } else {
             tracing::info!(
-                "Discovered {} keyring(s), {} pending v0 migration(s)",
+                "Discovered {} keyring(s), {pending_count} pending migration(s)",
                 discovered.len(),
-                pending_count
             );
         }
 
         Ok(discovered)
+    }
+
+    /// Discover KWallet keyrings for migration
+    #[cfg(feature = "kwallet_migration")]
+    async fn discover_kwallet_keyrings(
+        &self,
+        data_dir: &std::path::Path,
+        secret: Option<&Secret>,
+        discovered: &mut Vec<(String, String, Keyring)>,
+    ) {
+        let kwallet_dir = data_dir.join("kwalletd");
+
+        if !kwallet_dir.exists() {
+            tracing::debug!("No kwalletd directory found, skipping KWallet discovery");
+            return;
+        }
+
+        tracing::debug!("Scanning for KWallet files in {}", kwallet_dir.display());
+
+        let Ok(mut entries) = tokio::fs::read_dir(&kwallet_dir).await else {
+            tracing::warn!("Failed to read kwalletd directory");
+            return;
+        };
+
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+
+            // Only process .kwl files
+            if path.extension().is_none_or(|ext| ext != "kwl") {
+                continue;
+            }
+
+            let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+
+            tracing::debug!("Found KWallet file: {name}");
+
+            // Determine alias
+            let alias = if name.eq_ignore_ascii_case("kdewallet") {
+                oo7::dbus::Service::DEFAULT_COLLECTION.to_owned()
+            } else {
+                name.to_lowercase()
+            };
+
+            let label = {
+                let mut chars = name.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                }
+            };
+
+            if let Some(secret) = secret {
+                let migration = PendingMigration::KWallet {
+                    path: path.clone(),
+                    label: label.clone(),
+                    alias: alias.clone(),
+                };
+
+                tracing::debug!("Attempting immediate migration of KWallet keyring '{name}'");
+                match migration.migrate(&self.data_dir, name, secret).await {
+                    Ok(unlocked) => {
+                        tracing::info!("Successfully migrated KWallet keyring '{name}' to oo7");
+                        discovered.push((label, alias, Keyring::Unlocked(unlocked)));
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to migrate KWallet keyring '{name}': {e}. Registering for pending migration.",
+                        );
+                        self.pending_migrations
+                            .lock()
+                            .await
+                            .insert(name.to_owned(), migration);
+                    }
+                }
+            } else {
+                tracing::debug!(
+                    "No secret available for KWallet keyring '{name}', registering for pending migration",
+                );
+                self.pending_migrations.lock().await.insert(
+                    name.to_owned(),
+                    PendingMigration::KWallet { path, label, alias },
+                );
+            }
+        }
     }
 
     /// Load a single keyring from a file path
@@ -716,7 +805,11 @@ impl Service {
                             );
                             self.pending_migrations.lock().await.insert(
                                 name.to_owned(),
-                                (path.to_path_buf(), label.clone(), alias.clone()),
+                                PendingMigration::V0 {
+                                    path: path.to_path_buf(),
+                                    label: label.clone(),
+                                    alias: alias.clone(),
+                                },
                             );
                             return Err(e.into());
                         }
@@ -728,7 +821,11 @@ impl Service {
                     );
                     self.pending_migrations.lock().await.insert(
                         name.to_owned(),
-                        (path.to_path_buf(), label.clone(), alias.clone()),
+                        PendingMigration::V0 {
+                            path: path.to_path_buf(),
+                            label: label.clone(),
+                            alias: alias.clone(),
+                        },
                     );
                     return Err(Error::IO(std::io::Error::other(
                         "v0 keyring requires migration, no secret available",
@@ -1141,41 +1238,20 @@ impl Service {
             .await
     }
 
-    /// Attempt to migrate pending v0 keyrings with the provided secret
+    /// Attempt to migrate pending keyrings with the provided secret
     /// Returns a list of successfully migrated keyring names
     pub async fn migrate_pending_keyrings(&self, secret: &Secret) -> Vec<String> {
         let mut migrated = Vec::new();
         let mut pending = self.pending_migrations.lock().await;
         let mut to_remove = Vec::new();
 
-        for (name, (path, label, alias)) in pending.iter() {
-            tracing::debug!("Attempting to migrate pending v0 keyring: {}", name);
+        for (name, migration) in pending.iter() {
+            tracing::debug!("Attempting to migrate pending keyring: {name}");
 
-            match UnlockedKeyring::open_at(&self.data_dir, name, secret.clone()).await {
+            match migration.migrate(&self.data_dir, name, secret).await {
                 Ok(unlocked) => {
-                    tracing::info!("Successfully migrated v0 keyring '{}' to v1", name);
-
-                    // Write the migrated keyring to disk
-                    match unlocked.write().await {
-                        Ok(_) => {
-                            tracing::info!("Wrote migrated keyring '{}' to disk", name);
-
-                            // Remove the v0 keyring file after successful migration
-                            if let Err(e) = tokio::fs::remove_file(path).await {
-                                tracing::warn!("Failed to remove v0 keyring at {:?}: {}", path, e);
-                            } else {
-                                tracing::info!("Removed v0 keyring file at {:?}", path);
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to write migrated keyring '{}' to disk: {}",
-                                name,
-                                e
-                            );
-                            continue;
-                        }
-                    }
+                    let label = migration.label();
+                    let alias = migration.alias();
 
                     // Create a collection for this migrated keyring
                     let keyring = Keyring::Unlocked(unlocked);
@@ -1185,9 +1261,7 @@ impl Service {
                     // Dispatch items
                     if let Err(e) = collection.dispatch_items().await {
                         tracing::error!(
-                            "Failed to dispatch items for migrated keyring '{}': {}",
-                            name,
-                            e
+                            "Failed to dispatch items for migrated keyring '{name}': {e}",
                         );
                         continue;
                     }
@@ -1198,9 +1272,7 @@ impl Service {
                         .await
                     {
                         tracing::error!(
-                            "Failed to register migrated collection '{}' with object server: {}",
-                            name,
-                            e
+                            "Failed to register migrated collection '{name}' with object server: {e}",
                         );
                         continue;
                     }
@@ -1217,9 +1289,7 @@ impl Service {
                             .await
                     {
                         tracing::error!(
-                            "Failed to register default alias for migrated collection '{}': {}",
-                            name,
-                            e
+                            "Failed to register default alias for migrated collection '{name}': {e}",
                         );
                     }
 
@@ -1231,15 +1301,14 @@ impl Service {
                         let _ = self.collections_changed(&signal_emitter).await;
                     }
 
-                    tracing::info!("Migrated keyring '{}' added as collection", name);
+                    tracing::info!("Migrated keyring '{name}' added as collection",);
                     migrated.push(name.clone());
                     to_remove.push(name.clone());
                 }
                 Err(e) => {
                     tracing::debug!(
-                        "Failed to migrate v0 keyring '{}' with provided secret: {}",
-                        name,
-                        e
+                        "Failed to migrate keyring '{name}' found at {} with provided secret: {e}",
+                        migration.path().display()
                     );
                 }
             }

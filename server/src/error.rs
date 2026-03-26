@@ -14,6 +14,9 @@ pub enum Error {
     EmptyPassword,
     // Capability error
     Capability(rustix::io::Errno),
+    // KWallet parser error
+    #[cfg(feature = "kwallet_migration")]
+    KWallet(kwallet_parser::Error),
 }
 
 impl std::error::Error for Error {}
@@ -42,6 +45,13 @@ impl From<rustix::io::Errno> for Error {
     }
 }
 
+#[cfg(feature = "kwallet_migration")]
+impl From<kwallet_parser::Error> for Error {
+    fn from(err: kwallet_parser::Error) -> Self {
+        Self::KWallet(err)
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -50,6 +60,8 @@ impl fmt::Display for Error {
             Self::IO(err) => write!(f, "IO error {err}"),
             Self::EmptyPassword => write!(f, "Login password can't be empty"),
             Self::Capability(err) => write!(f, "Capability error {err}"),
+            #[cfg(feature = "kwallet_migration")]
+            Self::KWallet(err) => write!(f, "KWallet error {err}"),
         }
     }
 }

@@ -4,6 +4,7 @@ mod error;
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 mod gnome;
 mod item;
+mod migration;
 mod pam_listener;
 #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
 mod plasma;
