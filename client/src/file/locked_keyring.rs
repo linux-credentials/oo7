@@ -177,4 +177,20 @@ impl LockedKeyring {
         let v1_path = api::Keyring::path(name, api::MAJOR_VERSION)?;
         Self::load(v1_path).await
     }
+
+    /// Open a locked keyring at a specific data directory.
+    ///
+    /// This is useful for tests and cases where you want explicit control over
+    /// where keyrings are stored, avoiding the default XDG_DATA_HOME location.
+    ///
+    /// # Arguments
+    ///
+    /// * `data_dir` - Base data directory (keyrings stored in
+    ///   `data_dir/keyrings/v1/`)
+    /// * `name` - The name of the keyring.
+    #[cfg_attr(feature = "tracing", tracing::instrument(fields(data_dir = ?data_dir.as_ref())))]
+    pub async fn open_at(data_dir: impl AsRef<std::path::Path>, name: &str) -> Result<Self, Error> {
+        let path = api::Keyring::path_at(data_dir, name, api::MAJOR_VERSION);
+        Self::load(path).await
+    }
 }

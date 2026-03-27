@@ -91,6 +91,8 @@ pub(crate) struct TestServiceSetup {
     pub mock_prompter: MockPrompterService,
     #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
     pub mock_prompter_plasma: MockPrompterServicePlasma,
+    // Keep temp dir alive for duration of test
+    _temp_dir: tempfile::TempDir,
 }
 
 impl TestServiceSetup {
@@ -118,7 +120,14 @@ impl TestServiceSetup {
             None
         };
 
-        let server = Service::run_with_connection(server_conn.clone(), secret.clone()).await?;
+        let temp_dir = tempfile::TempDir::new()?;
+        let server = Service::run_with_connection(
+            server_conn.clone(),
+            temp_dir.path().to_path_buf(),
+            None,
+            secret.clone(),
+        )
+        .await?;
 
         // Create and serve the mock prompter
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
@@ -163,6 +172,7 @@ impl TestServiceSetup {
             mock_prompter,
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             mock_prompter_plasma,
+            _temp_dir: temp_dir,
         })
     }
 
@@ -177,7 +187,14 @@ impl TestServiceSetup {
             None
         };
 
-        let server = Service::run_with_connection(server_conn.clone(), secret.clone()).await?;
+        let temp_dir = tempfile::TempDir::new()?;
+        let server = Service::run_with_connection(
+            server_conn.clone(),
+            temp_dir.path().to_path_buf(),
+            None,
+            secret.clone(),
+        )
+        .await?;
 
         // Create and serve the mock prompter
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
@@ -231,19 +248,23 @@ impl TestServiceSetup {
             mock_prompter,
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             mock_prompter_plasma,
+            _temp_dir: temp_dir,
         })
     }
 
     /// Create a test setup that discovers keyrings from disk
     /// This is useful for PAM tests that need to create keyrings on disk first
     pub(crate) async fn with_disk_keyrings(
+        data_dir: std::path::PathBuf,
+        pam_socket: Option<std::path::PathBuf>,
         secret: Option<Secret>,
     ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
         use zbus::proxy::Defaults;
 
         let (server_conn, client_conn) = create_p2p_connection().await?;
 
-        let service = crate::Service::default();
+        let temp_dir = tempfile::TempDir::new()?;
+        let service = crate::Service::new(data_dir, pam_socket);
 
         server_conn
             .object_server()
@@ -300,6 +321,7 @@ impl TestServiceSetup {
             mock_prompter,
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             mock_prompter_plasma,
+            _temp_dir: temp_dir,
         })
     }
 

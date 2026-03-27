@@ -156,25 +156,20 @@ impl UnlockedKeyring {
         }
     }
 
-    /// Open a keyring with given name from the default directory.
+    /// Helper for opening/creating keyrings with explicit paths.
     ///
-    /// This function will automatically migrate the keyring to the
-    /// latest format.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the keyring.
-    /// * `secret` - The service key, usually retrieved from the Secrets portal.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(secret)))]
-    pub async fn open(name: &str, secret: Secret) -> Result<Self, Error> {
-        let v1_path = api::Keyring::path(name, api::MAJOR_VERSION)?;
+    /// Handles v0 -> v1 migration automatically.
+    async fn open_with_paths(
+        v1_path: PathBuf,
+        v0_path: PathBuf,
+        secret: Secret,
+    ) -> Result<Self, Error> {
         if v1_path.exists() {
             #[cfg(feature = "tracing")]
             tracing::debug!("Loading v1 keyring file");
             return Self::load(v1_path, secret).await;
         }
 
-        let v0_path = api::Keyring::path(name, api::LEGACY_MAJOR_VERSION)?;
         if v0_path.exists() {
             #[cfg(feature = "tracing")]
             tracing::debug!("Trying to load keyring file at {:?}", v0_path);
@@ -193,6 +188,64 @@ impl UnlockedKeyring {
                 secret: Mutex::new(Arc::new(secret)),
             })
         }
+    }
+
+    /// Open a keyring with given name from the default directory.
+    ///
+    /// This function will automatically migrate the keyring to the
+    /// latest format.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the keyring.
+    /// * `secret` - The service key, usually retrieved from the Secrets portal.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(secret)))]
+    pub async fn open(name: &str, secret: Secret) -> Result<Self, Error> {
+        let v1_path = api::Keyring::path(name, api::MAJOR_VERSION)?;
+        let v0_path = api::Keyring::path(name, api::LEGACY_MAJOR_VERSION)?;
+        Self::open_with_paths(v1_path, v0_path, secret).await
+    }
+
+    /// Open or create a keyring at a specific data directory.
+    ///
+    /// This is useful for tests and cases where you want explicit control over
+    /// where keyrings are stored, avoiding the default XDG_DATA_HOME location.
+    ///
+    /// This function will automatically migrate the keyring to the latest
+    /// format.
+    ///
+    /// # Arguments
+    ///
+    /// * `data_dir` - Base data directory (keyrings stored in
+    ///   `data_dir/keyrings/v1/`)
+    /// * `name` - The name of the keyring.
+    /// * `secret` - The service key, usually retrieved from the Secrets portal.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use oo7::{Secret, file::UnlockedKeyring};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let temp_dir = tempfile::tempdir()?;
+    /// let keyring =
+    ///     UnlockedKeyring::open_at(temp_dir.path(), "test-keyring", Secret::from("password")).await?;
+    /// keyring
+    ///     .create_item("item", &[], Secret::text("secret"), false)
+    ///     .await?;
+    /// keyring.write().await?; // Writes to temp_dir/keyrings/v1/test-keyring.keyring
+    /// //
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(secret), fields(data_dir = ?data_dir.as_ref())))]
+    pub async fn open_at(
+        data_dir: impl AsRef<Path>,
+        name: &str,
+        secret: Secret,
+    ) -> Result<Self, Error> {
+        let v1_path = api::Keyring::path_at(&data_dir, name, api::MAJOR_VERSION);
+        let v0_path = api::Keyring::path_at(&data_dir, name, api::LEGACY_MAJOR_VERSION);
+        Self::open_with_paths(v1_path, v0_path, secret).await
     }
 
     /// Lock the keyring.

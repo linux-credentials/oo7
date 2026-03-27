@@ -118,7 +118,6 @@ async fn check_items(keyring: &UnlockedKeyring) -> Result<(), Error> {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn migrate_from_legacy() -> Result<(), Error> {
     let data_dir = tempdir()?;
     let v0_dir = data_dir.path().join("keyrings");
@@ -130,14 +129,10 @@ async fn migrate_from_legacy() -> Result<(), Error> {
         .join("legacy.keyring");
     fs::copy(&fixture_path, &v0_dir.join("default.keyring")).await?;
 
-    unsafe {
-        std::env::set_var("XDG_DATA_HOME", data_dir.path());
-    }
-
     assert!(!v1_dir.join("default.keyring").exists());
 
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open("default", secret).await?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await?;
 
     check_items(&keyring).await?;
 
@@ -148,7 +143,6 @@ async fn migrate_from_legacy() -> Result<(), Error> {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn migrate() -> Result<(), Error> {
     let data_dir = tempdir()?;
     let v0_dir = data_dir.path().join("keyrings");
@@ -160,12 +154,8 @@ async fn migrate() -> Result<(), Error> {
         .join("default.keyring");
     fs::copy(&fixture_path, &v0_dir.join("default.keyring")).await?;
 
-    unsafe {
-        std::env::set_var("XDG_DATA_HOME", data_dir.path());
-    }
-
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open("default", secret).await?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await?;
 
     assert!(!v1_dir.join("default.keyring").exists());
 
@@ -178,7 +168,6 @@ async fn migrate() -> Result<(), Error> {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn open_wrong_password() -> Result<(), Error> {
     let data_dir = tempdir()?;
     let v0_dir = data_dir.path().join("keyrings");
@@ -190,18 +179,14 @@ async fn open_wrong_password() -> Result<(), Error> {
         .join("default.keyring");
     fs::copy(&fixture_path, &v1_dir.join("default.keyring")).await?;
 
-    unsafe {
-        std::env::set_var("XDG_DATA_HOME", data_dir.path());
-    }
-
     let secret = Secret::blob("wrong");
-    let keyring = UnlockedKeyring::open("default", secret).await;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await;
 
     assert!(keyring.is_err());
     assert!(matches!(keyring.unwrap_err(), Error::IncorrectSecret));
 
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open("default", secret).await;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await;
 
     assert!(keyring.is_ok());
 
@@ -209,7 +194,6 @@ async fn open_wrong_password() -> Result<(), Error> {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn open() -> Result<(), Error> {
     let data_dir = tempdir()?;
     let v0_dir = data_dir.path().join("keyrings");
@@ -221,12 +205,8 @@ async fn open() -> Result<(), Error> {
         .join("default.keyring");
     fs::copy(&fixture_path, &v1_dir.join("default.keyring")).await?;
 
-    unsafe {
-        std::env::set_var("XDG_DATA_HOME", data_dir.path());
-    }
-
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open("default", secret).await?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await?;
 
     assert!(v1_dir.join("default.keyring").exists());
 
@@ -239,19 +219,14 @@ async fn open() -> Result<(), Error> {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn open_nonexistent() -> Result<(), Error> {
     let data_dir = tempdir()?;
     let v0_dir = data_dir.path().join("keyrings");
     let v1_dir = v0_dir.join("v1");
     fs::create_dir_all(&v1_dir).await?;
 
-    unsafe {
-        std::env::set_var("XDG_DATA_HOME", data_dir.path());
-    }
-
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open("default", secret).await?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await?;
 
     assert!(!v1_dir.join("default.keyring").exists());
 
