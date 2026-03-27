@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2025 Harald Sitter <sitter@kde.org>
 
-use std::{env, os::fd::AsFd};
+use std::os::fd::AsFd;
 
 use ashpd::WindowIdentifierType;
 use gettextrs::gettext;
@@ -26,38 +26,32 @@ pub enum CallbackAction {
 }
 
 #[must_use]
-pub async fn in_plasma_environment(_connection: &zbus::Connection) -> bool {
-    #[cfg(test)]
-    return env::var("OO7_DAEMON_PROMPTER_TEST").is_ok_and(|v| v.to_lowercase() == "plasma");
-
-    #[cfg(not(test))]
-    {
-        static IS_PLASMA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if let Some(cached_value) = IS_PLASMA.get() {
-            return *cached_value;
-        }
-
-        let is_plasma = async {
-            if !env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| v.to_lowercase() == "kde") {
-                return false;
-            }
-
-            let proxy = match zbus::fdo::DBusProxy::new(_connection).await {
-                Ok(proxy) => proxy,
-                Err(_) => return false,
-            };
-            let activatable_names = match proxy.list_activatable_names().await {
-                Ok(names) => names,
-                Err(_) => return false,
-            };
-            activatable_names
-                .iter()
-                .any(|name| name.as_str() == "org.kde.secretprompter")
-        }
-        .await;
-
-        *IS_PLASMA.get_or_init(|| is_plasma)
+pub async fn in_plasma_environment(connection: &zbus::Connection) -> bool {
+    static IS_PLASMA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if let Some(cached_value) = IS_PLASMA.get() {
+        return *cached_value;
     }
+
+    let is_plasma = async {
+        if !std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| v.to_lowercase() == "kde") {
+            return false;
+        }
+
+        let proxy = match zbus::fdo::DBusProxy::new(connection).await {
+            Ok(proxy) => proxy,
+            Err(_) => return false,
+        };
+        let activatable_names = match proxy.list_activatable_names().await {
+            Ok(names) => names,
+            Err(_) => return false,
+        };
+        activatable_names
+            .iter()
+            .any(|name| name.as_str() == "org.kde.secretprompter")
+    }
+    .await;
+
+    *IS_PLASMA.get_or_init(|| is_plasma)
 }
 
 #[zbus::proxy(

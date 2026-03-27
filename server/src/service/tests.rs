@@ -1,7 +1,7 @@
 use oo7::dbus;
 
 use super::*;
-use crate::tests::{TestServiceSetup, gnome_prompter_test, plasma_prompter_test};
+use crate::tests::TestServiceSetup;
 
 #[tokio::test]
 async fn open_session_plain() -> Result<(), Box<dyn std::error::Error>> {
@@ -574,11 +574,11 @@ async fn lock_non_existent_objects() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(unlock_collection_prompt_gnome, unlock_collection_prompt);
-plasma_prompter_test!(unlock_collection_prompt_plasma, unlock_collection_prompt);
-
-async fn unlock_collection_prompt() -> Result<(), Box<dyn std::error::Error>> {
+async fn unlock_collection_prompt_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
 
     // Lock the collection using server-side API
     setup.lock_collection(&setup.collections[0]).await?;
@@ -631,11 +631,23 @@ async fn unlock_collection_prompt() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(unlock_item_prompt_gnome, unlock_item_prompt);
-plasma_prompter_test!(unlock_item_prompt_plasma, unlock_item_prompt);
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_collection_prompt_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_collection_prompt_impl(PrompterType::GNOME).await
+}
 
-async fn unlock_item_prompt() -> Result<(), Box<dyn std::error::Error>> {
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_collection_prompt_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_collection_prompt_impl(PrompterType::Plasma).await
+}
+
+async fn unlock_item_prompt_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
 
     // Create an item
     let dbus_secret = setup.create_dbus_secret("test-password")?;
@@ -781,11 +793,23 @@ async fn lock_collection_no_prompt() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(create_collection_basic_gnome, create_collection_basic);
-plasma_prompter_test!(create_collection_basic_plasma, create_collection_basic);
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_item_prompt_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_item_prompt_impl(PrompterType::GNOME).await
+}
 
-async fn create_collection_basic() -> Result<(), Box<dyn std::error::Error>> {
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_item_prompt_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_item_prompt_impl(PrompterType::Plasma).await
+}
+
+async fn create_collection_basic_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
 
     // Get initial collection count
     let initial_collections = setup.service_api.collections().await?;
@@ -844,11 +868,23 @@ async fn create_collection_basic() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(create_collection_signal_gnome, create_collection_signal);
-plasma_prompter_test!(create_collection_signal_plasma, create_collection_signal);
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_basic_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    create_collection_basic_impl(PrompterType::GNOME).await
+}
 
-async fn create_collection_signal() -> Result<(), Box<dyn std::error::Error>> {
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_basic_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    create_collection_basic_impl(PrompterType::Plasma).await
+}
+
+async fn create_collection_signal_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
 
     // Subscribe to CollectionCreated signal
     let signal_stream = setup.service_api.receive_collection_created().await?;
@@ -889,17 +925,23 @@ async fn create_collection_signal() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(
-    create_collection_and_add_items_gnome,
-    create_collection_and_add_items
-);
-plasma_prompter_test!(
-    create_collection_and_add_items_plasma,
-    create_collection_and_add_items
-);
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_signal_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    create_collection_signal_impl(PrompterType::GNOME).await
+}
 
-async fn create_collection_and_add_items() -> Result<(), Box<dyn std::error::Error>> {
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_signal_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    create_collection_signal_impl(PrompterType::Plasma).await
+}
+
+async fn create_collection_and_add_items_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
 
     // Create a new collection
     let collection = setup
@@ -956,17 +998,23 @@ async fn create_collection_and_add_items() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-gnome_prompter_test!(
-    create_collection_dismissed_gnome,
-    create_collection_dismissed
-);
-plasma_prompter_test!(
-    create_collection_dismissed_plasma,
-    create_collection_dismissed
-);
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_and_add_items_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    create_collection_and_add_items_impl(PrompterType::GNOME).await
+}
 
-async fn create_collection_dismissed() -> Result<(), Box<dyn std::error::Error>> {
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_and_add_items_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    create_collection_and_add_items_impl(PrompterType::Plasma).await
+}
+
+async fn create_collection_dismissed_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
 
     // Get initial collection count
     let initial_collections = setup.service_api.collections().await?;
@@ -996,6 +1044,18 @@ async fn create_collection_dismissed() -> Result<(), Box<dyn std::error::Error>>
     );
 
     Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_dismissed_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    create_collection_dismissed_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_dismissed_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    create_collection_dismissed_impl(PrompterType::Plasma).await
 }
 
 #[tokio::test]

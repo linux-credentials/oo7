@@ -3,7 +3,7 @@ use std::sync::Arc;
 use oo7::dbus;
 use tokio_stream::StreamExt;
 
-use crate::tests::{TestServiceSetup, gnome_prompter_test, plasma_prompter_test};
+use crate::{service::PrompterType, tests::TestServiceSetup};
 
 #[tokio::test]
 async fn create_item_plain() -> Result<(), Box<dyn std::error::Error>> {
@@ -506,17 +506,11 @@ async fn collection_deleted_signal() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(
-    create_item_in_locked_collection_gnome,
-    create_item_in_locked_collection
-);
-plasma_prompter_test!(
-    create_item_in_locked_collection_plasma,
-    create_item_in_locked_collection
-);
-
-async fn create_item_in_locked_collection() -> Result<(), Box<dyn std::error::Error>> {
+async fn create_item_in_locked_collection_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
 
     setup.lock_collection(&setup.collections[0]).await?;
 
@@ -561,17 +555,23 @@ async fn create_item_in_locked_collection() -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-gnome_prompter_test!(
-    delete_locked_collection_with_prompt_gnome,
-    delete_locked_collection_with_prompt
-);
-plasma_prompter_test!(
-    delete_locked_collection_with_prompt_plasma,
-    delete_locked_collection_with_prompt
-);
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn create_item_in_locked_collection_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    create_item_in_locked_collection_impl(PrompterType::GNOME).await
+}
 
-async fn delete_locked_collection_with_prompt() -> Result<(), Box<dyn std::error::Error>> {
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn create_item_in_locked_collection_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    create_item_in_locked_collection_impl(PrompterType::Plasma).await
+}
+
+async fn delete_locked_collection_with_prompt_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
     let default_collection = setup.default_collection().await?;
 
     setup.lock_collection(&default_collection).await?;
@@ -614,11 +614,21 @@ async fn delete_locked_collection_with_prompt() -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-gnome_prompter_test!(unlock_retry_gnome, unlock_retry);
-plasma_prompter_test!(unlock_retry_plasma, unlock_retry);
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn delete_locked_collection_with_prompt_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    delete_locked_collection_with_prompt_impl(PrompterType::GNOME).await
+}
 
-async fn unlock_retry() -> Result<(), Box<dyn std::error::Error>> {
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn delete_locked_collection_with_prompt_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    delete_locked_collection_with_prompt_impl(PrompterType::Plasma).await
+}
+
+async fn unlock_retry_impl(prompter_type: PrompterType) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
     let default_collection = setup.default_collection().await?;
 
     let dbus_secret = setup.create_dbus_secret("test-secret-data")?;
@@ -658,6 +668,18 @@ async fn unlock_retry() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_retry_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_retry_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_retry_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_retry_impl(PrompterType::Plasma).await
 }
 
 #[tokio::test]

@@ -230,7 +230,7 @@ impl UnlockedKeyring {
     /// let keyring =
     ///     UnlockedKeyring::open_at(temp_dir.path(), "test-keyring", Secret::from("password")).await?;
     /// keyring
-    ///     .create_item("item", &[], Secret::text("secret"), false)
+    ///     .create_item("item", &[("attr", "value")], Secret::text("secret"), false)
     ///     .await?;
     /// keyring.write().await?; // Writes to temp_dir/keyrings/v1/test-keyring.keyring
     /// //

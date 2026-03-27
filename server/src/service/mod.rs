@@ -24,6 +24,8 @@ use zbus::{
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 pub use crate::gnome::internal::{INTERNAL_INTERFACE_PATH, InternalInterface};
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+use crate::plasma::prompter::in_plasma_environment;
 use crate::{
     collection::Collection,
     error::{Error, custom_service_error},
@@ -33,6 +35,13 @@ use crate::{
 
 const DEFAULT_COLLECTION_ALIAS_PATH: ObjectPath<'static> =
     ObjectPath::from_static_str_unchecked("/org/freedesktop/secrets/aliases/default");
+
+/// Prompter type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PrompterType {
+    GNOME,
+    Plasma,
+}
 
 #[derive(Debug, Clone)]
 pub struct Service {
@@ -56,6 +65,8 @@ pub struct Service {
     data_dir: std::path::PathBuf,
     // PAM socket path (None for tests that don't need PAM listener)
     pub(crate) pam_socket: Option<std::path::PathBuf>,
+    // Override for prompter type (mainly for tests)
+    pub(crate) prompter_type_override: Arc<Mutex<Option<PrompterType>>>,
 }
 
 #[zbus::interface(name = "org.freedesktop.Secret.Service")]
@@ -395,6 +406,28 @@ impl Service {
 impl Service {
     const LOGIN_ALIAS: &str = "login";
 
+    /// Set the prompter type override
+    #[cfg(test)]
+    pub(crate) async fn set_prompter_type(&self, prompter_type: PrompterType) {
+        *self.prompter_type_override.lock().await = Some(prompter_type);
+    }
+
+    /// Get the prompter type to use
+    pub(crate) async fn prompter_type(&self) -> PrompterType {
+        if let Some(override_type) = self.prompter_type_override.lock().await.as_ref() {
+            return *override_type;
+        }
+
+        #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+        {
+            if in_plasma_environment(self.connection()).await {
+                return PrompterType::Plasma;
+            }
+        }
+
+        PrompterType::GNOME
+    }
+
     pub(crate) fn new(
         data_dir: std::path::PathBuf,
         pam_socket: Option<std::path::PathBuf>,
@@ -410,6 +443,7 @@ impl Service {
             pending_migrations: Arc::new(Mutex::new(HashMap::new())),
             data_dir,
             pam_socket,
+            prompter_type_override: Arc::new(Mutex::new(None)),
         }
     }
 

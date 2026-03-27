@@ -14,51 +14,6 @@ use crate::gnome::{
 };
 use crate::service::Service;
 
-macro_rules! gnome_prompter_test {
-    ($name:tt, $test_function:tt $(, $meta:meta)*) => {
-#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-        #[tokio::test]
-        #[serial_test::serial(prompter_env)]
-        $(
-            #[$meta]
-        )*
-        async fn $name() -> Result<(), Box<dyn std::error::Error>> {
-            unsafe {
-                std::env::set_var("OO7_DAEMON_PROMPTER_TEST", "gnome");
-            }
-            let ret = $test_function().await;
-            unsafe {
-                std::env::remove_var("OO7_DAEMON_PROMPTER_TEST");
-            }
-            ret
-        }
-    }
-}
-pub(crate) use gnome_prompter_test;
-
-macro_rules! plasma_prompter_test {
-    ($name:tt, $test_function:tt $(, $meta:meta)*) => {
-        #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-
-        #[tokio::test]
-        #[serial_test::serial(prompter_env)]
-        $(
-            #[$meta]
-        )*
-        async fn $name() -> Result<(), Box<dyn std::error::Error>> {
-            unsafe {
-                std::env::set_var("OO7_DAEMON_PROMPTER_TEST", "plasma");
-            }
-            let ret = $test_function().await;
-            unsafe {
-                std::env::remove_var("OO7_DAEMON_PROMPTER_TEST");
-            }
-            ret
-        }
-    }
-}
-pub(crate) use plasma_prompter_test;
-
 /// Helper to create a peer-to-peer connection pair using Unix socket
 async fn create_p2p_connection()
 -> Result<(zbus::Connection, zbus::Connection), Box<dyn std::error::Error>> {
