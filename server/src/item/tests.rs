@@ -3,7 +3,7 @@ use std::sync::Arc;
 use oo7::dbus;
 use tokio_stream::StreamExt;
 
-use crate::tests::{TestServiceSetup, gnome_prompter_test, plasma_prompter_test};
+use crate::{service::PrompterType, tests::TestServiceSetup};
 
 #[tokio::test]
 async fn label_property() -> Result<(), Box<dyn std::error::Error>> {
@@ -401,17 +401,11 @@ async fn item_changed_signal() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(
-    delete_locked_item_with_prompt_gnome,
-    delete_locked_item_with_prompt
-);
-plasma_prompter_test!(
-    delete_locked_item_with_prompt_plasma,
-    delete_locked_item_with_prompt
-);
-
-async fn delete_locked_item_with_prompt() -> Result<(), Box<dyn std::error::Error>> {
+async fn delete_locked_item_with_prompt_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
     let default_collection = setup.default_collection().await?;
 
     let dbus_secret = setup.create_dbus_secret("test-password")?;
@@ -433,6 +427,18 @@ async fn delete_locked_item_with_prompt() -> Result<(), Box<dyn std::error::Erro
     assert_eq!(items.len(), 0, "Item should be deleted after prompt");
 
     Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn delete_locked_item_with_prompt_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    delete_locked_item_with_prompt_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn delete_locked_item_with_prompt_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    delete_locked_item_with_prompt_impl(PrompterType::Plasma).await
 }
 
 #[tokio::test]

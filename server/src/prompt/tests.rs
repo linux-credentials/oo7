@@ -1,10 +1,10 @@
-use crate::tests::{TestServiceSetup, gnome_prompter_test, plasma_prompter_test};
+use crate::{service::PrompterType, tests::TestServiceSetup};
 
-gnome_prompter_test!(prompt_called_twice_error_gnome, prompt_called_twice_error);
-plasma_prompter_test!(prompt_called_twice_error_plasma, prompt_called_twice_error);
-
-async fn prompt_called_twice_error() -> Result<(), Box<dyn std::error::Error>> {
+async fn prompt_called_twice_error_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
 
     // Lock the collection to create a prompt scenario
     setup.lock_collection(&setup.collections[0]).await?;
@@ -36,6 +36,18 @@ async fn prompt_called_twice_error() -> Result<(), Box<dyn std::error::Error>> {
         "Second call to prompt() should fail"
     );
     Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn prompt_called_twice_error_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    prompt_called_twice_error_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn prompt_called_twice_error_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    prompt_called_twice_error_impl(PrompterType::Plasma).await
 }
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]

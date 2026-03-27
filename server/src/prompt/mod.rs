@@ -13,8 +13,11 @@ use zbus::{
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 use crate::gnome::prompter::{GNOMEPrompterCallback, GNOMEPrompterProxy};
 #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-use crate::plasma::prompter::{PlasmaPrompterCallback, in_plasma_environment};
-use crate::{error::custom_service_error, service::Service};
+use crate::plasma::prompter::PlasmaPrompterCallback;
+use crate::{
+    error::custom_service_error,
+    service::{PrompterType, Service},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptRole {
@@ -95,63 +98,70 @@ impl std::fmt::Debug for Prompt {
 impl Prompt {
     pub async fn prompt(&self, window_id: Optional<&str>) -> Result<(), ServiceError> {
         let window_id = (*window_id).and_then(|w| ashpd::WindowIdentifierType::from_str(w).ok());
+
+        let prompter_type = self.service.prompter_type().await;
+
         #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-        if in_plasma_environment(self.service.connection()).await {
-            if self.plasma_callback.get().is_some() {
-                return Err(custom_service_error(
-                    "A prompt callback is ongoing already.",
-                ));
+        {
+            if prompter_type == PrompterType::Plasma {
+                if self.plasma_callback.get().is_some() {
+                    return Err(custom_service_error(
+                        "A prompt callback is ongoing already.",
+                    ));
+                }
+
+                let callback =
+                    PlasmaPrompterCallback::new(self.service.clone(), self.path.clone()).await;
+                let path = OwnedObjectPath::from(callback.path().clone());
+
+                self.plasma_callback
+                    .set(callback.clone())
+                    .expect("A prompt callback is only set once");
+                self.service
+                    .object_server()
+                    .at(&path, callback.clone())
+                    .await?;
+                tracing::debug!("Prompt `{}` created.", self.path);
+
+                return callback.start(&self.role, window_id, &self.label).await;
             }
-
-            let callback =
-                PlasmaPrompterCallback::new(self.service.clone(), self.path.clone()).await;
-            let path = OwnedObjectPath::from(callback.path().clone());
-
-            self.plasma_callback
-                .set(callback.clone())
-                .expect("A prompt callback is only set once");
-            self.service
-                .object_server()
-                .at(&path, callback.clone())
-                .await?;
-            tracing::debug!("Prompt `{}` created.", self.path);
-
-            return callback.start(&self.role, window_id, &self.label).await;
         }
 
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
         {
-            if self.gnome_callback.get().is_some() {
-                return Err(custom_service_error(
-                    "A GNOME prompt callback is ongoing already.",
-                ));
-            };
+            if prompter_type == PrompterType::GNOME {
+                if self.gnome_callback.get().is_some() {
+                    return Err(custom_service_error(
+                        "A GNOME prompt callback is ongoing already.",
+                    ));
+                };
 
-            let callback =
-                GNOMEPrompterCallback::new(window_id, self.service.clone(), self.path.clone())
-                    .await
-                    .map_err(|err| {
-                        custom_service_error(&format!(
-                            "Failed to create GNOMEPrompterCallback {err}."
-                        ))
-                    })?;
+                let callback =
+                    GNOMEPrompterCallback::new(window_id, self.service.clone(), self.path.clone())
+                        .await
+                        .map_err(|err| {
+                            custom_service_error(&format!(
+                                "Failed to create GNOMEPrompterCallback {err}."
+                            ))
+                        })?;
 
-            let path = OwnedObjectPath::from(callback.path().clone());
+                let path = OwnedObjectPath::from(callback.path().clone());
 
-            self.gnome_callback
-                .set(callback.clone())
-                .expect("A prompt callback is only set once");
+                self.gnome_callback
+                    .set(callback.clone())
+                    .expect("A prompt callback is only set once");
 
-            self.service.object_server().at(&path, callback).await?;
-            tracing::debug!("Prompt `{}` created.", self.path);
+                self.service.object_server().at(&path, callback).await?;
+                tracing::debug!("Prompt `{}` created.", self.path);
 
-            // Starts GNOME System Prompting.
-            // Spawned separately to avoid blocking the early return of the current
-            // execution.
-            let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
-            tokio::spawn(async move { prompter.begin_prompting(&path).await });
+                // Starts GNOME System Prompting.
+                // Spawned separately to avoid blocking the early return of the current
+                // execution.
+                let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
+                tokio::spawn(async move { prompter.begin_prompting(&path).await });
 
-            return Ok(());
+                return Ok(());
+            }
         }
 
         #[allow(unreachable_code)]
