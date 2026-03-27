@@ -7,14 +7,7 @@ async fn prompt_called_twice_error() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Lock the collection to create a prompt scenario
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&setup.collections[0]).await?;
 
     // Get a prompt path by calling unlock (which creates a prompt but doesn't
     // auto-trigger it)
@@ -51,14 +44,7 @@ async fn prompt_not_found_error() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Lock the collection to create a prompt scenario
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&setup.collections[0]).await?;
 
     // Create a prompt using server API
     let (_unlocked, prompt_path) = setup
@@ -111,14 +97,7 @@ async fn dismiss_prompt_cleanup() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Lock the collection to create a prompt scenario
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&setup.collections[0]).await?;
 
     // Get a prompt path by calling unlock
     let (_unlocked, prompt_path) = setup

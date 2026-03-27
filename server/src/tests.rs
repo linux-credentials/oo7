@@ -345,6 +345,66 @@ impl TestServiceSetup {
 
         Ok(item)
     }
+
+    /// Helper to lock a collection
+    ///
+    /// Gets the server-side collection and locks it with the keyring secret.
+    pub(crate) async fn lock_collection(
+        &self,
+        collection: &dbus::api::Collection,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let server_collection = self
+            .server
+            .collection_from_path(collection.inner().path())
+            .await
+            .expect("Collection should exist");
+        server_collection
+            .set_locked(true, self.keyring_secret.clone())
+            .await?;
+        Ok(())
+    }
+
+    /// Helper to unlock a collection
+    ///
+    /// Gets the server-side collection and unlocks it with the keyring secret.
+    pub(crate) async fn unlock_collection(
+        &self,
+        collection: &dbus::api::Collection,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let server_collection = self
+            .server
+            .collection_from_path(collection.inner().path())
+            .await
+            .expect("Collection should exist");
+        server_collection
+            .set_locked(false, self.keyring_secret.clone())
+            .await?;
+        Ok(())
+    }
+
+    /// Helper to lock an item
+    ///
+    /// Gets the server-side collection and item, then locks the item.
+    pub(crate) async fn lock_item(
+        &self,
+        item: &dbus::api::Item,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let collection = self
+            .server
+            .collection_from_path(self.collections[0].inner().path())
+            .await
+            .expect("Collection should exist");
+
+        let keyring = collection.keyring.read().await;
+        let unlocked_keyring = keyring.as_ref().unwrap().as_unlocked();
+
+        let server_item = collection
+            .item_from_path(item.inner().path())
+            .await
+            .unwrap();
+        server_item.set_locked(true, unlocked_keyring).await?;
+        Ok(())
+    }
 }
 
 /// Mock implementation of org.gnome.keyring.internal.Prompter

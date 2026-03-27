@@ -430,14 +430,7 @@ async fn delete_locked_item_with_prompt() -> Result<(), Box<dyn std::error::Erro
     let items = default_collection.items().await?;
     assert_eq!(items.len(), 1, "Should have one item");
 
-    let collection = setup
-        .server
-        .collection_from_path(default_collection.inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&default_collection).await?;
 
     assert!(item.is_locked().await?, "Item should be locked");
 
@@ -462,14 +455,7 @@ async fn locked_item_operations() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!item.is_locked().await?, "Item should start unlocked");
 
     // Lock the collection (which locks the item)
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&setup.collections[0]).await?;
 
     // Verify item is now locked
     assert!(

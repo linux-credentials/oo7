@@ -87,20 +87,7 @@ async fn search_items() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     // Lock just this item (not the whole collection)
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-
-    let keyring = collection.keyring.read().await;
-    let unlocked_keyring = keyring.as_ref().unwrap().as_unlocked();
-
-    let locked_item = collection
-        .item_from_path(locked_item.inner().path())
-        .await
-        .unwrap();
-    locked_item.set_locked(true, unlocked_keyring).await?;
+    setup.lock_item(&locked_item).await?;
 
     // Search for items with the shared attribute
     let (unlocked, locked) = setup
@@ -597,14 +584,7 @@ async fn unlock_collection_prompt() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Lock the collection using server-side API
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&setup.collections[0]).await?;
 
     assert!(
         setup.collections[0].is_locked().await?,
@@ -629,9 +609,7 @@ async fn unlock_collection_prompt() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Lock the collection again for dismiss test
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&setup.collections[0]).await?;
     assert!(
         setup.collections[0].is_locked().await?,
         "Collection should be locked again"
@@ -671,14 +649,7 @@ async fn unlock_item_prompt() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     // Lock the collection (which locks the item)
-    let collection = setup
-        .server
-        .collection_from_path(default_collection.inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&default_collection).await?;
 
     assert!(
         item.is_locked().await?,
@@ -703,9 +674,7 @@ async fn unlock_item_prompt() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Lock the item again for dismiss test
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&default_collection).await?;
     assert!(item.is_locked().await?, "Item should be locked again");
 
     // Test 2: Unlock with dismiss
@@ -795,14 +764,7 @@ async fn lock_collection_no_prompt() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Unlock the collection
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(false, setup.keyring_secret.clone())
-        .await?;
+    setup.unlock_collection(&setup.collections[0]).await?;
     assert!(
         !setup.collections[0].is_locked().await?,
         "Collection should be unlocked"

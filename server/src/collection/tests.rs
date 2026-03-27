@@ -518,14 +518,7 @@ plasma_prompter_test!(
 async fn create_item_in_locked_collection() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&setup.collections[0]).await?;
 
     assert!(
         setup.collections[0].is_locked().await?,
@@ -581,14 +574,7 @@ async fn delete_locked_collection_with_prompt() -> Result<(), Box<dyn std::error
     let setup = TestServiceSetup::plain_session(true).await?;
     let default_collection = setup.default_collection().await?;
 
-    let collection = setup
-        .server
-        .collection_from_path(default_collection.inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&default_collection).await?;
 
     assert!(
         default_collection.is_locked().await?,
@@ -641,14 +627,7 @@ async fn unlock_retry() -> Result<(), Box<dyn std::error::Error>> {
         .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
         .await?;
 
-    let collection = setup
-        .server
-        .collection_from_path(default_collection.inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&default_collection).await?;
 
     assert!(
         default_collection.is_locked().await?,
@@ -693,14 +672,7 @@ async fn locked_collection_operations() -> Result<(), Box<dyn std::error::Error>
     );
 
     // Lock the collection
-    let collection = setup
-        .server
-        .collection_from_path(setup.collections[0].inner().path())
-        .await
-        .expect("Collection should exist");
-    collection
-        .set_locked(true, setup.keyring_secret.clone())
-        .await?;
+    setup.lock_collection(&setup.collections[0]).await?;
 
     // Verify collection is now locked
     assert!(
