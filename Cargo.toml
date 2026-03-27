@@ -29,6 +29,7 @@ exclude = ["org.freedesktop.Secrets.xml"]
 [workspace.dependencies]
 zvariant = { version = "5.8", default-features = false, features = ["gvariant", "serde_bytes"]}
 ashpd = {version = "0.13", default-features = false}
+base64 = "0.22"
 endi = "1.1"
 clap = { version = "4.5", features = [ "cargo", "derive" ] }
 futures-channel = "0.3"
@@ -37,6 +38,7 @@ futures-util = "0.3"
 num-bigint-dig = { version = "0.9", features = ["zeroize"] }
 oo7 = { path = "client", version = "0.6.0-alpha", default-features = false, features = ["unstable", "tracing"]}
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 tokio = { version = "1.50", default-features = false }
 tempfile = "3.26"
 tracing = "0.1"

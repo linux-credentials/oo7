@@ -7,9 +7,8 @@ use crate::{
     qdata::QDataStreamReader,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 #[repr(i32)]
 pub enum EntryType {
     Unknown = 0,

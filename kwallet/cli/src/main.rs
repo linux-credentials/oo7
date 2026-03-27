@@ -165,50 +165,27 @@ async fn migrate_to_secret_service(
 
     for (folder_name, folder) in wallet.wallet() {
         for (key, entry) in folder {
-            let label = format!("{}/{}", folder_name, key);
-            let mut attributes = HashMap::new();
-            attributes.insert("folder".to_string(), folder_name.to_string());
-            attributes.insert("key".to_string(), key.to_string());
-            attributes.insert("source".to_string(), "kwallet".to_string());
-
-            match entry.entry_type() {
-                EntryType::Password => {
-                    if let Ok(password) = entry.as_password() {
-                        attributes.insert("type".to_string(), "password".to_string());
-                        keyring
-                            .create_item(&label, &attributes, oo7::Secret::text(&password), true)
-                            .await?;
-                        count += 1;
-                        println!("  ✓ Migrated {} (password)", label);
-                    }
-                }
-                EntryType::Map => {
-                    if let Ok(map) = entry.as_map() {
-                        attributes.insert("type".to_string(), "map".to_string());
-                        for (k, v) in &map {
-                            attributes.insert(k.clone(), v.clone());
-                        }
-                        keyring
-                            .create_item(&label, &attributes, oo7::Secret::text(""), true)
-                            .await?;
-                        count += 1;
-                        println!("  ✓ Migrated {} (map)", label);
-                    }
-                }
-                EntryType::Stream => {
-                    attributes.insert("type".to_string(), "stream".to_string());
+            match kwallet_parser::convert_entry(folder_name, key, entry) {
+                Ok(ss_entry) => {
                     keyring
                         .create_item(
-                            &label,
-                            &attributes,
-                            oo7::Secret::blob(entry.as_stream()),
+                            ss_entry.label(),
+                            ss_entry.attributes(),
+                            oo7::Secret::blob(ss_entry.secret()),
                             true,
                         )
                         .await?;
                     count += 1;
-                    println!("  ✓ Migrated {} (stream)", label);
+                    let entry_type = ss_entry
+                        .attributes()
+                        .get("type")
+                        .map(|s| s.as_str())
+                        .unwrap_or("unknown");
+                    println!("  ✓ Migrated {} ({})", ss_entry.label(), entry_type);
                 }
-                EntryType::Unknown => {}
+                Err(e) => {
+                    eprintln!("  ✗ Skipped {}/{}: {}", folder_name, key, e);
+                }
             }
         }
     }

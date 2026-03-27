@@ -41,7 +41,7 @@ jobs:
 
       - name: Build kwallet-parser
         run: |
-          cargo build --manifest-path ./kwallet/parser/Cargo.toml --features serde
+          cargo build --manifest-path ./kwallet/parser/Cargo.toml
 
       - name: Build kwallet-cli
         run: |
@@ -78,7 +78,7 @@ jobs:
 
       - name: Test kwallet-parser
         run: |
-          cargo test --manifest-path ./kwallet/parser/Cargo.toml --features serde
+          cargo test --manifest-path ./kwallet/parser/Cargo.toml
 
   cargo-deny:
       runs-on: ubuntu-latest

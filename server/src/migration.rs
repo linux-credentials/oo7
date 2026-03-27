@@ -75,60 +75,30 @@ impl PendingMigration {
                 let unlocked = UnlockedKeyring::open_at(data_dir, name, secret.clone()).await?;
 
                 // Convert KWallet entries to oo7 items
+                let mut items = Vec::new();
                 for (folder_name, folder) in wallet.wallet() {
                     for (entry_key, entry) in folder {
-                        let mut attributes = std::collections::HashMap::new();
-                        attributes.insert("kwallet_folder".to_string(), folder_name.clone());
-                        attributes.insert("kwallet_key".to_string(), entry_key.clone());
-
-                        let label = format!("{}/{}", folder_name, entry_key);
-
-                        match entry.entry_type() {
-                            kwallet_parser::EntryType::Password => {
-                                if let Ok(password) = entry.as_password() {
-                                    attributes.insert("type".to_string(), "password".to_string());
-                                    unlocked
-                                        .create_item(
-                                            &label,
-                                            &attributes,
-                                            Secret::text(password),
-                                            true,
-                                        )
-                                        .await?;
-                                }
+                        match kwallet_parser::convert_entry(folder_name, entry_key, entry) {
+                            Ok(ss_entry) => {
+                                items.push((
+                                    ss_entry.label().to_owned(),
+                                    ss_entry.attributes().to_owned(),
+                                    Secret::blob(ss_entry.secret()),
+                                    true,
+                                ));
                             }
-                            kwallet_parser::EntryType::Map => {
-                                if let Ok(map) = entry.as_map() {
-                                    attributes.insert("type".to_string(), "map".to_string());
-                                    for (k, v) in map {
-                                        attributes.insert(k.clone(), v.clone());
-                                    }
-                                    unlocked
-                                        .create_item(&label, &attributes, Secret::text(""), true)
-                                        .await?;
-                                }
-                            }
-                            kwallet_parser::EntryType::Stream => {
-                                attributes.insert("type".to_string(), "stream".to_string());
-                                unlocked
-                                    .create_item(
-                                        &label,
-                                        &attributes,
-                                        Secret::blob(entry.as_stream()),
-                                        true,
-                                    )
-                                    .await?;
-                            }
-                            kwallet_parser::EntryType::Unknown => {
+                            Err(e) => {
                                 tracing::warn!(
-                                    "Skipping unknown entry type: {}/{}",
+                                    "Skipping entry {}/{}: {}",
                                     folder_name,
-                                    entry_key
+                                    entry_key,
+                                    e
                                 );
                             }
                         }
                     }
                 }
+                unlocked.create_items(items).await?;
 
                 tracing::info!("Migrated KWallet entries to oo7 format for '{}'", name);
 

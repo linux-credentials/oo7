@@ -51,12 +51,14 @@ mod crypto;
 mod error;
 mod format;
 mod qdata;
+pub mod secret_service;
 mod wallet;
 
 use std::{fs, io::Cursor, path::Path};
 
 pub use error::{Error, Result};
 pub use format::{CipherType, HashType};
+pub use secret_service::{SecretServiceEntry, convert_entry};
 pub use wallet::{Entry, EntryType, Folder, Wallet};
 
 /// A parsed KWallet file

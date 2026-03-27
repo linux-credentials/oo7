@@ -844,6 +844,7 @@ dependencies = [
 name = "kwallet-parser"
 version = "0.6.0-alpha"
 dependencies = [
+ "base64",
  "blowfish",
  "cbc",
  "cipher",
@@ -852,6 +853,7 @@ dependencies = [
  "md5",
  "pbkdf2",
  "serde",
+ "serde_json",
  "sha1",
  "sha2",
  "zeroize",
