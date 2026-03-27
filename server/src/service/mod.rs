@@ -263,10 +263,7 @@ impl Service {
                             );
 
                             // Attempt migration with the provided secret (no locks held)
-                            match migration
-                                .migrate(&service.data_dir, migration_name, &secret)
-                                .await
-                            {
+                            match migration.migrate(&service.data_dir, &secret).await {
                                 Ok(unlocked_keyring) => {
                                     tracing::info!(
                                         "Successfully migrated '{}' during unlock",
@@ -796,7 +793,7 @@ impl Service {
 
             if let Some(secret) = secret {
                 tracing::debug!("Attempting immediate migration of KWallet keyring '{name}'",);
-                match migration.migrate(&self.data_dir, name, secret).await {
+                match migration.migrate(&self.data_dir, secret).await {
                     Ok(unlocked) => {
                         tracing::info!("Successfully migrated KWallet keyring '{name}' to oo7",);
                         discovered.push((
@@ -1388,7 +1385,7 @@ impl Service {
         for (name, migration) in pending.iter() {
             tracing::debug!("Attempting to migrate pending keyring: {name}");
 
-            match migration.migrate(&self.data_dir, name, secret).await {
+            match migration.migrate(&self.data_dir, secret).await {
                 Ok(unlocked) => {
                     let label = migration.label();
                     let alias = migration.alias();

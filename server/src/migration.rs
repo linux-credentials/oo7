@@ -31,11 +31,10 @@ impl PendingMigration {
     pub async fn migrate(
         &self,
         data_dir: &PathBuf,
-        name: &str,
         secret: &Secret,
     ) -> Result<UnlockedKeyring, Error> {
         match self {
-            Self::V0 { path, .. } => {
+            Self::V0 { path, name, .. } => {
                 tracing::debug!("Migrating v0 keyring: {}", name);
 
                 let unlocked = UnlockedKeyring::open_at(data_dir, name, secret.clone()).await?;
@@ -55,7 +54,7 @@ impl PendingMigration {
                 Ok(unlocked)
             }
             #[cfg(feature = "kwallet_migration")]
-            Self::KWallet { path, .. } => {
+            Self::KWallet { path, name, .. } => {
                 tracing::debug!("Migrating KWallet keyring: {}", name);
 
                 // Parse KWallet file in blocking task
