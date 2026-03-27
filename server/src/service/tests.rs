@@ -868,7 +868,6 @@ async fn create_collection_basic_impl(
     );
 
     tokio::fs::remove_file(keyring_path).await?;
-
     Ok(())
 }
 
@@ -998,7 +997,6 @@ async fn create_collection_and_add_items_impl(
     let keyring_guard = server_collection.keyring.read().await;
     let keyring_path = keyring_guard.as_ref().unwrap().path().unwrap();
     tokio::fs::remove_file(&keyring_path).await?;
-
     Ok(())
 }
 
@@ -1148,7 +1146,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     // Test 2: Discover without any password, all should be locked
     let discovered = service.discover_keyrings(None).await?;
     assert_eq!(discovered.len(), 3, "Should discover 3 keyrings");
-    for (_, _, keyring) in &discovered {
+    for (_, _, _, keyring) in &discovered {
         assert!(
             keyring.is_locked(),
             "All keyrings should be locked without secret"
@@ -1161,41 +1159,41 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     let work_keyring = discovered
         .iter()
-        .find(|(label, _, _)| label == "Work")
+        .find(|(_, label, _, _)| label == "Work")
         .unwrap();
     assert!(
-        !work_keyring.2.is_locked(),
+        !work_keyring.3.is_locked(),
         "Work keyring should be unlocked with correct password"
     );
 
     let personal_keyring = discovered
         .iter()
-        .find(|(label, _, _)| label == "Personal")
+        .find(|(_, label, _, _)| label == "Personal")
         .unwrap();
     assert!(
-        personal_keyring.2.is_locked(),
+        personal_keyring.3.is_locked(),
         "Personal keyring should be locked with wrong password"
     );
 
     // Test 4: Verify login keyring gets default alias
     let login_keyring = discovered
         .iter()
-        .find(|(label, _, _)| label == "Login")
+        .find(|(_, label, _, _)| label == "Login")
         .unwrap();
     assert_eq!(
-        login_keyring.1,
+        login_keyring.2,
         oo7::dbus::Service::DEFAULT_COLLECTION,
         "Login keyring should have default alias"
     );
     assert!(
-        login_keyring.2.is_locked(),
+        login_keyring.3.is_locked(),
         "Login keyring should be locked with wrong password"
     );
 
     // Test 5: Verify labels are properly capitalized
     let labels: Vec<_> = discovered
         .iter()
-        .map(|(label, _, _)| label.as_str())
+        .map(|(_, label, _, _)| label.as_str())
         .collect();
     assert!(labels.contains(&"Work"), "Should have Work with capital W");
     assert!(
@@ -1207,6 +1205,103 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
         "Should have Login with capital L"
     );
 
+    Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_pending_v0_migration_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_pending_v0_migration_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_pending_v0_migration_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_pending_v0_migration_impl(PrompterType::Plasma).await
+}
+
+async fn unlock_pending_v0_migration_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    let v1_dir = keyrings_dir.join("v1");
+    tokio::fs::create_dir_all(&v1_dir).await?;
+
+    // Copy the v0 keyring fixture
+    let v0_secret = Secret::from("test");
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    let v0_path = keyrings_dir.join("legacy.keyring");
+    tokio::fs::copy(&fixture_path, &v0_path).await?;
+
+    // Create test service that discovers keyrings WITHOUT the password
+    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(
+        temp_dir.path().to_path_buf(),
+        None,
+        None,
+    )
+    .await?;
+    setup.server.set_prompter_type(prompter_type).await;
+
+    // Verify v0 is pending migration
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        1,
+        "V0 keyring should be pending migration"
+    );
+
+    // Find the placeholder collection
+    let collections = setup.service_api.collections().await?;
+    let mut legacy_collection = None;
+    for collection in &collections {
+        if collection.label().await? == "Legacy" {
+            legacy_collection = Some(collection);
+            break;
+        }
+    }
+    let legacy_collection = legacy_collection.expect("Should have Legacy placeholder collection");
+
+    // Verify it's locked
+    assert!(
+        legacy_collection.is_locked().await?,
+        "Placeholder should be locked"
+    );
+
+    // Set up mock prompter to provide the correct password
+    setup.set_password_queue(vec![v0_secret.clone()]).await;
+
+    // Unlock via D-Bus API (should trigger migration)
+    let unlocked = setup
+        .service_api
+        .unlock(&[legacy_collection.inner().path()], None)
+        .await?;
+
+    assert_eq!(unlocked.len(), 1, "Should have unlocked the collection");
+    assert!(
+        !legacy_collection.is_locked().await?,
+        "Collection should be unlocked"
+    );
+
+    // Verify migration happened
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        0,
+        "Should have no pending migrations after unlock"
+    );
+
+    // Verify v1 file was created
+    let v1_migrated = v1_dir.join("legacy.keyring");
+    assert!(v1_migrated.exists(), "V1 file should exist after migration");
+
+    // Verify v0 file was removed
+    assert!(
+        !v0_path.exists(),
+        "V0 file should be removed after migration"
+    );
     Ok(())
 }
 
@@ -1244,8 +1339,11 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 1: Discover without secret, v0 marked for migration, v1 locked
     let discovered = service.discover_keyrings(None).await?;
-    assert_eq!(discovered.len(), 1, "Should discover v1 keyring only");
-    assert!(discovered[0].2.is_locked(), "V1 should be locked");
+    assert_eq!(
+        discovered.len(),
+        2,
+        "Should discover v1 keyring + v0 placeholder"
+    );
 
     let pending = service.pending_migrations.lock().await;
     assert_eq!(pending.len(), 1, "V0 should be pending migration");
@@ -1257,8 +1355,11 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let discovered = service.discover_keyrings(Some(v0_secret.clone())).await?;
     assert_eq!(discovered.len(), 2, "Should discover both keyrings");
 
-    let legacy = discovered.iter().find(|(l, _, _)| l == "Legacy").unwrap();
-    assert!(!legacy.2.is_locked(), "V0 should be migrated and unlocked");
+    let legacy = discovered
+        .iter()
+        .find(|(_, l, _, _)| l == "Legacy")
+        .unwrap();
+    assert!(!legacy.3.is_locked(), "V0 should be migrated and unlocked");
     assert_eq!(
         service.pending_migrations.lock().await.len(),
         0,
@@ -1280,8 +1381,8 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let discovered = service.discover_keyrings(Some(wrong_secret)).await?;
     assert_eq!(
         discovered.len(),
-        1,
-        "Only v1 should be discovered with wrong v0 password"
+        2,
+        "V1 + v0 placeholder should be discovered with wrong v0 password"
     );
     assert_eq!(
         service.pending_migrations.lock().await.len(),
@@ -1292,13 +1393,11 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[tokio::test]
-#[serial_test::serial(xdg_env)]
 #[cfg(feature = "kwallet_migration")]
+#[tokio::test]
 async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
-    let service = Service::default();
     let temp_dir = tempfile::tempdir()?;
-    unsafe { std::env::set_var("XDG_DATA_HOME", temp_dir.path()) };
+    let service = Service::new(temp_dir.path().to_path_buf(), None);
 
     let kwallet_dir = temp_dir.path().join("kwalletd");
     let v1_dir = temp_dir.path().join("keyrings/v1");
@@ -1321,7 +1420,7 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a v1 keyring for mixed scenario
     let v1_secret = Secret::from("v1-password");
-    let v1_keyring = UnlockedKeyring::open("modern", v1_secret.clone()).await?;
+    let v1_keyring = UnlockedKeyring::open_at(temp_dir.path(), "modern", v1_secret.clone()).await?;
     v1_keyring
         .create_item(
             "V1 Item",
@@ -1334,8 +1433,11 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 1: Discover without secret, KWallet marked for migration, v1 locked
     let discovered = service.discover_keyrings(None).await?;
-    assert_eq!(discovered.len(), 1, "Should discover v1 keyring only");
-    assert!(discovered[0].2.is_locked(), "V1 should be locked");
+    assert_eq!(
+        discovered.len(),
+        2,
+        "Should discover v1 keyring + kwallet placeholder"
+    );
 
     let pending = service.pending_migrations.lock().await;
     assert_eq!(pending.len(), 1, "KWallet should be pending migration");
@@ -1351,16 +1453,15 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     let kdewallet = discovered
         .iter()
-        .find(|(l, _, _)| l == "Kdewallet")
+        .find(|(_, l, _, _)| l == "Kdewallet")
         .unwrap();
     assert!(
-        !kdewallet.2.is_locked(),
+        !kdewallet.3.is_locked(),
         "KWallet should be migrated and unlocked"
     );
     assert_eq!(
-        kdewallet.1,
-        oo7::dbus::Service::DEFAULT_COLLECTION,
-        "kdewallet should get default alias"
+        kdewallet.2, "kdewallet",
+        "kdewallet should have kdewallet alias (not default)"
     );
     assert_eq!(
         service.pending_migrations.lock().await.len(),
@@ -1391,8 +1492,8 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let discovered = service.discover_keyrings(Some(wrong_secret)).await?;
     assert_eq!(
         discovered.len(),
-        1,
-        "Only v1 should be discovered with wrong KWallet password"
+        2,
+        "V1 + kwallet placeholder should be discovered with wrong KWallet password"
     );
     assert_eq!(
         service.pending_migrations.lock().await.len(),
@@ -1404,8 +1505,6 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let pending = service.pending_migrations.lock().await;
     let migration = pending.get("kdewallet").unwrap();
     assert_eq!(migration.label(), "Kdewallet");
-    assert_eq!(migration.alias(), oo7::dbus::Service::DEFAULT_COLLECTION);
-
-    unsafe { std::env::remove_var("XDG_DATA_HOME") };
+    assert_eq!(migration.alias(), "kdewallet");
     Ok(())
 }

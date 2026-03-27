@@ -240,27 +240,99 @@ impl Service {
             let action = PromptAction::new(move |secret: Secret| async move {
                 // The prompter will handle secret validation
                 // Here we just perform the unlock operation
-                let collections = service.collections.lock().await;
+
+                // First, check for pending migrations (without holding collections lock)
                 for object in &not_unlocked {
-                    // Try to find as collection first
-                    if let Some(collection) = collections.get(object) {
-                        let _ = collection.set_locked(false, Some(secret.clone())).await;
-                    } else {
-                        // Try to find as item within collections
-                        for (_path, collection) in collections.iter() {
-                            if let Some(item) = collection.item_from_path(object).await {
-                                // If the collection is locked, unlock it
-                                if collection.is_locked().await {
+                    let collection = {
+                        let collections = service.collections.lock().await;
+                        collections.get(object).cloned()
+                    };
+
+                    if let Some(collection) = collection {
+                        // Check if this collection has a pending migration by name
+                        let migration_opt = {
+                            let pending = service.pending_migrations.lock().await;
+                            pending.get(collection.name()).cloned()
+                        };
+
+                        if let Some(migration) = migration_opt {
+                            let migration_name = migration.name();
+                            tracing::debug!(
+                                "Attempting migration for '{}' during unlock",
+                                migration_name
+                            );
+
+                            // Attempt migration with the provided secret (no locks held)
+                            match migration
+                                .migrate(&service.data_dir, migration_name, &secret)
+                                .await
+                            {
+                                Ok(unlocked_keyring) => {
+                                    tracing::info!(
+                                        "Successfully migrated '{}' during unlock",
+                                        migration_name
+                                    );
+
+                                    // Replace the keyring in the collection
+                                    let mut keyring_guard = collection.keyring.write().await;
+                                    *keyring_guard = Some(Keyring::Unlocked(unlocked_keyring));
+                                    drop(keyring_guard);
+
+                                    // Dispatch items from the migrated keyring
+                                    if let Err(e) = collection.dispatch_items().await {
+                                        tracing::error!(
+                                            "Failed to dispatch items after migration: {}",
+                                            e
+                                        );
+                                    }
+
+                                    // Remove from pending migrations
+                                    service
+                                        .pending_migrations
+                                        .lock()
+                                        .await
+                                        .remove(migration_name);
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to migrate '{}' during unlock: {}",
+                                        migration_name,
+                                        e
+                                    );
+                                    // Leave in pending_migrations, try normal unlock
                                     let _ =
                                         collection.set_locked(false, Some(secret.clone())).await;
-                                } else {
-                                    // Collection is already unlocked, just unlock the item
-                                    let keyring = collection.keyring.read().await;
-                                    let _ = item
-                                        .set_locked(false, keyring.as_ref().unwrap().as_unlocked())
-                                        .await;
                                 }
+                            }
+                        } else {
+                            // Normal unlock
+                            let _ = collection.set_locked(false, Some(secret.clone())).await;
+                        }
+                    } else {
+                        // Try to find as item within collections
+                        let collections = service.collections.lock().await;
+                        let mut found_collection = None;
+                        for (_path, collection) in collections.iter() {
+                            if let Some(item) = collection.item_from_path(object).await {
+                                found_collection = Some((
+                                    collection.clone(),
+                                    item.clone(),
+                                    collection.is_locked().await,
+                                ));
                                 break;
+                            }
+                        }
+                        drop(collections);
+
+                        if let Some((collection, item, is_locked)) = found_collection {
+                            if is_locked {
+                                let _ = collection.set_locked(false, Some(secret.clone())).await;
+                            } else {
+                                // Collection is already unlocked, just unlock the item
+                                let keyring = collection.keyring.read().await;
+                                let _ = item
+                                    .set_locked(false, keyring.as_ref().unwrap().as_unlocked())
+                                    .await;
                             }
                         }
                     }
@@ -539,6 +611,7 @@ impl Service {
 
         let default_keyring = if let Some(secret) = secret.clone() {
             vec![(
+                "default".to_owned(),
                 "Login".to_owned(),
                 oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
                 Keyring::Unlocked(UnlockedKeyring::temporary(secret).await?),
@@ -553,12 +626,42 @@ impl Service {
         Ok(service)
     }
 
+    /// Generate a unique label and alias by checking registered
+    /// collections and appending a counter if needed. Returns a tuple of
+    /// (label, alias).
+    fn make_unique_label_and_alias(
+        collections: &HashMap<OwnedObjectPath, Collection>,
+        label: &str,
+        alias: &str,
+    ) -> (String, String) {
+        // Sanitize the label to create the path (for checking uniqueness)
+        let base_path = crate::collection::collection_path(label)
+            .expect("Sanitized label should always produce valid object path");
+        if !collections.contains_key(&base_path) {
+            return (label.to_owned(), alias.to_owned());
+        }
+
+        // Append counter until we find a unique one
+        let mut counter = 2;
+        loop {
+            let path = crate::collection::collection_path(&format!("{label}{counter}"))
+                .expect("Sanitized label should always produce valid object path");
+            let new_label = format!("{}{}", label, counter);
+            let new_alias = format!("{}{}", alias, counter);
+
+            if !collections.contains_key(&path) {
+                return (new_label, new_alias);
+            }
+            counter += 1;
+        }
+    }
+
     /// Discover existing keyrings in the data directory
-    /// Returns a vector of (label, alias, keyring) tuples
+    /// Returns a vector of (name, label, alias, keyring) tuples
     pub(crate) async fn discover_keyrings(
         &self,
         secret: Option<Secret>,
-    ) -> Result<Vec<(String, String, Keyring)>, Error> {
+    ) -> Result<Vec<(String, String, String, Keyring)>, Error> {
         let mut discovered = Vec::new();
 
         let keyrings_dir = self.data_dir.join("keyrings");
@@ -581,7 +684,9 @@ impl Service {
 
                         // Try to load the keyring
                         match self.load_keyring(&path, name, secret.as_ref()).await {
-                            Ok((label, alias, keyring)) => discovered.push((label, alias, keyring)),
+                            Ok((name, label, alias, keyring)) => {
+                                discovered.push((name, label, alias, keyring))
+                            }
                             Err(e) => tracing::warn!("Failed to load keyring {:?}: {}", path, e),
                         }
                     }
@@ -606,7 +711,9 @@ impl Service {
 
                         // Try to load the keyring
                         match self.load_keyring(&path, name, secret.as_ref()).await {
-                            Ok((label, alias, keyring)) => discovered.push((label, alias, keyring)),
+                            Ok((name, label, alias, keyring)) => {
+                                discovered.push((name, label, alias, keyring))
+                            }
                             Err(e) => tracing::warn!("Failed to load keyring {:?}: {}", path, e),
                         }
                     }
@@ -639,7 +746,7 @@ impl Service {
         &self,
         data_dir: &std::path::Path,
         secret: Option<&Secret>,
-        discovered: &mut Vec<(String, String, Keyring)>,
+        discovered: &mut Vec<(String, String, String, Keyring)>,
     ) {
         let kwallet_dir = data_dir.join("kwalletd");
 
@@ -669,12 +776,8 @@ impl Service {
 
             tracing::debug!("Found KWallet file: {name}");
 
-            // Determine alias
-            let alias = if name.eq_ignore_ascii_case("kdewallet") {
-                oo7::dbus::Service::DEFAULT_COLLECTION.to_owned()
-            } else {
-                name.to_lowercase()
-            };
+            // Use lowercased name as alias
+            let alias = name.to_lowercase();
 
             let label = {
                 let mut chars = name.chars();
@@ -684,49 +787,72 @@ impl Service {
                 }
             };
 
-            if let Some(secret) = secret {
-                let migration = PendingMigration::KWallet {
-                    path: path.clone(),
-                    label: label.clone(),
-                    alias: alias.clone(),
-                };
+            let migration = PendingMigration::KWallet {
+                name: name.to_owned(),
+                path: path.clone(),
+                label: label.clone(),
+                alias: alias.clone(),
+            };
 
-                tracing::debug!("Attempting immediate migration of KWallet keyring '{name}'");
+            if let Some(secret) = secret {
+                tracing::debug!("Attempting immediate migration of KWallet keyring '{name}'",);
                 match migration.migrate(&self.data_dir, name, secret).await {
                     Ok(unlocked) => {
-                        tracing::info!("Successfully migrated KWallet keyring '{name}' to oo7");
-                        discovered.push((label, alias, Keyring::Unlocked(unlocked)));
+                        tracing::info!("Successfully migrated KWallet keyring '{name}' to oo7",);
+                        discovered.push((
+                            name.to_owned(),
+                            label,
+                            alias,
+                            Keyring::Unlocked(unlocked),
+                        ));
+                        continue;
                     }
                     Err(e) => {
                         tracing::warn!(
-                            "Failed to migrate KWallet keyring '{name}': {e}. Registering for pending migration.",
+                            "Failed to migrate KWallet keyring '{name}' at {}: {e}. Creating locked placeholder collection.",
+                            migration.path().display()
                         );
-                        self.pending_migrations
-                            .lock()
-                            .await
-                            .insert(name.to_owned(), migration);
                     }
                 }
-            } else {
-                tracing::debug!(
-                    "No secret available for KWallet keyring '{name}', registering for pending migration",
-                );
-                self.pending_migrations.lock().await.insert(
-                    name.to_owned(),
-                    PendingMigration::KWallet { path, label, alias },
-                );
+            }
+
+            // Migration failed or no secret - create locked placeholder and register for
+            // pending migration
+            tracing::debug!(
+                "Creating locked placeholder for KWallet keyring '{name}', will migrate on unlock",
+            );
+
+            match LockedKeyring::open_at(&self.data_dir, name).await {
+                Ok(locked) => {
+                    tracing::debug!(
+                        "Created locked placeholder for '{name}', adding to pending migrations",
+                    );
+                    discovered.push((
+                        name.to_owned(),
+                        label.clone(),
+                        alias.clone(),
+                        Keyring::Locked(locked),
+                    ));
+                    self.pending_migrations
+                        .lock()
+                        .await
+                        .insert(name.to_owned(), migration);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to create placeholder keyring for '{name}': {e}");
+                }
             }
         }
     }
 
     /// Load a single keyring from a file path
-    /// Returns (label, alias, keyring)
+    /// Returns (name, label, alias, keyring)
     async fn load_keyring(
         &self,
         path: &std::path::Path,
         name: &str,
         secret: Option<&Secret>,
-    ) -> Result<(String, String, Keyring), Error> {
+    ) -> Result<(String, String, String, Keyring), Error> {
         let alias = if name.eq_ignore_ascii_case(Self::LOGIN_ALIAS) {
             oo7::dbus::Service::DEFAULT_COLLECTION.to_owned()
         } else {
@@ -777,6 +903,13 @@ impl Service {
                     path.display()
                 );
 
+                let migration = PendingMigration::V0 {
+                    name: name.to_owned(),
+                    path: path.to_path_buf(),
+                    label: label.clone(),
+                    alias: alias.clone(),
+                };
+
                 if let Some(secret) = secret {
                     tracing::debug!("Attempting immediate migration of v0 keyring '{name}'",);
                     match UnlockedKeyring::open_at(&self.data_dir, name, secret.clone()).await {
@@ -797,47 +930,42 @@ impl Service {
                                 tracing::info!("Removed v0 keyring file at {}", path.display());
                             }
 
-                            Keyring::Unlocked(unlocked)
+                            return Ok((
+                                name.to_owned(),
+                                label,
+                                alias,
+                                Keyring::Unlocked(unlocked),
+                            ));
                         }
                         Err(e) => {
                             tracing::warn!(
-                                "Failed to migrate v0 keyring '{name}': {e}. Will retry when secret is available.",
+                                "Failed to migrate v0 keyring '{name}': {e}. Creating locked placeholder collection.",
                             );
-                            self.pending_migrations.lock().await.insert(
-                                name.to_owned(),
-                                PendingMigration::V0 {
-                                    path: path.to_path_buf(),
-                                    label: label.clone(),
-                                    alias: alias.clone(),
-                                },
-                            );
-                            return Err(e.into());
                         }
                     }
-                } else {
-                    tracing::debug!(
-                        "No secret available for v0 keyring '{}', registering for pending migration",
-                        name
-                    );
-                    self.pending_migrations.lock().await.insert(
-                        name.to_owned(),
-                        PendingMigration::V0 {
-                            path: path.to_path_buf(),
-                            label: label.clone(),
-                            alias: alias.clone(),
-                        },
-                    );
-                    return Err(Error::IO(std::io::Error::other(
-                        "v0 keyring requires migration, no secret available",
-                    )));
                 }
+
+                // Migration failed or no secret - create locked placeholder and register for
+                // pending migration
+                tracing::debug!(
+                    "Creating locked placeholder for v0 keyring '{}', will migrate on unlock",
+                    name
+                );
+
+                let locked = LockedKeyring::open(name).await?;
+                self.pending_migrations
+                    .lock()
+                    .await
+                    .insert(name.to_owned(), migration);
+
+                Keyring::Locked(locked)
             }
             Err(e) => {
                 return Err(e.into());
             }
         };
 
-        Ok((label, alias, keyring))
+        Ok((name.to_owned(), label, alias, keyring))
     }
 
     /// Initialize the service with collections and start client disconnect
@@ -845,7 +973,8 @@ impl Service {
     pub(crate) async fn initialize(
         &self,
         connection: zbus::Connection,
-        mut discovered_keyrings: Vec<(String, String, Keyring)>, // (name, alias, keyring)
+        mut discovered_keyrings: Vec<(String, String, String, Keyring)>, /* (name, label, alias,
+                                                                          * keyring) */
         secret: Option<Secret>,
         auto_create_default: bool,
     ) -> Result<(), Error> {
@@ -855,7 +984,7 @@ impl Service {
         let mut collections = self.collections.lock().await;
 
         // Check if we have a default collection
-        let has_default = discovered_keyrings.iter().any(|(_, alias, _)| {
+        let has_default = discovered_keyrings.iter().any(|(_, _, alias, _)| {
             alias == oo7::dbus::Service::DEFAULT_COLLECTION || alias == Self::LOGIN_ALIAS
         });
 
@@ -882,6 +1011,7 @@ impl Service {
                 "unlocked"
             };
             discovered_keyrings.push((
+                Self::LOGIN_ALIAS.to_owned(),
                 "Login".to_owned(),
                 oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
                 keyring,
@@ -891,8 +1021,11 @@ impl Service {
         }
 
         // Set up discovered collections
-        for (label, alias, keyring) in discovered_keyrings {
-            let collection = Collection::new(&label, &alias, self.clone(), keyring).await;
+        for (name, label, alias, keyring) in discovered_keyrings {
+            let (unique_label, unique_alias) =
+                Self::make_unique_label_and_alias(&collections, &label, &alias);
+            let collection =
+                Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
             collections.insert(collection.path().to_owned().into(), collection.clone());
             collection.dispatch_items().await?;
             object_server
@@ -900,7 +1033,7 @@ impl Service {
                 .await?;
 
             // If this is the default collection, also register it at the alias path
-            if alias == oo7::dbus::Service::DEFAULT_COLLECTION {
+            if unique_alias == oo7::dbus::Service::DEFAULT_COLLECTION {
                 object_server
                     .at(DEFAULT_COLLECTION_ALIAS_PATH, collection)
                     .await?;
@@ -909,6 +1042,7 @@ impl Service {
 
         // Always create session collection (always temporary)
         let collection = Collection::new(
+            "session",
             "session",
             oo7::dbus::Service::SESSION_COLLECTION,
             self.clone(),
@@ -1115,9 +1249,15 @@ impl Service {
             .map_err(|err| custom_service_error(&format!("Failed to write keyring file: {err}")))?;
 
         let keyring = Keyring::Unlocked(keyring);
+        let name = label.to_lowercase();
 
-        // Create the collection
-        let collection = Collection::new(label, alias, self.clone(), keyring).await;
+        // Create the collection with unique label and alias
+        let (unique_label, unique_alias) = {
+            let collections = self.collections.lock().await;
+            Self::make_unique_label_and_alias(&collections, label, alias)
+        };
+        let collection =
+            Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
         let collection_path: OwnedObjectPath = collection.path().to_owned().into();
 
         // Register with object server
@@ -1253,9 +1393,15 @@ impl Service {
                     let label = migration.label();
                     let alias = migration.alias();
 
-                    // Create a collection for this migrated keyring
+                    // Create a collection for this migrated keyring with unique label and alias
+                    let (unique_label, unique_alias) = {
+                        let collections = self.collections.lock().await;
+                        Self::make_unique_label_and_alias(&collections, label, alias)
+                    };
                     let keyring = Keyring::Unlocked(unlocked);
-                    let collection = Collection::new(label, alias, self.clone(), keyring).await;
+                    let collection =
+                        Collection::new(name, &unique_label, &unique_alias, self.clone(), keyring)
+                            .await;
                     let collection_path: OwnedObjectPath = collection.path().to_owned().into();
 
                     // Dispatch items

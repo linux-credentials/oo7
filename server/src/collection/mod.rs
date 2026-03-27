@@ -32,6 +32,7 @@ pub struct Collection {
     created: Duration,
     modified: Arc<Mutex<Duration>>,
     // Other attributes
+    name: String,
     alias: Arc<Mutex<String>>,
     pub(crate) keyring: Arc<RwLock<Option<Keyring>>>,
     service: Service,
@@ -386,7 +387,7 @@ impl Collection {
     ) -> zbus::Result<()>;
 }
 
-fn collection_path(label: &str) -> Result<OwnedObjectPath, zvariant::Error> {
+pub(crate) fn collection_path(label: &str) -> Result<OwnedObjectPath, zvariant::Error> {
     let sanitized_label = label.replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
 
     OwnedObjectPath::try_from(format!(
@@ -395,7 +396,13 @@ fn collection_path(label: &str) -> Result<OwnedObjectPath, zvariant::Error> {
 }
 
 impl Collection {
-    pub async fn new(label: &str, alias: &str, service: Service, keyring: Keyring) -> Self {
+    pub async fn new(
+        name: &str,
+        label: &str,
+        alias: &str,
+        service: Service,
+        keyring: Keyring,
+    ) -> Self {
         let modified = keyring.modified_time().await;
         let created = keyring.created_time().await.unwrap_or(modified);
 
@@ -403,9 +410,11 @@ impl Collection {
             items: Default::default(),
             label: Arc::new(Mutex::new(label.to_owned())),
             modified: Arc::new(Mutex::new(modified)),
+            name: name.to_owned(),
             alias: Arc::new(Mutex::new(alias.to_owned())),
             item_index: Arc::new(RwLock::new(0)),
-            path: collection_path(label).expect("Label should produce a valid object path"),
+            path: collection_path(label)
+                .expect("Label should already be sanitized and produce valid object path"),
             created,
             service,
             keyring: Arc::new(RwLock::new(Some(keyring))),
@@ -414,6 +423,10 @@ impl Collection {
 
     pub fn path(&self) -> &ObjectPath<'_> {
         &self.path
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub async fn set_alias(&self, alias: &str) {

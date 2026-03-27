@@ -5,7 +5,10 @@ use base64::Engine;
 use oo7::{Secret, crypto, dbus};
 use rustix::net::{AddressFamily, SocketFlags, SocketType, socketpair};
 use tokio_stream::StreamExt;
-use zbus::zvariant::{Fd, ObjectPath, Optional, Value};
+use zbus::{
+    proxy::Defaults,
+    zvariant::{Fd, ObjectPath, Optional, Value},
+};
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 use crate::gnome::{

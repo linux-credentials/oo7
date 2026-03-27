@@ -11,6 +11,7 @@ use crate::error::Error;
 pub enum PendingMigration {
     /// Legacy v0 keyring format
     V0 {
+        name: String,
         path: PathBuf,
         label: String,
         alias: String,
@@ -18,6 +19,7 @@ pub enum PendingMigration {
     /// KWallet keyring format
     #[cfg(feature = "kwallet_migration")]
     KWallet {
+        name: String,
         path: PathBuf,
         label: String,
         alias: String,
@@ -26,7 +28,12 @@ pub enum PendingMigration {
 
 impl PendingMigration {
     /// Attempt to migrate this keyring with the provided secret
-    pub async fn migrate(&self, data_dir: &PathBuf, name: &str, secret: &Secret) -> Result<UnlockedKeyring, Error> {
+    pub async fn migrate(
+        &self,
+        data_dir: &PathBuf,
+        name: &str,
+        secret: &Secret,
+    ) -> Result<UnlockedKeyring, Error> {
         match self {
             Self::V0 { path, .. } => {
                 tracing::debug!("Migrating v0 keyring: {}", name);
@@ -123,11 +130,7 @@ impl PendingMigration {
                     }
                 }
 
-                tracing::info!("Converted KWallet entries to oo7 format");
-
-                // Write migrated keyring
-                unlocked.write().await?;
-                tracing::info!("Wrote migrated keyring '{}' to disk", name);
+                tracing::info!("Migrated KWallet entries to oo7 format for '{}'", name);
 
                 // Cleanup old files
                 if let Err(e) = tokio::fs::remove_file(path).await {
@@ -153,6 +156,14 @@ impl PendingMigration {
                 tracing::info!("Successfully migrated KWallet keyring '{}'", name);
                 Ok(unlocked)
             }
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Self::V0 { name, .. } => name,
+            #[cfg(feature = "kwallet_migration")]
+            Self::KWallet { name, .. } => name,
         }
     }
 

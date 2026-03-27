@@ -292,7 +292,6 @@ mod tests {
             label, "TestCollection",
             "Collection should have the correct label"
         );
-
         Ok(())
     }
 

@@ -7,11 +7,11 @@ pub(crate) mod error;
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 pub(crate) mod gnome;
 pub(crate) mod item;
+pub(crate) mod migration;
 pub(crate) mod pam_listener;
 #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
 pub(crate) mod plasma;
 pub(crate) mod prompt;
-pub(crate) mod migration;
 pub(crate) mod service;
 pub(crate) mod session;
 
