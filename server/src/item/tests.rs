@@ -9,17 +9,8 @@ use crate::tests::{TestServiceSetup, gnome_prompter_test, plasma_prompter_test};
 async fn label_property() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(setup.session, secret);
-
-    let item = setup.collections[0]
-        .create_item(
-            "Original Label",
-            &[("app", "test")],
-            &dbus_secret,
-            false,
-            None,
-        )
+    let item = setup
+        .create_item("Original Label", &[("app", "test")], "test-secret", false)
         .await?;
 
     // Get label
@@ -56,16 +47,12 @@ async fn label_property() -> Result<(), Box<dyn std::error::Error>> {
 async fn attributes_property() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(setup.session, secret);
-
-    let item = setup.collections[0]
+    let item = setup
         .create_item(
             "Test Item",
             &[("app", "firefox"), ("username", "user@example.com")],
-            &dbus_secret,
+            "test-secret",
             false,
-            None,
         )
         .await?;
 
@@ -103,12 +90,8 @@ async fn attributes_property() -> Result<(), Box<dyn std::error::Error>> {
 async fn timestamps() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let collections = setup.service_api.collections().await?;
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(setup.session, secret);
-
-    let item = collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-secret", false)
         .await?;
 
     // Get created timestamp
@@ -134,10 +117,8 @@ async fn secret_retrieval_plain() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     let secret = oo7::Secret::blob(b"my-secret-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret.clone());
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], secret.clone(), false)
         .await?;
 
     // Retrieve secret
@@ -159,11 +140,8 @@ async fn secret_retrieval_encrypted() -> Result<(), Box<dyn std::error::Error>> 
 
     let aes_key = setup.aes_key.as_ref().unwrap();
     let secret = oo7::Secret::text("my-encrypted-secret");
-    let dbus_secret =
-        dbus::api::DBusSecret::new_encrypted(Arc::clone(&setup.session), secret.clone(), aes_key)?;
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], secret.clone(), false)
         .await?;
 
     // Retrieve secret
@@ -188,11 +166,8 @@ async fn secret_retrieval_encrypted() -> Result<(), Box<dyn std::error::Error>> 
 async fn delete_item() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(setup.session, secret);
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-secret", false)
         .await?;
 
     // Verify item exists
@@ -213,11 +188,13 @@ async fn set_secret_plain() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     let original_secret = oo7::Secret::text("original-password");
-    let dbus_secret =
-        dbus::api::DBusSecret::new(Arc::clone(&setup.session), original_secret.clone());
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item(
+            "Test Item",
+            &[("app", "test")],
+            original_secret.clone(),
+            false,
+        )
         .await?;
 
     // Verify original secret
@@ -263,17 +240,16 @@ async fn set_secret_plain() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 async fn set_secret_encrypted() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::encrypted_session(true).await?;
-    let aes_key = setup.aes_key.unwrap();
+    let aes_key = setup.aes_key.as_ref().unwrap().clone();
 
     let original_secret = oo7::Secret::text("original-encrypted-password");
-    let dbus_secret = dbus::api::DBusSecret::new_encrypted(
-        Arc::clone(&setup.session),
-        original_secret.clone(),
-        &aes_key,
-    )?;
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item(
+            "Test Item",
+            &[("app", "test")],
+            original_secret.clone(),
+            false,
+        )
         .await?;
 
     // Verify original secret
@@ -319,11 +295,8 @@ async fn set_secret_encrypted() -> Result<(), Box<dyn std::error::Error>> {
 async fn get_secret_invalid_session() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(setup.session, secret);
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-secret", false)
         .await?;
 
     // Try to get secret with invalid session path
@@ -348,11 +321,8 @@ async fn get_secret_invalid_session() -> Result<(), Box<dyn std::error::Error>> 
 async fn set_secret_invalid_session() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-secret", false)
         .await?;
 
     let new_secret = oo7::Secret::text("new-secret");
@@ -381,11 +351,8 @@ async fn set_secret_invalid_session() -> Result<(), Box<dyn std::error::Error>> 
 async fn item_changed_signal() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-secret", false)
         .await?;
 
     // Subscribe to ItemChanged signal
@@ -487,11 +454,8 @@ async fn locked_item_operations() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create an item
-    let secret = oo7::Secret::text("test-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret.clone());
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-password", false)
         .await?;
 
     // Verify item is unlocked initially

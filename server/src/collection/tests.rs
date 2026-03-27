@@ -15,17 +15,13 @@ async fn create_item_plain() -> Result<(), Box<dyn std::error::Error>> {
     // Wait to ensure timestamp will be different
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-    // Create an item using the proper API
-    let secret = oo7::Secret::text("my-secret-password");
-    let dbus_secret = dbus::api::DBusSecret::new(setup.session, secret.clone());
-
-    let item = setup.collections[0]
+    // Create an item
+    let item = setup
         .create_item(
             "Test Item",
             &[("application", "test-app"), ("type", "password")],
-            &dbus_secret,
+            "my-secret-password",
             false,
-            None,
         )
         .await?;
 
@@ -51,19 +47,14 @@ async fn create_item_plain() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 async fn create_item_encrypted() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::encrypted_session(true).await?;
-    let aes_key = setup.aes_key.unwrap();
 
-    // Create an encrypted item using the proper API
-    let secret = oo7::Secret::text("my-encrypted-secret");
-    let dbus_secret = dbus::api::DBusSecret::new_encrypted(setup.session, secret, &aes_key)?;
-
-    let item = setup.collections[0]
+    // Create an encrypted item using the helper (automatically handles encryption)
+    let item = setup
         .create_item(
             "Test Encrypted Item",
             &[("application", "test-app"), ("type", "encrypted-password")],
-            &dbus_secret,
+            "my-encrypted-secret",
             false,
-            None,
         )
         .await?;
 
@@ -80,29 +71,21 @@ async fn search_items_after_creation() -> Result<(), Box<dyn std::error::Error>>
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create two items with different attributes
-    let secret1 = oo7::Secret::text("password1");
-    let dbus_secret1 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret1);
-
-    setup.collections[0]
+    setup
         .create_item(
             "Firefox Password",
             &[("application", "firefox"), ("username", "user1")],
-            &dbus_secret1,
+            "password1",
             false,
-            None,
         )
         .await?;
 
-    let secret2 = oo7::Secret::text("password2");
-    let dbus_secret2 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret2);
-
-    setup.collections[0]
+    setup
         .create_item(
             "Chrome Password",
             &[("application", "chrome"), ("username", "user2")],
-            &dbus_secret2,
+            "password2",
             false,
-            None,
         )
         .await?;
 
@@ -138,16 +121,12 @@ async fn search_items_subset_matching() -> Result<(), Box<dyn std::error::Error>
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create an item with multiple attributes (url and username)
-    let secret = oo7::Secret::text("my-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
-
-    setup.collections[0]
+    setup
         .create_item(
             "Zed Login",
             &[("url", "https://zed.dev"), ("username", "alice")],
-            &dbus_secret,
+            "my-password",
             false,
-            None,
         )
         .await?;
 
@@ -208,15 +187,12 @@ async fn create_item_with_replace() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create first item
     let secret1 = oo7::Secret::text("original-password");
-    let dbus_secret1 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret1.clone());
-
-    let item1 = setup.collections[0]
+    let item1 = setup
         .create_item(
             "Test Item",
             &[("application", "myapp"), ("username", "user")],
-            &dbus_secret1,
+            secret1.clone(),
             false,
-            None,
         )
         .await?;
 
@@ -230,15 +206,12 @@ async fn create_item_with_replace() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create second item with same attributes and replace=true
     let secret2 = oo7::Secret::text("replaced-password");
-    let dbus_secret2 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret2.clone());
-
-    let item2 = setup.collections[0]
+    let item2 = setup
         .create_item(
             "Test Item",
             &[("application", "myapp"), ("username", "user")],
-            &dbus_secret2,
+            secret2.clone(),
             true, // replace=true
-            None,
         )
         .await?;
 
@@ -356,11 +329,8 @@ async fn item_created_signal() -> Result<(), Box<dyn std::error::Error>> {
     tokio::pin!(signal_stream);
 
     // Create an item
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-secret", false)
         .await?;
 
     // Wait for signal with timeout
@@ -386,11 +356,8 @@ async fn item_deleted_signal() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create an item
-    let secret = oo7::Secret::text("test-secret");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-secret", false)
         .await?;
 
     let item_path = item.inner().path().to_owned();
@@ -459,18 +426,12 @@ async fn delete_collection() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create some items in the collection
-    let secret1 = oo7::Secret::text("password1");
-    let dbus_secret1 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret1);
-
-    setup.collections[0]
-        .create_item("Item 1", &[("app", "test")], &dbus_secret1, false, None)
+    setup
+        .create_item("Item 1", &[("app", "test")], "password1", false)
         .await?;
 
-    let secret2 = oo7::Secret::text("password2");
-    let dbus_secret2 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret2);
-
-    setup.collections[0]
-        .create_item("Item 2", &[("app", "test")], &dbus_secret2, false, None)
+    setup
+        .create_item("Item 2", &[("app", "test")], "password2", false)
         .await?;
 
     // Verify items were created
@@ -572,15 +533,12 @@ async fn create_item_in_locked_collection() -> Result<(), Box<dyn std::error::Er
     );
 
     let secret = oo7::Secret::text("test-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret.clone());
-
-    let item = setup.collections[0]
+    let item = setup
         .create_item(
             "Test Item",
             &[("app", "test"), ("type", "password")],
-            &dbus_secret,
+            secret.clone(),
             false,
-            None,
         )
         .await?;
 

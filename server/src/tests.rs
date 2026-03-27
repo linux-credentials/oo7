@@ -320,6 +320,31 @@ impl TestServiceSetup {
             .set_password_queue(passwords)
             .await;
     }
+
+    /// Helper to create a test item in the default collection (index 0)
+    ///
+    /// Automatically handles plain vs encrypted sessions based on whether
+    /// aes_key is set.
+    pub(crate) async fn create_item(
+        &self,
+        label: &str,
+        attributes: &impl oo7::AsAttributes,
+        secret: impl Into<Secret>,
+        replace: bool,
+    ) -> Result<dbus::api::Item, Box<dyn std::error::Error>> {
+        let secret = secret.into();
+        let dbus_secret = if let Some(ref aes_key) = self.aes_key {
+            dbus::api::DBusSecret::new_encrypted(Arc::clone(&self.session), secret, aes_key)?
+        } else {
+            dbus::api::DBusSecret::new(Arc::clone(&self.session), secret)
+        };
+
+        let item = self.collections[0]
+            .create_item(label, attributes, &dbus_secret, replace, None)
+            .await?;
+
+        Ok(item)
+    }
 }
 
 /// Mock implementation of org.gnome.keyring.internal.Prompter

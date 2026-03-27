@@ -77,31 +77,13 @@ async fn search_items() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test with both locked and unlocked items
     // Create items in default collection (unlocked)
-    let secret1 = Secret::text("password1");
-    let dbus_secret1 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret1);
-
-    setup.collections[0]
-        .create_item(
-            "Unlocked Item",
-            &[("app", "testapp")],
-            &dbus_secret1,
-            false,
-            None,
-        )
+    setup
+        .create_item("Unlocked Item", &[("app", "testapp")], "password1", false)
         .await?;
 
     // Create item in default collection and lock it
-    let secret2 = Secret::text("password2");
-    let dbus_secret2 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret2);
-
-    let locked_item = setup.collections[0]
-        .create_item(
-            "Locked Item",
-            &[("app", "testapp")],
-            &dbus_secret2,
-            false,
-            None,
-        )
+    let locked_item = setup
+        .create_item("Locked Item", &[("app", "testapp")], "password2", false)
         .await?;
 
     // Lock just this item (not the whole collection)
@@ -145,17 +127,13 @@ async fn get_secrets() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create two items with different secrets
     let secret1 = Secret::text("password1");
-    let dbus_secret1 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret1.clone());
-
-    let item1 = setup.collections[0]
-        .create_item("Item 1", &[("app", "test1")], &dbus_secret1, false, None)
+    let item1 = setup
+        .create_item("Item 1", &[("app", "test1")], secret1.clone(), false)
         .await?;
 
     let secret2 = Secret::text("password2");
-    let dbus_secret2 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret2.clone());
-
-    let item2 = setup.collections[0]
-        .create_item("Item 2", &[("app", "test2")], &dbus_secret2, false, None)
+    let item2 = setup
+        .create_item("Item 2", &[("app", "test2")], secret2.clone(), false)
         .await?;
 
     // Get secrets for both items
@@ -188,15 +166,12 @@ async fn get_secrets_multiple_collections() -> Result<(), Box<dyn std::error::Er
 
     // Create item in default collection (index 0)
     let secret1 = Secret::text("default-password");
-    let dbus_secret1 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret1.clone());
-
-    let item1 = setup.collections[0]
+    let item1 = setup
         .create_item(
             "Default Item",
             &[("app", "default-app")],
-            &dbus_secret1,
+            secret1.clone(),
             false,
-            None,
         )
         .await?;
 
@@ -297,29 +272,21 @@ async fn search_items_with_results() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create items in default collection
-    let secret1 = Secret::text("password1");
-    let dbus_secret1 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret1);
-
-    setup.collections[0]
+    setup
         .create_item(
             "Firefox Login",
             &[("application", "firefox"), ("type", "login")],
-            &dbus_secret1,
+            "password1",
             false,
-            None,
         )
         .await?;
 
-    let secret2 = Secret::text("password2");
-    let dbus_secret2 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret2);
-
-    setup.collections[0]
+    setup
         .create_item(
             "Chrome Login",
             &[("application", "chrome"), ("type", "login")],
-            &dbus_secret2,
+            "password2",
             false,
-            None,
         )
         .await?;
 
@@ -378,11 +345,8 @@ async fn get_secrets_invalid_session() -> Result<(), Box<dyn std::error::Error>>
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create an item
-    let secret = Secret::text("test-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-password", false)
         .await?;
 
     // Try to get secrets with invalid session path
@@ -436,11 +400,8 @@ async fn get_secrets_with_non_existent_items() -> Result<(), Box<dyn std::error:
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create one real item
-    let secret = Secret::text("password1");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret.clone());
-
-    let item1 = setup.collections[0]
-        .create_item("Item 1", &[("app", "test")], &dbus_secret, false, None)
+    let item1 = setup
+        .create_item("Item 1", &[("app", "test")], "password1", false)
         .await?;
 
     // Create a fake item path that doesn't exist
@@ -551,11 +512,8 @@ async fn unlock_edge_cases() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Test 3: Already unlocked objects
-    let secret = Secret::text("test-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
-
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-password", false)
         .await?;
 
     // Verify item is unlocked
@@ -771,10 +729,8 @@ async fn lock_item_in_unlocked_collection() -> Result<(), Box<dyn std::error::Er
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create an item (starts unlocked)
-    let secret = Secret::text("test-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
-    let item = setup.collections[0]
-        .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
+    let item = setup
+        .create_item("Test Item", &[("app", "test")], "test-password", false)
         .await?;
 
     assert!(!item.is_locked().await?, "Item should start unlocked");
