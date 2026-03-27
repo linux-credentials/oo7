@@ -45,7 +45,7 @@ impl PamMessage {
 /// PAM listener that receives authentication secrets from the PAM module
 #[derive(Clone)]
 pub struct PamListener {
-    socket_path: PathBuf,
+    pub(crate) socket_path: PathBuf,
     service: Service,
     /// Current user's secret, used to unlock their keyring <username, secret>
     user_secrets: Arc<RwLock<std::collections::HashMap<String, Secret>>>,
@@ -54,9 +54,10 @@ pub struct PamListener {
 impl PamListener {
     pub fn new(service: Service) -> Self {
         let uid = unsafe { libc::getuid() };
-        let socket_path = std::env::var("OO7_PAM_SOCKET")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(format!("/run/user/{uid}/oo7-pam.sock")));
+        let socket_path = service
+            .pam_socket
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(format!("/run/user/{uid}/oo7-pam.sock")));
 
         Self {
             socket_path,

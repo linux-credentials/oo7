@@ -781,16 +781,8 @@ async fn lock_collection_no_prompt() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(
-    create_collection_basic_gnome,
-    create_collection_basic,
-    serial_test::serial(xdg_env)
-);
-plasma_prompter_test!(
-    create_collection_basic_plasma,
-    create_collection_basic,
-    serial_test::serial(xdg_env)
-);
+gnome_prompter_test!(create_collection_basic_gnome, create_collection_basic);
+plasma_prompter_test!(create_collection_basic_plasma, create_collection_basic);
 
 async fn create_collection_basic() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
@@ -852,16 +844,8 @@ async fn create_collection_basic() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-gnome_prompter_test!(
-    create_collection_signal_gnome,
-    create_collection_signal,
-    serial_test::serial(xdg_env)
-);
-plasma_prompter_test!(
-    create_collection_signal_plasma,
-    create_collection_signal,
-    serial_test::serial(xdg_env)
-);
+gnome_prompter_test!(create_collection_signal_gnome, create_collection_signal);
+plasma_prompter_test!(create_collection_signal_plasma, create_collection_signal);
 
 async fn create_collection_signal() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
@@ -907,13 +891,11 @@ async fn create_collection_signal() -> Result<(), Box<dyn std::error::Error>> {
 
 gnome_prompter_test!(
     create_collection_and_add_items_gnome,
-    create_collection_and_add_items,
-    serial_test::serial(xdg_env)
+    create_collection_and_add_items
 );
 plasma_prompter_test!(
     create_collection_and_add_items_plasma,
-    create_collection_and_add_items,
-    serial_test::serial(xdg_env)
+    create_collection_and_add_items
 );
 
 async fn create_collection_and_add_items() -> Result<(), Box<dyn std::error::Error>> {
@@ -976,13 +958,11 @@ async fn create_collection_and_add_items() -> Result<(), Box<dyn std::error::Err
 
 gnome_prompter_test!(
     create_collection_dismissed_gnome,
-    create_collection_dismissed,
-    serial_test::serial(xdg_env)
+    create_collection_dismissed
 );
 plasma_prompter_test!(
     create_collection_dismissed_plasma,
-    create_collection_dismissed,
-    serial_test::serial(xdg_env)
+    create_collection_dismissed
 );
 
 async fn create_collection_dismissed() -> Result<(), Box<dyn std::error::Error>> {
@@ -1041,13 +1021,10 @@ async fn complete_collection_creation_no_pending() -> Result<(), Box<dyn std::er
 }
 
 #[tokio::test]
-#[serial_test::serial(xdg_env)]
 async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
-    let service = Service::default();
-
     // Set up a temporary data directory
     let temp_dir = tempfile::tempdir()?;
-    unsafe { std::env::set_var("XDG_DATA_HOME", temp_dir.path()) };
+    let service = Service::new(temp_dir.path().to_path_buf(), None);
 
     // Create v1 keyrings directory
     let v1_dir = temp_dir.path().join("keyrings/v1");
@@ -1063,7 +1040,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     // Create multiple keyrings with different passwords
     // Add items to each so password validation works
     let secret1 = Secret::from("password-for-work");
-    let keyring1 = UnlockedKeyring::open("work", secret1.clone()).await?;
+    let keyring1 = UnlockedKeyring::open_at(temp_dir.path(), "work", secret1.clone()).await?;
     keyring1
         .create_item(
             "Work Item",
@@ -1075,7 +1052,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     keyring1.write().await?;
 
     let secret2 = Secret::from("password-for-personal");
-    let keyring2 = UnlockedKeyring::open("personal", secret2.clone()).await?;
+    let keyring2 = UnlockedKeyring::open_at(temp_dir.path(), "personal", secret2.clone()).await?;
     keyring2
         .create_item(
             "Personal Item",
@@ -1088,7 +1065,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a "login" keyring which should get the default alias
     let secret3 = Secret::from("password-for-login");
-    let keyring3 = UnlockedKeyring::open("login", secret3.clone()).await?;
+    let keyring3 = UnlockedKeyring::open_at(temp_dir.path(), "login", secret3.clone()).await?;
     keyring3
         .create_item(
             "Login Item",
@@ -1166,17 +1143,13 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
         "Should have Login with capital L"
     );
 
-    // Clean up
-    unsafe { std::env::remove_var("XDG_DATA_HOME") };
     Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial(xdg_env)]
 async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
-    let service = Service::default();
     let temp_dir = tempfile::tempdir()?;
-    unsafe { std::env::set_var("XDG_DATA_HOME", temp_dir.path()) };
+    let service = Service::new(temp_dir.path().to_path_buf(), None);
 
     let keyrings_dir = temp_dir.path().join("keyrings");
     let v1_dir = keyrings_dir.join("v1");
@@ -1194,7 +1167,7 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a v1 keyring for mixed scenario
     let v1_secret = Secret::from("v1-password");
-    let v1_keyring = UnlockedKeyring::open("modern", v1_secret.clone()).await?;
+    let v1_keyring = UnlockedKeyring::open_at(temp_dir.path(), "modern", v1_secret.clone()).await?;
     v1_keyring
         .create_item(
             "V1 Item",
@@ -1252,6 +1225,5 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
         "V0 should be pending with wrong password"
     );
 
-    unsafe { std::env::remove_var("XDG_DATA_HOME") };
     Ok(())
 }

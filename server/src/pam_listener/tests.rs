@@ -39,11 +39,8 @@ async fn send_pam_message(
 }
 
 #[tokio::test]
-#[serial_test::serial(xdg_env)]
 async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
-    unsafe { std::env::set_var("XDG_DATA_HOME", temp_dir.path()) };
-    unsafe { std::env::set_var("OO7_PAM_SOCKET", temp_dir.path().join("pam.sock")) };
 
     let keyrings_dir = temp_dir.path().join("keyrings");
     let v1_dir = keyrings_dir.join("v1");
@@ -57,7 +54,13 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let v0_path = keyrings_dir.join("legacy.keyring");
     tokio::fs::copy(&fixture_path, &v0_path).await?;
 
-    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(None).await?;
+    let pam_socket_path = temp_dir.path().join("pam.sock");
+    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(
+        temp_dir.path().to_path_buf(),
+        Some(pam_socket_path),
+        None,
+    )
+    .await?;
 
     assert_eq!(
         setup.server.pending_migrations.lock().await.len(),
@@ -105,21 +108,16 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
         "V0 file should be removed after migration"
     );
 
-    unsafe { std::env::remove_var("XDG_DATA_HOME") };
-    unsafe { std::env::remove_var("OO7_PAM_SOCKET") };
     Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial(xdg_env)]
 async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
-    unsafe { std::env::set_var("XDG_DATA_HOME", temp_dir.path()) };
-    unsafe { std::env::set_var("OO7_PAM_SOCKET", temp_dir.path().join("pam.sock")) };
 
     // Create a v1 keyring with a known password
     let secret = Secret::from("my-secure-password");
-    let keyring = UnlockedKeyring::open("work", secret.clone()).await?;
+    let keyring = UnlockedKeyring::open_at(temp_dir.path(), "work", secret.clone()).await?;
     keyring
         .create_item(
             "Work Item",
@@ -130,7 +128,13 @@ async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Erro
         .await?;
     keyring.write().await?;
 
-    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(None).await?;
+    let pam_socket_path = temp_dir.path().join("pam.sock");
+    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(
+        temp_dir.path().to_path_buf(),
+        Some(pam_socket_path),
+        None,
+    )
+    .await?;
 
     let collections = setup.server.collections.lock().await;
     let mut work_collection = None;
@@ -175,20 +179,15 @@ async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Erro
         "Work collection should be unlocked"
     );
 
-    unsafe { std::env::remove_var("XDG_DATA_HOME") };
-    unsafe { std::env::remove_var("OO7_PAM_SOCKET") };
     Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial(xdg_env)]
 async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
-    unsafe { std::env::set_var("XDG_DATA_HOME", temp_dir.path()) };
-    unsafe { std::env::set_var("OO7_PAM_SOCKET", temp_dir.path().join("pam.sock")) };
 
     let old_secret = Secret::from("old-password");
-    let keyring = UnlockedKeyring::open("work", old_secret.clone()).await?;
+    let keyring = UnlockedKeyring::open_at(temp_dir.path(), "work", old_secret.clone()).await?;
     keyring
         .create_item(
             "Work Item",
@@ -199,7 +198,13 @@ async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     keyring.write().await?;
 
-    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(None).await?;
+    let pam_socket_path = temp_dir.path().join("pam.sock");
+    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(
+        temp_dir.path().to_path_buf(),
+        Some(pam_socket_path),
+        None,
+    )
+    .await?;
 
     let collections = setup.server.collections.lock().await;
     let mut work_collection = None;
@@ -265,8 +270,6 @@ async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
         "New password should unlock collection"
     );
 
-    unsafe { std::env::remove_var("XDG_DATA_HOME") };
-    unsafe { std::env::remove_var("OO7_PAM_SOCKET") };
     Ok(())
 }
 

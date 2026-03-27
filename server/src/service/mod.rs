@@ -34,7 +34,7 @@ use crate::{
 const DEFAULT_COLLECTION_ALIAS_PATH: ObjectPath<'static> =
     ObjectPath::from_static_str_unchecked("/org/freedesktop/secrets/aliases/default");
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Service {
     // Properties
     pub(crate) collections: Arc<Mutex<HashMap<OwnedObjectPath, Collection>>>,
@@ -52,6 +52,10 @@ pub struct Service {
     #[allow(clippy::type_complexity)]
     pub(crate) pending_migrations:
         Arc<Mutex<HashMap<String, (std::path::PathBuf, String, String)>>>,
+    // Data directory for keyrings (e.g., ~/.local/share or test temp dir)
+    data_dir: std::path::PathBuf,
+    // PAM socket path (None for tests that don't need PAM listener)
+    pub(crate) pam_socket: Option<std::path::PathBuf>,
 }
 
 #[zbus::interface(name = "org.freedesktop.Secret.Service")]
@@ -391,8 +395,47 @@ impl Service {
 impl Service {
     const LOGIN_ALIAS: &str = "login";
 
+    pub(crate) fn new(
+        data_dir: std::path::PathBuf,
+        pam_socket: Option<std::path::PathBuf>,
+    ) -> Self {
+        Self {
+            collections: Arc::new(Mutex::new(HashMap::new())),
+            connection: Arc::new(OnceLock::new()),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            session_index: Arc::new(RwLock::new(0)),
+            prompts: Arc::new(Mutex::new(HashMap::new())),
+            prompt_index: Arc::new(RwLock::new(0)),
+            pending_collections: Arc::new(Mutex::new(HashMap::new())),
+            pending_migrations: Arc::new(Mutex::new(HashMap::new())),
+            data_dir,
+            pam_socket,
+        }
+    }
+
     pub async fn run(secret: Option<Secret>, request_replacement: bool) -> Result<(), Error> {
-        let service = Self::default();
+        // Compute data directory from environment variables
+        let data_dir = std::env::var_os("XDG_DATA_HOME")
+            .and_then(|h| if h.is_empty() { None } else { Some(h) })
+            .map(std::path::PathBuf::from)
+            .and_then(|p| if p.is_absolute() { Some(p) } else { None })
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .and_then(|h| if h.is_empty() { None } else { Some(h) })
+                    .map(std::path::PathBuf::from)
+                    .map(|p| p.join(".local/share"))
+            })
+            .ok_or_else(|| {
+                Error::IO(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "No data directory found (XDG_DATA_HOME or HOME)",
+                ))
+            })?;
+
+        // Compute PAM socket path from environment variable
+        let pam_socket = std::env::var_os("OO7_PAM_SOCKET").map(std::path::PathBuf::from);
+
+        let service = Self::new(data_dir, pam_socket);
 
         let connection = zbus::connection::Builder::session()?
             .allow_name_replacements(true)
@@ -436,9 +479,11 @@ impl Service {
     #[cfg(test)]
     pub async fn run_with_connection(
         connection: zbus::Connection,
+        data_dir: std::path::PathBuf,
+        pam_socket: Option<std::path::PathBuf>,
         secret: Option<Secret>,
     ) -> Result<Self, Error> {
-        let service = Self::default();
+        let service = Self::new(data_dir, pam_socket);
 
         // Serve the service at the standard path
         connection
@@ -482,24 +527,7 @@ impl Service {
     ) -> Result<Vec<(String, String, Keyring)>, Error> {
         let mut discovered = Vec::new();
 
-        // Get data directory using the same logic as oo7::file::api::data_dir()
-        let data_dir = std::env::var_os("XDG_DATA_HOME")
-            .and_then(|h| if h.is_empty() { None } else { Some(h) })
-            .map(std::path::PathBuf::from)
-            .and_then(|p| if p.is_absolute() { Some(p) } else { None })
-            .or_else(|| {
-                std::env::var_os("HOME")
-                    .and_then(|h| if h.is_empty() { None } else { Some(h) })
-                    .map(std::path::PathBuf::from)
-                    .map(|p| p.join(".local/share"))
-            });
-
-        let Some(data_dir) = data_dir else {
-            tracing::warn!("No data directory found, skipping keyring discovery");
-            return Ok(discovered);
-        };
-
-        let keyrings_dir = data_dir.join("keyrings");
+        let keyrings_dir = self.data_dir.join("keyrings");
 
         // Scan for v1 keyrings first
         let v1_dir = keyrings_dir.join("v1");
@@ -627,7 +655,7 @@ impl Service {
 
                 if let Some(secret) = secret {
                     tracing::debug!("Attempting immediate migration of v0 keyring '{name}'",);
-                    match UnlockedKeyring::open(name, secret.clone()).await {
+                    match UnlockedKeyring::open_at(&self.data_dir, name, secret.clone()).await {
                         Ok(unlocked) => {
                             tracing::info!("Successfully migrated v0 keyring '{name}' to v1",);
 
@@ -703,11 +731,11 @@ impl Service {
             tracing::info!("No default collection found, creating 'Login' keyring");
 
             let keyring = if let Some(secret) = secret {
-                UnlockedKeyring::open(Self::LOGIN_ALIAS, secret)
+                UnlockedKeyring::open_at(&self.data_dir, Self::LOGIN_ALIAS, secret)
                     .await
                     .map(Keyring::Unlocked)
             } else {
-                LockedKeyring::open(Self::LOGIN_ALIAS)
+                LockedKeyring::open_at(&self.data_dir, Self::LOGIN_ALIAS)
                     .await
                     .map(Keyring::Locked)
             };
@@ -944,7 +972,7 @@ impl Service {
         secret: Secret,
     ) -> Result<OwnedObjectPath, ServiceError> {
         // Create a persistent keyring with the provided secret
-        let keyring = UnlockedKeyring::open(&label.to_lowercase(), secret)
+        let keyring = UnlockedKeyring::open_at(&self.data_dir, &label.to_lowercase(), secret)
             .await
             .map_err(|err| custom_service_error(&format!("Failed to create keyring: {err}")))?;
 
@@ -1088,7 +1116,7 @@ impl Service {
         for (name, (path, label, alias)) in pending.iter() {
             tracing::debug!("Attempting to migrate pending v0 keyring: {}", name);
 
-            match UnlockedKeyring::open(name, secret.clone()).await {
+            match UnlockedKeyring::open_at(&self.data_dir, name, secret.clone()).await {
                 Ok(unlocked) => {
                     tracing::info!("Successfully migrated v0 keyring '{}' to v1", name);
 

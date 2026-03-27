@@ -280,6 +280,24 @@ impl Keyring {
         }
     }
 
+    /// Construct a keyring path within a specific data directory.
+    ///
+    /// This is useful for tests and cases where you want explicit control over
+    /// where keyrings are stored, avoiding the default XDG_DATA_HOME location.
+    pub(crate) fn path_at(
+        data_dir: impl AsRef<std::path::Path>,
+        name: &str,
+        version: u8,
+    ) -> PathBuf {
+        let mut path = data_dir.as_ref().to_path_buf();
+        path.push("keyrings");
+        if version > 0 {
+            path.push(format!("v{version}"));
+        }
+        path.push(format!("{name}.keyring"));
+        path
+    }
+
     pub fn default_path() -> Result<PathBuf, Error> {
         Self::path("default", LEGACY_MAJOR_VERSION)
     }
