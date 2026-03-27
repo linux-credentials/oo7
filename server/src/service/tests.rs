@@ -164,7 +164,7 @@ async fn get_secrets_multiple_collections() -> Result<(), Box<dyn std::error::Er
 
     // Create item in session collection (index 1)
     let secret2 = Secret::text("session-password");
-    let dbus_secret2 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret2.clone());
+    let dbus_secret2 = setup.create_dbus_secret(secret2.clone())?;
 
     let item2 = setup.collections[1]
         .create_item(
@@ -278,8 +278,7 @@ async fn search_items_with_results() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     // Create item in session collection
-    let secret3 = Secret::text("password3");
-    let dbus_secret3 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret3);
+    let dbus_secret3 = setup.create_dbus_secret("password3")?;
 
     setup.collections[1]
         .create_item(
@@ -424,8 +423,7 @@ async fn search_items_across_collections() -> Result<(), Box<dyn std::error::Err
     assert_eq!(collections.len(), 2, "Should have 2 collections");
 
     // Create item in first collection
-    let secret1 = Secret::text("password1");
-    let dbus_secret1 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret1);
+    let dbus_secret1 = setup.create_dbus_secret("password1")?;
 
     collections[0]
         .create_item(
@@ -438,8 +436,7 @@ async fn search_items_across_collections() -> Result<(), Box<dyn std::error::Err
         .await?;
 
     // Create item in second collection with same attributes
-    let secret2 = Secret::text("password2");
-    let dbus_secret2 = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret2);
+    let dbus_secret2 = setup.create_dbus_secret("password2")?;
 
     collections[1]
         .create_item(
@@ -641,8 +638,7 @@ async fn unlock_item_prompt() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Create an item
-    let secret = Secret::text("test-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
+    let dbus_secret = setup.create_dbus_secret("test-password")?;
     let default_collection = setup.service_api.read_alias("default").await?.unwrap();
     let item = default_collection
         .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
@@ -937,7 +933,7 @@ async fn create_collection_and_add_items() -> Result<(), Box<dyn std::error::Err
 
     // Create an item in the new collection
     let secret = oo7::Secret::text("hello-world-test");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret.clone());
+    let dbus_secret = setup.create_dbus_secret(secret.clone())?;
 
     let item = collection
         .create_item(

@@ -621,8 +621,7 @@ async fn unlock_retry() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
     let default_collection = setup.default_collection().await?;
 
-    let secret = oo7::Secret::text("test-secret-data");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret);
+    let dbus_secret = setup.create_dbus_secret("test-secret-data")?;
     default_collection
         .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
         .await?;

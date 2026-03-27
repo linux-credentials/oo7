@@ -217,8 +217,6 @@ impl InternalInterface {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use oo7::{Secret, dbus};
     use zbus::zvariant::{ObjectPath, OwnedObjectPath};
 
@@ -272,13 +270,7 @@ mod tests {
         let properties = oo7::dbus::api::Properties::for_collection(label);
 
         // Prepare the master password secret
-        let master_secret = Secret::text("my-master-password");
-        let aes_key = setup.aes_key.as_ref().unwrap();
-        let dbus_secret = oo7::dbus::api::DBusSecret::new_encrypted(
-            Arc::clone(&setup.session),
-            master_secret,
-            aes_key,
-        )?;
+        let dbus_secret = setup.create_dbus_secret("my-master-password")?;
         let dbus_secret_inner = dbus_secret.into();
 
         // Call CreateWithMasterPassword via D-Bus
@@ -330,12 +322,7 @@ mod tests {
 
         // Prepare the unlock secret (use the keyring secret)
         let unlock_secret = setup.keyring_secret.clone().unwrap();
-        let aes_key = setup.aes_key.as_ref().unwrap();
-        let dbus_secret = oo7::dbus::api::DBusSecret::new_encrypted(
-            Arc::clone(&setup.session),
-            unlock_secret,
-            aes_key,
-        )?;
+        let dbus_secret = setup.create_dbus_secret(unlock_secret)?;
         let dbus_secret_inner = dbus_secret.into();
 
         // Call UnlockWithMasterPassword via D-Bus
@@ -367,17 +354,8 @@ mod tests {
         let original_secret = setup.keyring_secret.clone().unwrap();
         let new_secret = Secret::text("new-master-password");
 
-        let aes_key = setup.aes_key.as_ref().unwrap();
-        let original_dbus = dbus::api::DBusSecret::new_encrypted(
-            Arc::clone(&setup.session),
-            original_secret,
-            aes_key,
-        )?;
-        let new_dbus = dbus::api::DBusSecret::new_encrypted(
-            Arc::clone(&setup.session),
-            new_secret.clone(),
-            aes_key,
-        )?;
+        let original_dbus = setup.create_dbus_secret(original_secret)?;
+        let new_dbus = setup.create_dbus_secret(new_secret.clone())?;
 
         // Call ChangeWithMasterPassword via D-Bus
         internal_proxy
@@ -399,8 +377,7 @@ mod tests {
         );
 
         // Unlock with new password via D-Bus
-        let unlock_dbus =
-            dbus::api::DBusSecret::new_encrypted(Arc::clone(&setup.session), new_secret, aes_key)?;
+        let unlock_dbus = setup.create_dbus_secret(new_secret)?;
         internal_proxy
             .unlock_with_master_password(&collection_path.as_ref(), unlock_dbus.into())
             .await?;
@@ -453,10 +430,7 @@ mod tests {
             default_collection.inner().path().to_owned().into();
 
         // Create an item first so that the unlock validation has something to validate
-        let aes_key = setup.aes_key.as_ref().unwrap();
-        let item_secret = Secret::text("item-secret");
-        let dbus_secret =
-            dbus::api::DBusSecret::new_encrypted(Arc::clone(&setup.session), item_secret, aes_key)?;
+        let dbus_secret = setup.create_dbus_secret("item-secret")?;
 
         let mut attributes = std::collections::HashMap::new();
         attributes.insert("test".to_string(), "value".to_string());
@@ -478,12 +452,7 @@ mod tests {
         );
 
         // Try to unlock with wrong password via D-Bus
-        let wrong_secret = Secret::text("wrong-password");
-        let wrong_dbus_secret = dbus::api::DBusSecret::new_encrypted(
-            Arc::clone(&setup.session),
-            wrong_secret,
-            aes_key,
-        )?;
+        let wrong_dbus_secret = setup.create_dbus_secret("wrong-password")?;
 
         let result = internal_proxy
             .unlock_with_master_password(&collection_path.as_ref(), wrong_dbus_secret.into())

@@ -321,6 +321,23 @@ impl TestServiceSetup {
             .await;
     }
 
+    /// Helper to create a DBusSecret
+    ///
+    /// Automatically handles plain vs encrypted based on whether aes_key is
+    /// set.
+    pub(crate) fn create_dbus_secret(
+        &self,
+        secret: impl Into<Secret>,
+    ) -> Result<dbus::api::DBusSecret, Box<dyn std::error::Error>> {
+        let secret = secret.into();
+        let dbus_secret = if let Some(ref aes_key) = self.aes_key {
+            dbus::api::DBusSecret::new_encrypted(Arc::clone(&self.session), secret, aes_key)?
+        } else {
+            dbus::api::DBusSecret::new(Arc::clone(&self.session), secret)
+        };
+        Ok(dbus_secret)
+    }
+
     /// Helper to create a test item in the default collection (index 0)
     ///
     /// Automatically handles plain vs encrypted sessions based on whether
@@ -332,12 +349,7 @@ impl TestServiceSetup {
         secret: impl Into<Secret>,
         replace: bool,
     ) -> Result<dbus::api::Item, Box<dyn std::error::Error>> {
-        let secret = secret.into();
-        let dbus_secret = if let Some(ref aes_key) = self.aes_key {
-            dbus::api::DBusSecret::new_encrypted(Arc::clone(&self.session), secret, aes_key)?
-        } else {
-            dbus::api::DBusSecret::new(Arc::clone(&self.session), secret)
-        };
+        let dbus_secret = self.create_dbus_secret(secret)?;
 
         let item = self.collections[0]
             .create_item(label, attributes, &dbus_secret, replace, None)

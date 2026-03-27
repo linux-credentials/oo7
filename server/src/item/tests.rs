@@ -214,8 +214,7 @@ async fn set_secret_plain() -> Result<(), Box<dyn std::error::Error>> {
 
     // Update the secret
     let new_secret = oo7::Secret::blob(b"new-password");
-    let new_dbus_secret =
-        dbus::api::DBusSecret::new(Arc::clone(&setup.session), new_secret.clone());
+    let new_dbus_secret = setup.create_dbus_secret(new_secret.clone())?;
     item.set_secret(&new_dbus_secret).await?;
 
     // Verify updated secret
@@ -267,11 +266,7 @@ async fn set_secret_encrypted() -> Result<(), Box<dyn std::error::Error>> {
 
     // Update the secret
     let new_secret = oo7::Secret::text("new-encrypted-password");
-    let new_dbus_secret = dbus::api::DBusSecret::new_encrypted(
-        Arc::clone(&setup.session),
-        new_secret.clone(),
-        &aes_key,
-    )?;
+    let new_dbus_secret = setup.create_dbus_secret(new_secret.clone())?;
     item.set_secret(&new_dbus_secret).await?;
 
     // Verify updated secret
@@ -392,8 +387,7 @@ async fn item_changed_signal() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Change secret and verify signal again
-    let new_secret = oo7::Secret::text("new-secret");
-    let new_dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), new_secret);
+    let new_dbus_secret = setup.create_dbus_secret("new-secret")?;
     item.set_secret(&new_dbus_secret).await?;
 
     let signal_result =
@@ -420,8 +414,7 @@ async fn delete_locked_item_with_prompt() -> Result<(), Box<dyn std::error::Erro
     let setup = TestServiceSetup::plain_session(true).await?;
     let default_collection = setup.default_collection().await?;
 
-    let secret = oo7::Secret::text("test-password");
-    let dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), secret.clone());
+    let dbus_secret = setup.create_dbus_secret("test-password")?;
 
     let item = default_collection
         .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
@@ -477,8 +470,7 @@ async fn locked_item_operations() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Test 2: set_secret should fail with IsLocked
-    let new_secret = oo7::Secret::text("new-password");
-    let new_dbus_secret = dbus::api::DBusSecret::new(Arc::clone(&setup.session), new_secret);
+    let new_dbus_secret = setup.create_dbus_secret("new-password")?;
     let result = item.set_secret(&new_dbus_secret).await;
     assert!(
         matches!(
