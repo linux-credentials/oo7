@@ -79,13 +79,23 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], v0_secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    for i in 0..10 {
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        let pending = setup.server.pending_migrations.lock().await.len();
+        eprintln!("Attempt {}: pending_migrations = {}", i + 1, pending);
+        if pending == 0 {
+            break;
+        }
+    }
 
+    let pending = setup.server.pending_migrations.lock().await;
     assert_eq!(
-        setup.server.pending_migrations.lock().await.len(),
+        pending.len(),
         0,
-        "V0 keyring should be migrated"
+        "V0 keyring should be migrated. Remaining: {:?}",
+        pending.keys().collect::<Vec<_>>()
     );
+    drop(pending);
 
     let collections = setup.server.collections.lock().await;
     let mut legacy_collection = None;
