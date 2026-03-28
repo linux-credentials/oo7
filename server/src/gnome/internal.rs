@@ -393,6 +393,8 @@ mod tests {
     #[tokio::test]
     async fn test_change_with_prompt() -> Result<(), Box<dyn std::error::Error>> {
         let setup = TestServiceSetup::encrypted_session(true).await?;
+        setup.set_password_accept(true).await;
+
         let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
             .build()
             .await?;
@@ -412,8 +414,38 @@ mod tests {
             "Prompt path should not be empty"
         );
 
-        // Verify the prompt exists and is accessible via D-Bus
-        let _prompt_proxy = dbus::api::Prompt::new(&setup.client_conn, prompt_path).await?;
+        // Get the prompt and complete it
+        let prompt_proxy = dbus::api::Prompt::new(&setup.client_conn, prompt_path)
+            .await?
+            .unwrap();
+        let new_password = Secret::text("new-password-from-prompt");
+        setup.set_password_queue(vec![new_password.clone()]).await;
+
+        prompt_proxy.prompt(None).await?;
+
+        // Wait for prompt to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Verify the password was changed by locking and unlocking with new password
+        setup
+            .service_api
+            .lock(&[collection_path.clone()], None)
+            .await?;
+        assert!(
+            default_collection.is_locked().await?,
+            "Collection should be locked"
+        );
+
+        // Unlock with new password via D-Bus
+        let unlock_dbus = setup.create_dbus_secret(new_password)?;
+        internal_proxy
+            .unlock_with_master_password(&collection_path.as_ref(), unlock_dbus.into())
+            .await?;
+
+        assert!(
+            !default_collection.is_locked().await?,
+            "Collection should be unlocked with new password"
+        );
 
         Ok(())
     }
