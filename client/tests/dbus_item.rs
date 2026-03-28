@@ -1,3 +1,4 @@
+use futures_util::StreamExt;
 use oo7::dbus::Service;
 
 #[tokio::test]
@@ -323,4 +324,173 @@ async fn deleted_error() {
         item.delete(None).await,
         Err(oo7::dbus::Error::Deleted)
     ));
+}
+
+#[tokio::test]
+#[cfg(feature = "tokio")]
+async fn lock_unlock() {
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
+    let collection = service.default_collection().await.unwrap();
+
+    let secret = oo7::Secret::text("test secret");
+    let item = collection
+        .create_item("Lock Test", &[("test", "lock-unlock")], secret, true, None)
+        .await
+        .unwrap();
+
+    // Item should start unlocked
+    assert!(!item.is_locked().await.unwrap());
+
+    // Lock the item
+    item.lock(None).await.unwrap();
+    assert!(item.is_locked().await.unwrap());
+
+    // Unlock the item
+    item.unlock(None).await.unwrap();
+    assert!(!item.is_locked().await.unwrap());
+
+    item.delete(None).await.unwrap();
+}
+
+#[tokio::test]
+#[cfg(feature = "tokio")]
+async fn item_created_signal() {
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
+    let collection = service.default_collection().await.unwrap();
+
+    // Setup signal stream before creating item
+    let created_stream = collection.receive_item_created().await.unwrap();
+    tokio::pin!(created_stream);
+
+    // Create an item in a separate task
+    let collection_clone = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap()
+        .default_collection()
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        let _ = collection_clone
+            .create_item(
+                "Signal Test",
+                &[("test", "signals")],
+                oo7::Secret::text("test"),
+                true,
+                None,
+            )
+            .await;
+    });
+
+    // Wait for the signal
+    tokio::select! {
+        Some(item) = created_stream.next() => {
+            assert_eq!(item.label().await.unwrap(), "Signal Test");
+            item.delete(None).await.unwrap();
+        }
+        _ = tokio::time::sleep(tokio::time::Duration::from_secs(2)) => {
+            panic!("Timeout waiting for item created signal");
+        }
+    }
+}
+
+#[tokio::test]
+#[cfg(feature = "tokio")]
+async fn item_changed_signal() {
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
+    let collection = service.default_collection().await.unwrap();
+
+    let item = collection
+        .create_item(
+            "Change Test",
+            &[("test", "change-signal")],
+            oo7::Secret::text("test"),
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    // Setup signal stream
+    let changed_stream = collection.receive_item_changed().await.unwrap();
+    tokio::pin!(changed_stream);
+
+    // Get a path reference before moving
+    let item_path = item.path().to_owned();
+
+    // Modify the item in a separate task
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        let _ = item.set_label("Modified Label").await;
+    });
+
+    // Wait for the signal
+    tokio::select! {
+        Some(changed_item) = changed_stream.next() => {
+            assert_eq!(changed_item.label().await.unwrap(), "Modified Label");
+            assert_eq!(changed_item.path(), &item_path);
+            changed_item.delete(None).await.unwrap();
+        }
+        _ = tokio::time::sleep(tokio::time::Duration::from_secs(2)) => {
+            panic!("Timeout waiting for item changed signal");
+        }
+    }
+}
+
+#[tokio::test]
+#[cfg(feature = "tokio")]
+async fn item_deleted_signal() {
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
+    let collection = service.default_collection().await.unwrap();
+
+    let item = collection
+        .create_item(
+            "Delete Test",
+            &[("test", "delete-signal")],
+            oo7::Secret::text("test"),
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    // Setup signal stream
+    let deleted_stream = collection.receive_item_deleted().await.unwrap();
+    tokio::pin!(deleted_stream);
+
+    // Delete the item in a separate task
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        let _ = item.delete(None).await;
+    });
+
+    // Wait for the signal
+    tokio::select! {
+        Some(_deleted_path) = deleted_stream.next() => {
+            // Signal received successfully
+        }
+        _ = tokio::time::sleep(tokio::time::Duration::from_secs(2)) => {
+            panic!("Timeout waiting for item deleted signal");
+        }
+    }
 }

@@ -39,6 +39,7 @@ const DEFAULT_COLLECTION_ALIAS_PATH: ObjectPath<'static> =
 /// Prompter type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrompterType {
+    #[allow(clippy::upper_case_acronyms)]
     GNOME,
     Plasma,
 }
@@ -510,6 +511,7 @@ impl Service {
         Ok(())
     }
 
+    #[cfg(any(test, feature = "test-util"))]
     pub async fn run_with_connection(
         connection: zbus::Connection,
         data_dir: std::path::PathBuf,

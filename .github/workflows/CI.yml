@@ -110,16 +110,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - name: Clippy workspace (default features)
+        run: cargo clippy --workspace -- -D warnings
       - name: Clippy client (tracing / async-std / native crypto)
         run: cargo clippy -p oo7 --no-default-features --features tracing,async-std,native_crypto,schema -- -D warnings
       - name: Clippy client (tracing / tokio / OpenSSL)
         run: cargo clippy -p oo7 --no-default-features --features tracing,tokio,openssl_crypto,schema -- -D warnings
-      - name: Clippy oo7-daemon binary (default features)
-        run: cargo clippy -p oo7-daemon --bin oo7-daemon -- -D warnings
-      - name: Clippy oo7-daemon binary (OpenSSL)
-        run: cargo clippy -p oo7-daemon --bin oo7-daemon --no-default-features --features openssl_crypto -- -D warnings
-      - name: Clippy other workspace members
-        run: cargo clippy -p oo7-cli -p oo7-pam -p oo7-portal -p cargo-credential-oo7 -p oo7-macros -- -D warnings
 
   meson:
     name: Meson
