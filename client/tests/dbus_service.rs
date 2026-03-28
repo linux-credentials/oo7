@@ -2,9 +2,13 @@ use oo7::dbus::Service;
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
-#[ignore = "Requires prompting"]
 async fn create_collection() {
-    let service = Service::new().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service
         .create_collection("somelabel", None, None)
         .await
@@ -27,7 +31,12 @@ async fn create_collection() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn default_collections() {
-    let service = Service::new().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
 
     assert!(service.default_collection().await.is_ok());
     assert!(service.session_collection().await.is_ok());
@@ -36,13 +45,23 @@ async fn default_collections() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn encrypted_session() {
-    let service = Service::encrypted().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::encrypted_session(true)
+        .await
+        .unwrap();
+    let service = Service::encrypted_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     assert!(service.default_collection().await.is_ok());
 }
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn plain_session() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     assert!(service.default_collection().await.is_ok());
 }

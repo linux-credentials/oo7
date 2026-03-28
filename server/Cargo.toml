@@ -10,6 +10,15 @@ repository.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[[bin]]
+name = "oo7-daemon"
+path = "src/main.rs"
+
+[lib]
+name = "oo7_server"
+path = "src/lib.rs"
+test = false
+
 [dependencies]
 ashpd = {workspace = true, features = ["backend", "secret", "tracing"]}
 base64 = {version = "0.22", optional = true}
@@ -34,8 +43,10 @@ tracing = "0.1"
 tracing-subscriber.workspace = true
 zbus = { workspace = true, features = ["p2p"] }
 zeroize.workspace = true
+tempfile = { workspace = true, optional = true }
 
 [features]
+test-util = ["dep:tempfile"]
 default = ["native_crypto"]
 native_crypto = ["gnome_native_crypto", "plasma_native_crypto"]
 openssl_crypto = ["gnome_openssl_crypto", "plasma_openssl_crypto"]

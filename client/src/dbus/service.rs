@@ -49,11 +49,25 @@ impl Service {
     /// Create a new instance of the Service, an encrypted communication would
     /// be attempted first and would fall back to a plain one if that fails.
     pub async fn new() -> Result<Self, Error> {
-        let service = match Self::encrypted().await {
+        let cnx = zbus::connection::Builder::session()?
+            .method_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .await?;
+        Self::new_with_connection(&cnx).await
+    }
+
+    /// Create a new instance of the Service with a custom connection.
+    ///
+    /// An encrypted communication would be attempted first and would fall back
+    /// to a plain one if that fails.
+    pub async fn new_with_connection(cnx: &zbus::Connection) -> Result<Self, Error> {
+        let service = match Self::encrypted_with_connection(cnx).await {
             Ok(service) => Ok(service),
-            Err(Error::ZBus(zbus::Error::MethodError(..))) => Self::plain().await,
+            Err(Error::ZBus(zbus::Error::MethodError(..))) => {
+                Self::plain_with_connection(cnx).await
+            }
             Err(Error::Service(ServiceError::ZBus(zbus::Error::MethodError(..)))) => {
-                Self::plain().await
+                Self::plain_with_connection(cnx).await
             }
             Err(e) => Err(e),
         }?;
@@ -62,22 +76,41 @@ impl Service {
 
     /// Create a new instance of the Service with plain algorithm.
     pub async fn plain() -> Result<Self, Error> {
-        Self::with_algorithm(Algorithm::Plain).await
-    }
-
-    /// Create a new instance of the Service with encrypted algorithm.
-    pub async fn encrypted() -> Result<Self, Error> {
-        Self::with_algorithm(Algorithm::Encrypted).await
-    }
-
-    /// Create a new instance of the Service.
-    async fn with_algorithm(algorithm: Algorithm) -> Result<Self, Error> {
         let cnx = zbus::connection::Builder::session()?
             .method_timeout(std::time::Duration::from_secs(30))
             .build()
             .await?;
+        Self::plain_with_connection(&cnx).await
+    }
 
-        let service = Arc::new(api::Service::new(&cnx).await?);
+    /// Create a new instance of the Service with plain algorithm and a custom
+    /// connection.
+    pub async fn plain_with_connection(cnx: &zbus::Connection) -> Result<Self, Error> {
+        Self::with_algorithm_and_connection(Algorithm::Plain, cnx).await
+    }
+
+    /// Create a new instance of the Service with encrypted algorithm.
+    pub async fn encrypted() -> Result<Self, Error> {
+        let cnx = zbus::connection::Builder::session()?
+            .method_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .await?;
+        Self::encrypted_with_connection(&cnx).await
+    }
+
+    /// Create a new instance of the Service with encrypted algorithm and a
+    /// custom connection.
+    pub async fn encrypted_with_connection(cnx: &zbus::Connection) -> Result<Self, Error> {
+        Self::with_algorithm_and_connection(Algorithm::Encrypted, cnx).await
+    }
+
+    /// Create a new instance of the Service with a specific algorithm and
+    /// connection.
+    async fn with_algorithm_and_connection(
+        algorithm: Algorithm,
+        cnx: &zbus::Connection,
+    ) -> Result<Self, Error> {
+        let service = Arc::new(api::Service::new(cnx).await?);
 
         let (aes_key, session) = match algorithm {
             Algorithm::Plain => {

@@ -1082,6 +1082,7 @@ dependencies = [
  "md-5",
  "num",
  "num-bigint-dig",
+ "oo7-daemon",
  "oo7-macros",
  "openssl",
  "pbkdf2",

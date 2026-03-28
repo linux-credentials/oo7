@@ -3,7 +3,12 @@ use oo7::dbus::Service;
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn label_mutation() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let secret = oo7::Secret::text("test secret");
@@ -33,7 +38,12 @@ async fn label_mutation() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn secret_mutation() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let original_secret = oo7::Secret::text("original secret");
@@ -62,7 +72,12 @@ async fn secret_mutation() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn secret_mutation_encrypted() {
-    let service = Service::encrypted().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::encrypted_session(true)
+        .await
+        .unwrap();
+    let service = Service::encrypted_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let original_secret = oo7::Secret::text("original encrypted secret");
@@ -91,7 +106,12 @@ async fn secret_mutation_encrypted() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn attributes_mutation() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let secret = oo7::Secret::text("test secret");
@@ -134,7 +154,12 @@ async fn attributes_mutation() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn text_secret_type() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let text_secret = oo7::Secret::text("text password");
@@ -156,7 +181,12 @@ async fn text_secret_type() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn blob_secret_type() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let blob_secret = oo7::Secret::blob(b"binary data");
@@ -182,7 +212,12 @@ async fn blob_secret_type() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn timestamps() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let secret = oo7::Secret::text("timestamp test");
@@ -220,7 +255,12 @@ async fn timestamps() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn deleted_error() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let attributes = &[("test", "deleted-error")];

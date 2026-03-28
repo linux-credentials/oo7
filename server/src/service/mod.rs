@@ -38,7 +38,7 @@ const DEFAULT_COLLECTION_ALIAS_PATH: ObjectPath<'static> =
 
 /// Prompter type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PrompterType {
+pub enum PrompterType {
     GNOME,
     Plasma,
 }
@@ -106,13 +106,13 @@ impl Service {
         let sender = if let Some(s) = header.sender() {
             s.to_owned()
         } else {
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-util"))]
             {
                 // For p2p test connections, use a dummy sender since p2p connections
                 // don't have a bus to assign unique names
                 UniqueName::try_from(":p2p.test").unwrap().into()
             }
-            #[cfg(not(test))]
+            #[cfg(not(any(test, feature = "test-util")))]
             {
                 return Err(custom_service_error("Failed to get sender from header."));
             }
@@ -510,7 +510,6 @@ impl Service {
         Ok(())
     }
 
-    #[cfg(test)]
     pub async fn run_with_connection(
         connection: zbus::Connection,
         data_dir: std::path::PathBuf,

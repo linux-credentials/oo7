@@ -38,21 +38,36 @@ async fn create_item(service: Service, encrypted: bool) {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn create_plain_item() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     create_item(service, false).await;
 }
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn create_encrypted_item() {
-    let service = Service::encrypted().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::encrypted_session(true)
+        .await
+        .unwrap();
+    let service = Service::encrypted_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     create_item(service, true).await;
 }
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn attribute_search_patterns() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let secret = oo7::Secret::text("search test");
@@ -128,7 +143,12 @@ async fn attribute_search_patterns() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn items() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.default_collection().await.unwrap();
 
     let secret = oo7::Secret::text("items test");
@@ -172,7 +192,12 @@ async fn items() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn label_mutation() {
-    let service = Service::plain().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     let collection = service.session_collection().await.unwrap();
 
     let initial_label = collection.label().await.unwrap();

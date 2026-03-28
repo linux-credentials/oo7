@@ -7,7 +7,9 @@ use tempfile::tempdir;
 #[cfg(feature = "tokio")]
 use tokio::sync::RwLock;
 
-async fn all_backends(temp_dir: tempfile::TempDir) -> Vec<Keyring> {
+async fn all_backends(
+    temp_dir: tempfile::TempDir,
+) -> (oo7_server::tests::TestServiceSetup, Vec<Keyring>) {
     let mut backends = Vec::new();
 
     let keyring_path = temp_dir.path().join("test.keyring");
@@ -21,19 +23,24 @@ async fn all_backends(temp_dir: tempfile::TempDir) -> Vec<Keyring> {
 
     backends.push(keyring);
 
-    let service = dbus::Service::new().await.unwrap();
+    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        .await
+        .unwrap();
+    let service = dbus::Service::plain_with_connection(&setup.client_conn)
+        .await
+        .unwrap();
     if let Ok(collection) = service.default_collection().await {
         backends.push(Keyring::DBus(collection));
     }
 
-    backends
+    (setup, backends)
 }
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn create_and_retrieve_items() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -87,7 +94,7 @@ async fn create_and_retrieve_items() {
 #[cfg(feature = "tokio")]
 async fn delete_items() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -134,7 +141,7 @@ async fn delete_items() {
 #[cfg(feature = "tokio")]
 async fn item_update_label() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -177,7 +184,7 @@ async fn item_update_label() {
 #[cfg(feature = "tokio")]
 async fn item_update_attributes() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -234,7 +241,7 @@ async fn item_update_attributes() {
 #[cfg(feature = "tokio")]
 async fn item_update_secret() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -271,7 +278,7 @@ async fn item_update_secret() {
 #[cfg(feature = "tokio")]
 async fn item_delete() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -320,7 +327,7 @@ async fn item_delete() {
 #[cfg(feature = "tokio")]
 async fn item_replace() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -355,7 +362,7 @@ async fn item_replace() {
 #[cfg(feature = "tokio")]
 async fn item_timestamps() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -391,7 +398,7 @@ async fn item_timestamps() {
 #[cfg(feature = "tokio")]
 async fn item_is_locked() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -424,7 +431,7 @@ async fn item_is_locked() {
 #[cfg(feature = "tokio")]
 async fn file_keyring_lock_unlock() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
     let keyring = &backends[0];
 
     assert!(!keyring.is_locked().await.unwrap());
@@ -458,7 +465,7 @@ async fn file_keyring_lock_unlock() {
 #[cfg(feature = "tokio")]
 async fn file_item_lock_unlock() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
     let keyring = &backends[0];
 
     keyring
@@ -496,7 +503,7 @@ async fn file_item_lock_unlock() {
 #[cfg(feature = "tokio")]
 async fn file_locked_item_operations_fail() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
     let keyring = &backends[0];
 
     keyring
@@ -551,7 +558,7 @@ async fn file_locked_item_operations_fail() {
 #[cfg(feature = "tokio")]
 async fn file_locked_keyring_operations_fail() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
     let keyring = &backends[0];
 
     keyring
@@ -605,7 +612,7 @@ async fn file_locked_keyring_operations_fail() {
 #[cfg(feature = "tokio")]
 async fn file_item_lock_with_locked_keyring_fails() {
     let temp_dir = tempdir().unwrap();
-    let backends = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(temp_dir).await;
     let keyring = &backends[0];
 
     keyring

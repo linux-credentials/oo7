@@ -33,7 +33,7 @@ async fn create_p2p_connection()
     Ok((server_conn, client_conn))
 }
 
-pub(crate) struct TestServiceSetup {
+pub struct TestServiceSetup {
     pub server: Service,
     pub client_conn: zbus::Connection,
     pub service_api: dbus::api::Service,
@@ -43,16 +43,16 @@ pub(crate) struct TestServiceSetup {
     pub keyring_secret: Option<oo7::Secret>,
     pub aes_key: Option<Arc<oo7::Key>>,
     #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-    pub mock_prompter: MockPrompterService,
+    pub(crate) mock_prompter: MockPrompterService,
     #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-    pub mock_prompter_plasma: MockPrompterServicePlasma,
+    pub(crate) mock_prompter_plasma: MockPrompterServicePlasma,
     // Keep temp dir alive for duration of test
     _temp_dir: tempfile::TempDir,
 }
 
 impl TestServiceSetup {
     /// Get the default/Login collection
-    pub(crate) async fn default_collection(
+    pub async fn default_collection(
         &self,
     ) -> Result<&dbus::api::Collection, Box<dyn std::error::Error>> {
         for collection in &self.collections {
@@ -64,7 +64,7 @@ impl TestServiceSetup {
         Err("Default collection not found".into())
     }
 
-    pub(crate) async fn plain_session(
+    pub async fn plain_session(
         with_default_collection: bool,
     ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
         let (server_conn, client_conn) = create_p2p_connection().await?;
@@ -131,7 +131,7 @@ impl TestServiceSetup {
         })
     }
 
-    pub(crate) async fn encrypted_session(
+    pub async fn encrypted_session(
         with_default_collection: bool,
     ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
         let (server_conn, client_conn) = create_p2p_connection().await?;

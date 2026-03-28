@@ -47,6 +47,7 @@ zvariant.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+oo7-daemon = { path = "../server", features = ["test-util"], default-features = false, version = "0.6.0-alpha" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
@@ -73,8 +74,12 @@ native_crypto = [
     "dep:pbkdf2",
     "dep:sha2",
     "dep:subtle",
+    "oo7-daemon/native_crypto",
 ]
-openssl_crypto = ["dep:openssl"]
+openssl_crypto = [
+    "dep:openssl",
+    "oo7-daemon/openssl_crypto",
+]
 tracing = ["dep:tracing", "ashpd/tracing"]
 schema = ["dep:oo7-macros"]
 
