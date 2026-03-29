@@ -254,7 +254,9 @@ impl TestServiceSetup {
             .await?;
 
         let discovered = service.discover_keyrings(secret.clone()).await?;
-        service.initialize(server_conn, discovered, false).await?;
+        service
+            .initialize(server_conn, discovered, secret.clone(), false)
+            .await?;
 
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
         let mock_prompter = {
