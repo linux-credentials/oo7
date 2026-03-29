@@ -391,16 +391,7 @@ impl Collection {
         let modified = keyring.modified_time().await;
         let created = keyring.created_time().await.unwrap_or(modified);
 
-        let sanitized_label = label
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>();
+        let sanitized_label = label.replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
 
         Self {
             items: Default::default(),
