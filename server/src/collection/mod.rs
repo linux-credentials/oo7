@@ -386,12 +386,18 @@ impl Collection {
     ) -> zbus::Result<()>;
 }
 
+fn collection_path(label: &str) -> Result<OwnedObjectPath, zvariant::Error> {
+    let sanitized_label = label.replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
+
+    OwnedObjectPath::try_from(format!(
+        "/org/freedesktop/secrets/collection/{sanitized_label}"
+    ))
+}
+
 impl Collection {
     pub async fn new(label: &str, alias: &str, service: Service, keyring: Keyring) -> Self {
         let modified = keyring.modified_time().await;
         let created = keyring.created_time().await.unwrap_or(modified);
-
-        let sanitized_label = label.replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
 
         Self {
             items: Default::default(),
@@ -399,10 +405,7 @@ impl Collection {
             modified: Arc::new(Mutex::new(modified)),
             alias: Arc::new(Mutex::new(alias.to_owned())),
             item_index: Arc::new(RwLock::new(0)),
-            path: OwnedObjectPath::try_from(format!(
-                "/org/freedesktop/secrets/collection/{sanitized_label}"
-            ))
-            .expect("Sanitized label should always produce valid object path"),
+            path: collection_path(label).expect("Label should produce a valid object path"),
             created,
             service,
             keyring: Arc::new(RwLock::new(Some(keyring))),
