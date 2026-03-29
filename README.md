@@ -36,22 +36,26 @@ Directly running the binary is possible, but without a `oo7-portal.portal` file,
 First build the services on its subdirectory:
 
 ```sh
-cd oo7-portal
+cd portal
 meson setup --prefix=/usr _build
 meson compile -C _build
 DESTDIR=oo7-extension meson install -C _build
 ```
 
-This will create a `oo7-extension` directory under `oo7-portal/_build`, which
-can be moved to `/run/extensions`, afterwards extensions can be reloaded via
+This will create a `oo7-extension` directory under `portal/_build`.
+
+> [!WARNING]
+> In systems with SELinux, the sysext directory must be relabeled with their system context so that it doesn't break.
+> ```
+> setfiles -r "_build/oo7-extension" "/etc/selinux/targeted/contexts/files/file_contexts" "_build/oo7-extension"
+> chcon --user=system_u --recursive "_build/oo7-extension"
+> ```
+
+Move the build directory to a directory recognized by `systemd-sysext` like `/run/extensions`, afterwards extensions can be reloaded via
 
 ```sh
 systemd-sysext refresh --force
 ```
-
-> [!WARNING]
-> In Fedora Silverblue one needs to disable SELinux via `setenforce 0` before
-> loading any system extensions.
 
 The portal can be then started with:
 ```sh
