@@ -186,7 +186,7 @@ impl TestServiceSetup {
         let session = Arc::new(session);
 
         let aes_key =
-            oo7::Key::generate_aes_key(&client_private_key, &server_public_key.as_ref().unwrap())?;
+            oo7::Key::generate_aes_key(&client_private_key, server_public_key.as_ref().unwrap())?;
 
         let collections = service_api.collections().await?;
 
@@ -645,7 +645,6 @@ pub(crate) struct MockPrompterServicePlasma {
 }
 
 #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-
 impl MockPrompterServicePlasma {
     pub fn new() -> Self {
         Self {
@@ -734,7 +733,7 @@ impl MockPrompterServicePlasma {
         let connection = connection.clone();
 
         // Reject case
-        if *self.should_accept.lock().await == false {
+        if !*self.should_accept.lock().await {
             tokio::spawn(async move {
                 tracing::debug!(
                     "MockPrompterServicePlasma: dismissing prompt for {}",

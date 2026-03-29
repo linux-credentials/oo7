@@ -417,7 +417,7 @@ async fn delete_locked_item_with_prompt_impl(
     let items = default_collection.items().await?;
     assert_eq!(items.len(), 1, "Should have one item");
 
-    setup.lock_collection(&default_collection).await?;
+    setup.lock_collection(default_collection).await?;
 
     assert!(item.is_locked().await?, "Item should be locked");
 

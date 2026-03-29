@@ -311,7 +311,7 @@ mod tests {
         // Lock the collection
         setup
             .service_api
-            .lock(&[collection_path.clone()], None)
+            .lock(std::slice::from_ref(&collection_path), None)
             .await?;
 
         // Verify it's locked
@@ -369,7 +369,7 @@ mod tests {
         // Verify the password was changed by locking and unlocking with new password
         setup
             .service_api
-            .lock(&[collection_path.clone()], None)
+            .lock(std::slice::from_ref(&collection_path), None)
             .await?;
         assert!(
             default_collection.is_locked().await?,
@@ -429,7 +429,7 @@ mod tests {
         // Verify the password was changed by locking and unlocking with new password
         setup
             .service_api
-            .lock(&[collection_path.clone()], None)
+            .lock(std::slice::from_ref(&collection_path), None)
             .await?;
         assert!(
             default_collection.is_locked().await?,
@@ -474,7 +474,7 @@ mod tests {
         // Lock the collection
         setup
             .service_api
-            .lock(&[collection_path.clone()], None)
+            .lock(std::slice::from_ref(&collection_path), None)
             .await?;
 
         // Verify it's locked before attempting unlock
