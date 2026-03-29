@@ -394,7 +394,7 @@ impl Collection {
         let sanitized_label = label
             .chars()
             .map(|c| {
-                if c.is_alphanumeric() || c == '_' {
+                if c.is_ascii_alphanumeric() || c == '_' {
                     c
                 } else {
                     '_'
