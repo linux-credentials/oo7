@@ -772,3 +772,14 @@ async fn locked_collection_operations() -> Result<(), Box<dyn std::error::Error>
 
     Ok(())
 }
+
+#[test]
+fn test_collection_path() {
+    use crate::collection::collection_path;
+
+    assert!(collection_path("").is_err());
+    assert_eq!(
+        collection_path("bär").unwrap().as_str(),
+        "/org/freedesktop/secrets/collection/b_r"
+    );
+}
