@@ -415,10 +415,10 @@ impl Service {
             .await?;
 
         // Discover existing keyrings
-        let discovered_keyrings = service.discover_keyrings(secret).await?;
+        let discovered_keyrings = service.discover_keyrings(secret.clone()).await?;
 
         service
-            .initialize(connection, discovered_keyrings, true)
+            .initialize(connection, discovered_keyrings, secret, true)
             .await?;
 
         // Start PAM listener
@@ -458,7 +458,7 @@ impl Service {
             )
             .await?;
 
-        let default_keyring = if let Some(secret) = secret {
+        let default_keyring = if let Some(secret) = secret.clone() {
             vec![(
                 "Login".to_owned(),
                 oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
@@ -469,7 +469,7 @@ impl Service {
         };
 
         service
-            .initialize(connection, default_keyring, false)
+            .initialize(connection, default_keyring, secret, false)
             .await?;
         Ok(service)
     }
@@ -686,6 +686,7 @@ impl Service {
         &self,
         connection: zbus::Connection,
         mut discovered_keyrings: Vec<(String, String, Keyring)>, // (name, alias, keyring)
+        secret: Option<Secret>,
         auto_create_default: bool,
     ) -> Result<(), Error> {
         self.connection.set(connection.clone()).unwrap();
@@ -701,19 +702,32 @@ impl Service {
         if !has_default && auto_create_default {
             tracing::info!("No default collection found, creating 'Login' keyring");
 
-            let locked_keyring = LockedKeyring::open(Self::LOGIN_ALIAS)
-                .await
-                .inspect_err(|e| {
-                    tracing::error!("Failed to create default Login keyring: {}", e);
-                })?;
+            let keyring = if let Some(secret) = secret {
+                UnlockedKeyring::open(Self::LOGIN_ALIAS, secret)
+                    .await
+                    .map(Keyring::Unlocked)
+            } else {
+                LockedKeyring::open(Self::LOGIN_ALIAS)
+                    .await
+                    .map(Keyring::Locked)
+            };
 
+            let keyring = keyring.inspect_err(|e| {
+                tracing::error!("Failed to create default Login keyring: {}", e);
+            })?;
+
+            let is_locked = if keyring.is_locked() {
+                "locked"
+            } else {
+                "unlocked"
+            };
             discovered_keyrings.push((
                 "Login".to_owned(),
                 oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
-                Keyring::Locked(locked_keyring),
+                keyring,
             ));
 
-            tracing::info!("Created default 'Login' collection (locked)");
+            tracing::info!("Created default 'Login' collection ({})", is_locked);
         }
 
         // Set up discovered collections
