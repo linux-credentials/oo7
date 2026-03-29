@@ -111,7 +111,7 @@ impl Service {
             {
                 // For p2p test connections, use a dummy sender since p2p connections
                 // don't have a bus to assign unique names
-                UniqueName::try_from(":p2p.test").unwrap().into()
+                UniqueName::try_from(":p2p.test").unwrap()
             }
             #[cfg(not(any(test, feature = "test-util")))]
             {

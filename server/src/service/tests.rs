@@ -106,7 +106,8 @@ async fn get_secrets() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     // Test with empty items list - edge case
-    let secrets = setup.service_api.secrets(&vec![], &setup.session).await?;
+    #[allow(clippy::mutable_key_type)]
+    let secrets = setup.service_api.secrets(&[], &setup.session).await?;
     assert!(
         secrets.is_empty(),
         "Should return empty secrets for empty items list"
@@ -125,6 +126,7 @@ async fn get_secrets() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get secrets for both items
     let item_paths = vec![item1.clone(), item2.clone()];
+    #[allow(clippy::mutable_key_type)]
     let secrets = setup
         .service_api
         .secrets(&item_paths, &setup.session)
@@ -178,6 +180,7 @@ async fn get_secrets_multiple_collections() -> Result<(), Box<dyn std::error::Er
 
     // Get secrets for both items from different collections
     let item_paths = vec![item1.clone(), item2.clone()];
+    #[allow(clippy::mutable_key_type)]
     let secrets = setup
         .service_api
         .secrets(&item_paths, &setup.session)
@@ -399,6 +402,7 @@ async fn get_secrets_with_non_existent_items() -> Result<(), Box<dyn std::error:
 
     // Request secrets for both real and fake items
     let item_paths = vec![item1.clone(), fake_item];
+    #[allow(clippy::mutable_key_type)]
     let secrets = setup
         .service_api
         .secrets(&item_paths, &setup.session)

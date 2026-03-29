@@ -574,7 +574,7 @@ async fn delete_locked_collection_with_prompt_impl(
     setup.server.set_prompter_type(prompter_type).await;
     let default_collection = setup.default_collection().await?;
 
-    setup.lock_collection(&default_collection).await?;
+    setup.lock_collection(default_collection).await?;
 
     assert!(
         default_collection.is_locked().await?,
@@ -636,7 +636,7 @@ async fn unlock_retry_impl(prompter_type: PrompterType) -> Result<(), Box<dyn st
         .create_item("Test Item", &[("app", "test")], &dbus_secret, false, None)
         .await?;
 
-    setup.lock_collection(&default_collection).await?;
+    setup.lock_collection(default_collection).await?;
 
     assert!(
         default_collection.is_locked().await?,

@@ -410,7 +410,7 @@ async fn comprehensive_search_patterns() -> Result<(), Error> {
     let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
 
     // Create diverse test data
-    let test_items = vec![
+    let test_items = [
         (
             "Email Password",
             vec![
@@ -596,7 +596,7 @@ async fn secret_types_handling() -> Result<(), Error> {
         .create_item(
             "Binary Secret",
             &[("type", "binary")],
-            Secret::blob(&[0x00, 0x01, 0x02, 0xFF]),
+            Secret::blob([0x00, 0x01, 0x02, 0xFF]),
             false,
         )
         .await?;
