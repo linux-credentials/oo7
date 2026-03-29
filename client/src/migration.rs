@@ -7,11 +7,7 @@ use crate::{AsAttributes, Result, dbus::Service, file::UnlockedKeyring};
 /// Secret Service.
 pub async fn migrate(attributes: Vec<impl AsAttributes>, replace: bool) -> Result<()> {
     let service = Service::new().await?;
-    let secret = crate::Secret::from(
-        ashpd::desktop::secret::retrieve()
-            .await
-            .map_err(crate::file::Error::from)?,
-    );
+    let secret = crate::Secret::sandboxed().await?;
     let file_backend =
         match UnlockedKeyring::load(crate::file::api::Keyring::default_path()?, secret).await {
             Ok(file) => Ok(file),

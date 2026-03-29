@@ -31,11 +31,7 @@ impl Keyring {
             #[cfg(feature = "tracing")]
             tracing::debug!("Application is sandboxed, using the file backend");
 
-            let secret = Secret::from(
-                ashpd::desktop::secret::retrieve()
-                    .await
-                    .map_err(crate::file::Error::from)?,
-            );
+            let secret = Secret::sandboxed().await?;
             match file::UnlockedKeyring::load(
                 crate::file::api::Keyring::default_path()?,
                 secret.clone(),
@@ -81,12 +77,7 @@ impl Keyring {
                     tracing::debug!("Unlocking file backend keyring");
 
                     // Retrieve secret from portal
-                    let secret = Secret::from(
-                        ashpd::desktop::secret::retrieve()
-                            .await
-                            .map_err(crate::file::Error::from)?,
-                    );
-
+                    let secret = Secret::sandboxed().await?;
                     let unlocked = locked.unlock(secret).await.map_err(crate::Error::File)?;
                     *kg = Some(file::Keyring::Unlocked(unlocked));
                 } else {

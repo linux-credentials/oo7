@@ -79,6 +79,16 @@ impl Secret {
         Ok(Self::blob(secret))
     }
 
+    /// Get the sandboxed app secret if the app is sandboxed using
+    /// org.freedesktop.portal.Secret portal.
+    pub async fn sandboxed() -> Result<Self, crate::file::Error> {
+        Ok(Self::blob(
+            ashpd::desktop::secret::retrieve()
+                .await
+                .map_err(crate::file::Error::from)?,
+        ))
+    }
+
     /// Create a text secret, stored with `text/plain` content type.
     pub fn text(value: impl AsRef<str>) -> Self {
         Self::Text(value.as_ref().to_owned())
