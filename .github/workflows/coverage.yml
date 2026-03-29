@@ -53,23 +53,6 @@ jobs:
         with:
           tool: grcov
 
-      - name: Install system dependencies and setup D-Bus
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev pkg-config gnome-keyring dbus-x11 jq
-
-          # Start D-Bus session
-          mkdir -p ~/.local/share/keyrings
-          eval $(dbus-launch --sh-syntax)
-          export DBUS_SESSION_BUS_ADDRESS
-          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
-
-          # Initialize and unlock the default keyring
-          printf '\n' | gnome-keyring-daemon --unlock --daemonize --login
-
-          # Give the service time to start
-          sleep 3
-
       - name: Run coverage script
         run: |
           chmod +x coverage.sh

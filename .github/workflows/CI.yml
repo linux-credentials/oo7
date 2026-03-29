@@ -54,23 +54,6 @@ jobs:
         run: |
           cargo build --manifest-path ./portal/Cargo.toml
 
-      - name: Setup D-Bus and Secret Service for local tests
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gnome-keyring dbus-x11
-
-          # Start D-Bus session
-          mkdir -p ~/.local/share/keyrings
-          eval $(dbus-launch --sh-syntax)
-          export DBUS_SESSION_BUS_ADDRESS
-          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
-
-          # Initialize and unlock the default keyring
-          printf '\n' | gnome-keyring-daemon --unlock --daemonize --login
-
-          # Give the service time to start
-          sleep 3
-
       - name: Test (native)
         run: |
           cargo test --manifest-path ./client/Cargo.toml --no-default-features --features tokio --features native_crypto --features schema
