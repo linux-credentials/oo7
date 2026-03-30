@@ -53,7 +53,7 @@ pub struct PamListener {
 
 impl PamListener {
     pub fn new(service: Service) -> Self {
-        let uid = unsafe { libc::getuid() };
+        let uid = rustix::process::getuid().as_raw();
         let socket_path = service
             .pam_socket
             .clone()
@@ -108,7 +108,7 @@ impl PamListener {
         // 1. Root (UID 0) as PAM modules run as root during authentication
         // 2. Same UID as us
         let peer_cred = stream.peer_cred()?;
-        let our_uid = unsafe { libc::getuid() };
+        let our_uid = rustix::process::getuid().as_raw();
         let peer_uid = peer_cred.uid();
 
         if peer_uid != 0 && peer_uid != our_uid {
