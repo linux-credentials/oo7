@@ -19,48 +19,83 @@ use crate::{AsAttributes, Result, Secret, dbus, file};
 #[derive(Debug)]
 pub enum Keyring {
     #[doc(hidden)]
-    File(Arc<RwLock<Option<file::Keyring>>>),
+    File(Arc<RwLock<Option<file::Keyring>>>, Secret),
     #[doc(hidden)]
     DBus(dbus::Collection),
 }
 
 impl Keyring {
     /// Create a new instance of the Keyring.
+    ///
+    /// Auto-detects whether the application is sandboxed and uses the
+    /// appropriate backend (file backend for sandboxed apps, D-Bus service
+    /// for host apps). Falls back to D-Bus if the secret portal is not
+    /// available.
     pub async fn new() -> Result<Self> {
         if ashpd::is_sandboxed() {
-            #[cfg(feature = "tracing")]
-            tracing::debug!("Application is sandboxed, using the file backend");
-
-            let secret = Secret::sandboxed().await?;
-            match file::UnlockedKeyring::load(
-                crate::file::api::Keyring::default_path()?,
-                secret.clone(),
-            )
-            .await
-            {
-                Ok(file) => {
-                    return Ok(Self::File(Arc::new(RwLock::new(Some(
-                        file::Keyring::Unlocked(file),
-                    )))));
-                }
-                // Do nothing in this case, we are supposed to fallback to the host keyring
-                Err(super::file::Error::Portal(ashpd::Error::PortalNotFound(_))) => {
+            match Self::sandboxed().await {
+                Ok(keyring) => Ok(keyring),
+                // Fallback to host keyring if portal is not available
+                Err(crate::Error::File(file::Error::Portal(ashpd::Error::PortalNotFound(_)))) => {
                     #[cfg(feature = "tracing")]
                     tracing::debug!(
                         "org.freedesktop.portal.Secrets is not available, falling back to the Secret Service backend"
                     );
+                    Self::host().await
                 }
-                Err(e) => {
-                    return Err(crate::Error::File(e));
-                }
-            };
+                Err(e) => Err(e),
+            }
         } else {
-            #[cfg(feature = "tracing")]
-            tracing::debug!(
-                "Application is not sandboxed, falling back to the Secret Service backend"
-            );
+            Self::host().await
         }
+    }
+
+    /// Use the file backend with secret portal (for sandboxed apps).
+    pub async fn sandboxed() -> Result<Self> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Using file backend (sandboxed mode)");
+
+        let secret = Secret::sandboxed().await?;
+        let path = crate::file::api::Keyring::default_path()?;
+        Self::sandboxed_with_path(&path, secret).await
+    }
+
+    /// Use the file backend with a custom path.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the keyring file
+    /// * `secret` - Secret to unlock the keyring (use `Secret::sandboxed()` or
+    ///   `Secret::random()` for tests)
+    pub async fn sandboxed_with_path(
+        path: impl AsRef<std::path::Path>,
+        secret: Secret,
+    ) -> Result<Self> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Using file backend with custom path");
+
+        let file = file::UnlockedKeyring::load(path, secret.clone()).await?;
+        Ok(Self::File(
+            Arc::new(RwLock::new(Some(file::Keyring::Unlocked(file)))),
+            secret,
+        ))
+    }
+
+    /// Use the D-Bus Secret Service.
+    pub async fn host() -> Result<Self> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Using D-Bus Secret Service (host mode)");
+
         let service = dbus::Service::new().await?;
+        let collection = service.default_collection().await?;
+        Ok(Self::DBus(collection))
+    }
+
+    /// Use the D-Bus Secret Service with a custom connection.
+    pub async fn host_with_connection(connection: zbus::Connection) -> Result<Self> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Using D-Bus Secret Service with custom connection (test mode)");
+
+        let service = dbus::Service::new_with_connection(&connection).await?;
         let collection = service.default_collection().await?;
         Ok(Self::DBus(collection))
     }
@@ -69,16 +104,17 @@ impl Keyring {
     pub async fn unlock(&self) -> Result<()> {
         match self {
             Self::DBus(backend) => backend.unlock(None).await?,
-            Self::File(keyring) => {
+            Self::File(keyring, secret) => {
                 let mut kg = keyring.write().await;
                 let kg_value = kg.take();
                 if let Some(file::Keyring::Locked(locked)) = kg_value {
                     #[cfg(feature = "tracing")]
                     tracing::debug!("Unlocking file backend keyring");
 
-                    // Retrieve secret from portal
-                    let secret = Secret::sandboxed().await?;
-                    let unlocked = locked.unlock(secret).await.map_err(crate::Error::File)?;
+                    let unlocked = locked
+                        .unlock(secret.clone())
+                        .await
+                        .map_err(crate::Error::File)?;
                     *kg = Some(file::Keyring::Unlocked(unlocked));
                 } else {
                     *kg = kg_value;
@@ -92,7 +128,7 @@ impl Keyring {
     pub async fn lock(&self) -> Result<()> {
         match self {
             Self::DBus(backend) => backend.lock(None).await?,
-            Self::File(keyring) => {
+            Self::File(keyring, _) => {
                 let mut kg = keyring.write().await;
                 let kg_value = kg.take();
                 if let Some(file::Keyring::Unlocked(unlocked)) = kg_value {
@@ -113,7 +149,7 @@ impl Keyring {
     pub async fn is_locked(&self) -> Result<bool> {
         match self {
             Self::DBus(collection) => collection.is_locked().await.map_err(From::from),
-            Self::File(keyring) => {
+            Self::File(keyring, _) => {
                 let keyring_guard = keyring.read().await;
                 Ok(keyring_guard
                     .as_ref()
@@ -132,7 +168,7 @@ impl Keyring {
                     item.delete(None).await?;
                 }
             }
-            Self::File(keyring) => {
+            Self::File(keyring, _) => {
                 let kg = keyring.read().await;
                 match kg.as_ref() {
                     Some(file::Keyring::Unlocked(backend)) => {
@@ -158,7 +194,7 @@ impl Keyring {
                 let items = backend.items().await?;
                 items.into_iter().map(Item::for_dbus).collect::<Vec<_>>()
             }
-            Self::File(keyring) => {
+            Self::File(keyring, _) => {
                 let kg = keyring.read().await;
                 match kg.as_ref() {
                     Some(file::Keyring::Unlocked(backend)) => {
@@ -192,7 +228,7 @@ impl Keyring {
                     .create_item(label, attributes, secret, replace, None)
                     .await?;
             }
-            Self::File(keyring) => {
+            Self::File(keyring, _) => {
                 let kg = keyring.read().await;
                 match kg.as_ref() {
                     Some(file::Keyring::Unlocked(backend)) => {
@@ -218,7 +254,7 @@ impl Keyring {
                 let items = backend.search_items(attributes).await?;
                 items.into_iter().map(Item::for_dbus).collect::<Vec<_>>()
             }
-            Self::File(keyring) => {
+            Self::File(keyring, _) => {
                 let kg = keyring.read().await;
                 match kg.as_ref() {
                     Some(file::Keyring::Unlocked(backend)) => {

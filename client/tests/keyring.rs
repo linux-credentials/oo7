@@ -14,12 +14,13 @@ async fn all_backends(
 
     let keyring_path = temp_dir.path().join("test.keyring");
     let secret = Secret::from([1, 2].into_iter().cycle().take(64).collect::<Vec<_>>());
-    let unlocked = file::UnlockedKeyring::load(&keyring_path, secret)
+    let unlocked = file::UnlockedKeyring::load(&keyring_path, secret.clone())
         .await
         .unwrap();
-    let keyring = Keyring::File(Arc::new(RwLock::new(Some(file::Keyring::Unlocked(
-        unlocked,
-    )))));
+    let keyring = Keyring::File(
+        Arc::new(RwLock::new(Some(file::Keyring::Unlocked(unlocked)))),
+        secret,
+    );
 
     backends.push(keyring);
 
@@ -448,7 +449,7 @@ async fn file_keyring_lock_unlock() {
         .await;
     assert!(matches!(result, Err(oo7::Error::File(file::Error::Locked))));
 
-    if let Keyring::File(kg) = &keyring {
+    if let Keyring::File(kg, _) = &keyring {
         let mut kg_guard = kg.write().await;
         if let Some(file::Keyring::Locked(locked)) = kg_guard.take() {
             let secret = Secret::from([1, 2].into_iter().cycle().take(64).collect::<Vec<_>>());
