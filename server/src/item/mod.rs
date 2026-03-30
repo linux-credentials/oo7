@@ -8,7 +8,7 @@ use zbus::zvariant::{ObjectPath, OwnedObjectPath};
 
 use crate::{Service, collection::Collection, error::custom_service_error};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Item {
     // Properties
     pub(super) inner: Arc<Mutex<Option<oo7::file::Item>>>,

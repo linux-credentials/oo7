@@ -19,7 +19,7 @@ use crate::{
 };
 
 #[repr(i32)]
-#[derive(Debug, Type, Serialize)]
+#[derive(Type, Serialize)]
 pub enum CallbackAction {
     Dismiss = 0,
     Keep = 1,
@@ -77,7 +77,7 @@ pub trait PlasmaPrompter {
     ) -> Result<(), ServiceError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PlasmaPrompterCallback {
     service: Service,
     prompt_path: OwnedObjectPath,

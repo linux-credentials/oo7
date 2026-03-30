@@ -24,7 +24,7 @@ use crate::{
     item,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Collection {
     // Properties
     items: Arc<Mutex<Vec<item::Item>>>,

@@ -401,7 +401,7 @@ impl TestServiceSetup {
 /// This simulates the GNOME System Prompter for testing without requiring
 /// the actual GNOME keyring prompter service to be running.
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct MockPrompterService {
     /// The password to use for unlock prompts (simulates user input)
     unlock_password: Arc<tokio::sync::Mutex<Option<oo7::Secret>>>,
@@ -634,7 +634,7 @@ impl MockPrompterService {
 /// This simulates the Plasma System Prompter for testing without requiring
 /// the actual service to be running.
 #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct MockPrompterServicePlasma {
     /// The password to use for unlock prompts (simulates user input)
     unlock_password: Arc<tokio::sync::Mutex<Option<oo7::Secret>>>,

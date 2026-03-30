@@ -25,7 +25,7 @@ enum PamOperation {
     ChangePassword = 1,
 }
 
-#[derive(Debug, Serialize, Deserialize, Type, Zeroize, ZeroizeOnDrop)]
+#[derive(Serialize, Deserialize, Type, Zeroize, ZeroizeOnDrop)]
 struct PamMessage {
     #[zeroize(skip)]
     operation: PamOperation,

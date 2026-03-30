@@ -75,19 +75,6 @@ pub struct Prompt {
     action: Arc<Mutex<Option<PromptAction>>>,
 }
 
-// Manual impl because OnceCell doesn't impl Debug
-impl std::fmt::Debug for Prompt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Prompt")
-            .field("service", &self.service)
-            .field("role", &self.role)
-            .field("path", &self.path)
-            .field("label", &self.label)
-            .field("collection", &self.collection)
-            .finish()
-    }
-}
-
 #[cfg(any(
     feature = "gnome_openssl_crypto",
     feature = "gnome_native_crypto",
@@ -114,9 +101,9 @@ impl Prompt {
                     PlasmaPrompterCallback::new(self.service.clone(), self.path.clone()).await;
                 let path = OwnedObjectPath::from(callback.path().clone());
 
-                self.plasma_callback
-                    .set(callback.clone())
-                    .expect("A prompt callback is only set once");
+                // We are sure the callback is not set at this point, so it is fine to ignore
+                // the result of set
+                let _ = self.plasma_callback.set(callback.clone());
                 self.service
                     .object_server()
                     .at(&path, callback.clone())
@@ -147,10 +134,9 @@ impl Prompt {
 
                 let path = OwnedObjectPath::from(callback.path().clone());
 
-                self.gnome_callback
-                    .set(callback.clone())
-                    .expect("A prompt callback is only set once");
-
+                // We are sure the callback is not set at this point, so it is fine to ignore
+                // the result of set
+                let _ = self.gnome_callback.set(callback.clone());
                 self.service.object_server().at(&path, callback).await?;
                 tracing::debug!("Prompt `{}` created.", self.path);
 
