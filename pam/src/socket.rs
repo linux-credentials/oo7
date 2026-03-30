@@ -54,7 +54,7 @@ pub fn send_secret_to_daemon(
         tracing::debug!("Already running as target user (UID={uid}, GID={gid})",);
         let runtime = tokio::runtime::Runtime::new().map_err(SocketError::Connect)?;
         return runtime
-            .block_on(async { send_secret_to_daemon_async(message, uid, auto_start).await });
+            .block_on(async { send_secret_to_daemon_async(message, uid, auto_start, None).await });
     }
 
     // Need to fork and switch credentials
@@ -92,8 +92,9 @@ pub fn send_secret_to_daemon(
                 }
             };
 
-            let result = runtime
-                .block_on(async { send_secret_to_daemon_async(message, uid, auto_start).await });
+            let result = runtime.block_on(async {
+                send_secret_to_daemon_async(message, uid, auto_start, None).await
+            });
 
             match result {
                 Ok(_) => unsafe { libc::_exit(0) },
@@ -189,10 +190,11 @@ async fn send_secret_to_daemon_async(
     message: PamMessage,
     uid: u32,
     auto_start: bool,
+    socket_path: Option<PathBuf>,
 ) -> Result<(), SocketError> {
-    let socket_path = std::env::var("OO7_PAM_SOCKET")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(format!("/run/user/{uid}/oo7-pam.sock")));
+    let socket_path = socket_path
+        .or_else(|| std::env::var("OO7_PAM_SOCKET").ok().map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from(format!("/run/user/{uid}/oo7-pam.sock")));
 
     tracing::debug!("Connecting to daemon socket at: {}", socket_path.display());
 
@@ -284,13 +286,9 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let socket_path = temp_dir.path().join("test.sock");
 
-        // Set the environment variable to use our test socket
-        unsafe {
-            std::env::set_var("OO7_PAM_SOCKET", socket_path.to_str().unwrap());
-        }
-
+        let socket_path_clone = socket_path.clone();
         let server = tokio::spawn(async move {
-            let listener = UnixListener::bind(&socket_path).unwrap();
+            let listener = UnixListener::bind(&socket_path_clone).unwrap();
             let (mut stream, _) = listener.accept().await.unwrap();
 
             let mut length_bytes = [0u8; 4];
@@ -309,14 +307,10 @@ mod tests {
 
         let message = PamMessage::unlock("testuser".to_string(), b"testpassword".to_vec());
 
-        let result = send_secret_to_daemon_async(message, 1000, false).await;
+        let result = send_secret_to_daemon_async(message, 1000, false, Some(socket_path)).await;
         assert!(result.is_ok());
 
         server.await?;
-
-        unsafe {
-            std::env::remove_var("OO7_PAM_SOCKET");
-        }
 
         Ok(())
     }
