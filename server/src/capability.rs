@@ -1,3 +1,5 @@
+#![allow(unsafe_code)]
+
 use rustix::{
     mm::{MlockAllFlags, mlockall},
     process::{Gid, Uid, getgid, getuid},

@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 mod capability;
 mod collection;
 mod error;

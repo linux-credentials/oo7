@@ -1,6 +1,7 @@
 // Library interface for oo7_server
 // Only expose test utilities when the test-util feature is enabled
 #![allow(unused)]
+#![deny(unsafe_code)]
 
 pub(crate) mod collection;
 pub(crate) mod error;
