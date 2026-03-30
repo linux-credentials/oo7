@@ -2,11 +2,12 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "native_crypto")]
 use subtle::ConstantTimeEq;
 use zbus::zvariant::Type;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // There is no constructor to avoid performing sanity checks, e.g. length.
 /// A message authentication code. It provides constant-time comparison when
 /// compared against another mac or against a slice of bytes.
-#[derive(Deserialize, Serialize, Type, Clone)]
+#[derive(Deserialize, Serialize, Type, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Mac(#[serde(with = "serde_bytes")] Vec<u8>);
 
 impl std::fmt::Debug for Mac {

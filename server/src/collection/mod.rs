@@ -225,12 +225,12 @@ impl Collection {
         let keyring = self.keyring.read().await;
         let keyring = keyring.as_ref().unwrap().as_unlocked();
 
-        let DBusSecretInner(session_path, iv, secret_bytes, content_type) = secret;
+        let DBusSecretInner(ref session_path, ref iv, ref secret_bytes, ref content_type) = secret;
         let label = properties.label();
         // Safe to unwrap as an item always has attributes
         let mut attributes = properties.attributes().unwrap().to_owned();
 
-        let Some(session) = self.service.session(&session_path).await else {
+        let Some(session) = self.service.session(session_path).await else {
             tracing::error!("The session `{}` does not exist.", session_path);
             return Err(ServiceError::NoSession(format!(
                 "The session `{session_path}` does not exist."
@@ -238,9 +238,9 @@ impl Collection {
         };
 
         let secret = match session.aes_key() {
-            Some(key) => oo7::crypto::decrypt(secret_bytes, &key, &iv)
+            Some(key) => oo7::crypto::decrypt(secret_bytes, &key, iv)
                 .map_err(|err| custom_service_error(&format!("Failed to decrypt secret {err}.")))?,
-            None => zeroize::Zeroizing::new(secret_bytes),
+            None => zeroize::Zeroizing::new(secret_bytes.clone()),
         };
 
         // Ensure content-type attribute is stored
