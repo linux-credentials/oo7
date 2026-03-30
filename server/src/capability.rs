@@ -58,7 +58,7 @@ fn set_bounding_set(caps: CapabilitySet) -> Result<(), rustix::io::Errno> {
     Ok(())
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 enum CapabilityState {
     Full,    // setuid root or root user
     Partial, // filesystem-based capabilities

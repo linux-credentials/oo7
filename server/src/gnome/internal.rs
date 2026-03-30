@@ -20,7 +20,7 @@ use crate::{
 pub const INTERNAL_INTERFACE_PATH: &str =
     "/org/gnome/keyring/InternalUnsupportedGuiltRiddenInterface";
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct InternalInterface {
     service: Service,
 }

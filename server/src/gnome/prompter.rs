@@ -43,7 +43,7 @@ mod double_value_optional {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Type, Default)]
+#[derive(Serialize, Deserialize, Type, Default)]
 #[zvariant(signature = "dict")]
 #[serde(rename_all = "kebab-case")]
 // GcrPrompt properties <https://gitlab.gnome.org/GNOME/gcr/-/blob/main/gcr/gcr-prompt.c#L95>
@@ -226,7 +226,7 @@ impl TryFrom<String> for Reply {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Type, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Deserialize, Serialize, Type, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 #[zvariant(signature = "s")]
 pub enum PromptType {
@@ -254,7 +254,7 @@ pub trait GNOMEPrompter {
     fn stop_prompting(&self, callback: &ObjectPath<'_>) -> Result<(), ServiceError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GNOMEPrompterCallback {
     window_id: Option<WindowIdentifierType>,
     private_key: Arc<Key>,

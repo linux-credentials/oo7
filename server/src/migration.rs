@@ -7,7 +7,7 @@ use oo7::{Secret, file::UnlockedKeyring};
 use crate::error::Error;
 
 /// Pending keyring migration
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum PendingMigration {
     /// Legacy v0 keyring format
     V0 {

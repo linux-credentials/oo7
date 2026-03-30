@@ -11,7 +11,7 @@ use zbus::{
 
 use crate::Service;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Session {
     aes_key: Option<Arc<Key>>,
     service: Service,

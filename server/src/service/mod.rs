@@ -38,14 +38,14 @@ const DEFAULT_COLLECTION_ALIAS_PATH: ObjectPath<'static> =
     ObjectPath::from_static_str_unchecked("/org/freedesktop/secrets/aliases/default");
 
 /// Prompter type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PrompterType {
     #[allow(clippy::upper_case_acronyms)]
     GNOME,
     Plasma,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Service {
     // Properties
     pub(crate) collections: Arc<Mutex<HashMap<OwnedObjectPath, Collection>>>,
