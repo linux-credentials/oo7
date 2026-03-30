@@ -12,6 +12,8 @@ The repository consists of the following projects:
 - [pam](./pam/): PAM integration for the server implementation
 - [portal](./portal/): [org.freedesktop.impl.portal.Secret](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.Secret.html) implementation
 - [server](./server/): [org.freedesktop.secrets](https://specifications.freedesktop.org/secret-service-spec/latest/) server implementation
+- [kwallet/cli](./kwallet/cli): a simple CLI to read KWallet `.kwl` files
+- [kwallet/parser](./kwallet//parser): Parse Kwallet `.kwl` files, used for automatic migration on the server side.
 
 ## Hacking on oo7 services
 
