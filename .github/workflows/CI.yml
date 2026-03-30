@@ -106,11 +106,11 @@ jobs:
         with:
           components: clippy
       - name: Clippy workspace (default features)
-        run: cargo clippy --workspace --tests -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Clippy client (tracing / async-std / native crypto)
         run: cargo clippy -p oo7 --no-default-features --features tracing,async-std,native_crypto,schema -- -D warnings
       - name: Clippy client (tracing / tokio / OpenSSL)
-        run: cargo clippy -p oo7 --no-default-features --features tracing,tokio,openssl_crypto,schema --tests -- -D warnings
+        run: cargo clippy -p oo7 --no-default-features --features tracing,tokio,openssl_crypto,schema --all-targets -- -D warnings
 
   meson:
     name: Meson

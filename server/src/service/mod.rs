@@ -580,6 +580,7 @@ impl Service {
     }
 
     #[cfg(any(test, feature = "test-util"))]
+    #[allow(dead_code)]
     pub async fn run_with_connection(
         connection: zbus::Connection,
         data_dir: std::path::PathBuf,
