@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 use std::{
     collections::HashMap,
     fmt,
@@ -376,9 +378,13 @@ impl Commands {
         };
 
         let keyring = match (path, secret) {
-            (Some(path), Some(secret)) => unsafe {
-                Keyring::File(oo7::file::UnlockedKeyring::load_unchecked(path, secret).await?)
-            },
+            (Some(path), Some(secret)) => {
+                #[allow(unsafe_code)]
+                unsafe {
+                    Keyring::File(oo7::file::UnlockedKeyring::load_unchecked(path, secret).await?)
+                }
+            }
+
             (Some(_), None) => {
                 return Err(Error::new("A keyring requires a secret."));
             }

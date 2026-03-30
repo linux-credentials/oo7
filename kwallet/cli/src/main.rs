@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::{collections::HashMap, io::Write, path::PathBuf, process::ExitCode};
 
 use clap::Parser;

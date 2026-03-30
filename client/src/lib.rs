@@ -1,6 +1,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![doc = include_str!("../README.md")]
+#![deny(unsafe_code)]
 #[cfg(all(all(feature = "tokio", feature = "async-std"), not(doc)))]
 compile_error!("You can't enable both async-std & tokio features at once");
 #[cfg(all(not(feature = "tokio"), not(feature = "async-std"), not(doc)))]

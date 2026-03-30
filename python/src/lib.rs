@@ -1,4 +1,4 @@
-#![allow(unsafe_op_in_unsafe_fn)]
+#![forbid(unsafe_code)]
 
 use std::{collections::HashMap, sync::Arc};
 

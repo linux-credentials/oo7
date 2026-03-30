@@ -49,7 +49,7 @@ impl UnlockedKeyring {
         Self::load_inner(path, secret, true).await
     }
 
-    /// Load from a keyring file.
+    /// Load from a keyring file without validating the secret.
     ///
     /// # Arguments
     ///
@@ -58,12 +58,12 @@ impl UnlockedKeyring {
     ///
     /// # Safety
     ///
-    /// The secret is not validated to be the correct one to decrypt the keyring
-    /// items. Allowing the API user to write new items with a different
-    /// secret on top of previously added items with a different secret.
-    ///
-    /// As it is not a supported behaviour, this API is mostly meant for
-    /// recovering broken keyrings.
+    /// This method skips validation and doesn't verify that the secret can
+    /// decrypt all items in the keyring. Use only for recovery scenarios where
+    /// you need to access a partially corrupted keyring. The keyring may
+    /// contain items that cannot be decrypted with the provided secret, and
+    /// writing new items may use a different secret than existing items.
+    #[allow(unsafe_code)]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(secret), fields(path = ?path.as_ref())))]
     pub async unsafe fn load_unchecked(
         path: impl AsRef<Path>,
@@ -83,6 +83,7 @@ impl UnlockedKeyring {
         if validate_items {
             LockedKeyring::load(path).await?.unlock(secret).await
         } else {
+            #[allow(unsafe_code)]
             unsafe {
                 LockedKeyring::load(path)
                     .await?

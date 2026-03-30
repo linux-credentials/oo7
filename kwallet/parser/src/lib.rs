@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! Read-only parser for KWallet file format
 //!
 //! This crate provides parsing support for KWallet wallet files:

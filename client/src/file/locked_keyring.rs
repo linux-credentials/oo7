@@ -77,8 +77,11 @@ impl LockedKeyring {
     ///
     /// # Safety
     ///
-    /// The method doesn't validate that the secret can decrypt all the items in
-    /// the keyring.
+    /// This method skips validation and doesn't verify that the secret can
+    /// decrypt all items in the keyring. Use only for recovery scenarios where
+    /// you need to access a partially corrupted keyring. The keyring may
+    /// contain items that cannot be decrypted with the provided secret.
+    #[allow(unsafe_code)]
     pub async unsafe fn unlock_unchecked(self, secret: Secret) -> Result<UnlockedKeyring, Error> {
         self.unlock_inner(secret, false).await
     }
