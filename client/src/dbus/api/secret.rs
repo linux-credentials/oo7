@@ -7,14 +7,14 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use super::Session;
 use crate::{Key, Secret, crypto, dbus::Error, secret::ContentType};
 
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize, Type, Zeroize, ZeroizeOnDrop)]
 #[zvariant(signature = "(oayays)")]
 /// Same as [`DBusSecret`] without tying the session path to a [`Session`] type.
 pub struct DBusSecretInner(
-    pub OwnedObjectPath,
+    #[zeroize(skip)] pub OwnedObjectPath,
     #[serde(with = "serde_bytes")] pub Vec<u8>,
     #[serde(with = "serde_bytes")] pub Vec<u8>,
-    pub ContentType,
+    #[zeroize(skip)] pub ContentType,
 );
 
 #[derive(Debug, Type, Zeroize, ZeroizeOnDrop)]
@@ -58,9 +58,9 @@ impl DBusSecret {
 
     pub async fn from_inner(cnx: &zbus::Connection, inner: DBusSecretInner) -> Result<Self, Error> {
         Ok(Self {
-            session: Arc::new(Session::new(cnx, inner.0).await?),
-            parameters: inner.1,
-            value: inner.2,
+            session: Arc::new(Session::new(cnx, inner.0.clone()).await?),
+            parameters: inner.1.clone(),
+            value: inner.2.clone(),
             content_type: inner.3,
         })
     }

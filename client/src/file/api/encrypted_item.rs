@@ -2,12 +2,14 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::Type;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use super::{Error, UnlockedItem};
 use crate::{Key, Mac, crypto};
 
-#[derive(Deserialize, Serialize, Type, Debug, Clone)]
+#[derive(Deserialize, Serialize, Type, Debug, Clone, Zeroize, ZeroizeOnDrop)]
 pub(crate) struct EncryptedItem {
+    #[zeroize(skip)]
     pub(crate) hashed_attributes: HashMap<String, Mac>,
     #[serde(with = "serde_bytes")]
     pub(crate) blob: Vec<u8>,

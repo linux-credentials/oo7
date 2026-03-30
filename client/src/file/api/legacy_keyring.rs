@@ -6,6 +6,7 @@ use std::{
 };
 
 use endi::{Endian, ReadBytes};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use super::{Secret, UnlockedItem};
 use crate::{
@@ -19,7 +20,7 @@ const FILE_HEADER_LEN: usize = FILE_HEADER.len();
 pub const MAJOR_VERSION: u8 = 0;
 pub const MINOR_VERSION: u8 = 0;
 
-#[derive(Debug)]
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
 pub struct Keyring {
     salt: Vec<u8>,
     iteration_count: u32,

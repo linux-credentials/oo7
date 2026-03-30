@@ -44,6 +44,7 @@ mod legacy_keyring;
 
 pub(super) use encrypted_item::EncryptedItem;
 pub(super) use legacy_keyring::{Keyring as LegacyKeyring, MAJOR_VERSION as LEGACY_MAJOR_VERSION};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
     AsAttributes, Key, Secret, crypto,
@@ -67,7 +68,7 @@ pub(crate) static GVARIANT_ENCODING: LazyLock<Context> =
     LazyLock::new(|| Context::new_gvariant(Endian::Little, 0));
 
 /// Logical contents of a keyring file
-#[derive(Deserialize, Serialize, Type, Debug)]
+#[derive(Deserialize, Serialize, Type, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct Keyring {
     salt_size: u32,
     #[serde(with = "serde_bytes")]
@@ -75,6 +76,7 @@ pub struct Keyring {
     iteration_count: u32,
     modified_time: u64,
     usage_count: u32,
+    #[zeroize(skip)]
     pub(in crate::file) items: Vec<EncryptedItem>,
 }
 

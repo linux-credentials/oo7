@@ -139,9 +139,9 @@ impl Item {
     }
 
     pub async fn set_secret(&self, secret: DBusSecretInner) -> Result<(), ServiceError> {
-        let DBusSecretInner(session, iv, secret, content_type) = secret;
+        let DBusSecretInner(ref session, ref iv, ref secret, ref content_type) = secret;
 
-        let Some(session) = self.service.session(&session).await else {
+        let Some(session) = self.service.session(session).await else {
             tracing::error!("The session `{}` does not exist.", session);
             return Err(ServiceError::NoSession(format!(
                 "The session `{session}` does not exist."
@@ -162,7 +162,7 @@ impl Item {
 
             match session.aes_key() {
                 Some(key) => {
-                    let decrypted = oo7::crypto::decrypt(secret, &key, &iv).map_err(|err| {
+                    let decrypted = oo7::crypto::decrypt(secret, &key, iv).map_err(|err| {
                         custom_service_error(&format!("Failed to decrypt secret {err}."))
                     })?;
                     inner.as_mut_unlocked().set_secret(decrypted);
