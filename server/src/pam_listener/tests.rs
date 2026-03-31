@@ -30,11 +30,27 @@ async fn send_pam_message(
     socket_path: &std::path::Path,
     message_bytes: &[u8],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut stream = tokio::net::UnixStream::connect(socket_path).await?;
     stream.write_all(message_bytes).await?;
     stream.flush().await?;
+
+    // Read response
+    let mut length_bytes = [0u8; 4];
+    stream.read_exact(&mut length_bytes).await?;
+    let response_length = u32::from_le_bytes(length_bytes) as usize;
+
+    let mut response_bytes = vec![0u8; response_length];
+    stream.read_exact(&mut response_bytes).await?;
+
+    let response = PamResponse::from_bytes(&response_bytes)?;
+
+    // Check if response indicates success or error
+    if !response.success {
+        return Err(format!("PAM operation failed: {}", response.error_message).into());
+    }
+
     Ok(())
 }
 
@@ -79,15 +95,7 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], v0_secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
 
-    for i in 0..10 {
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        let pending = setup.server.pending_migrations.lock().await.len();
-        eprintln!("Attempt {}: pending_migrations = {}", i + 1, pending);
-        if pending == 0 {
-            break;
-        }
-    }
-
+    // Response received means operation completed
     let pending = setup.server.pending_migrations.lock().await;
     assert_eq!(
         pending.len(),
@@ -124,6 +132,10 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
+
+    // Create the v1 directory structure
+    let v1_dir = temp_dir.path().join("keyrings/v1");
+    tokio::fs::create_dir_all(&v1_dir).await?;
 
     // Create a v1 keyring with a known password
     let secret = Secret::from("my-secure-password");
@@ -173,8 +185,7 @@ async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Erro
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
+    // Response received means unlock completed
     let collections = setup.server.collections.lock().await;
     let mut work_collection = None;
     for collection in collections.values() {
@@ -248,8 +259,6 @@ async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
     );
     send_pam_message(&socket_path, &message).await?;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
     let collections = setup.server.collections.lock().await;
     let mut work_collection = None;
     for collection in collections.values() {
@@ -315,6 +324,19 @@ async fn message_serialization() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(decoded.operation, PamOperation::ChangePassword);
     assert_eq!(decoded.old_secret, b"old-pass");
     assert_eq!(decoded.new_secret, b"new-pass");
+
+    // Test PamResponse serialization
+    let success_response = PamResponse::success();
+    let encoded = success_response.to_bytes()?;
+    let decoded = PamResponse::from_bytes(&encoded[4..])?; // Skip length prefix
+    assert!(decoded.success);
+    assert!(decoded.error_message.is_empty());
+
+    let error_response = PamResponse::error("Something went wrong".to_string());
+    let encoded = error_response.to_bytes()?;
+    let decoded = PamResponse::from_bytes(&encoded[4..])?; // Skip length prefix
+    assert!(!decoded.success);
+    assert_eq!(decoded.error_message, "Something went wrong");
 
     Ok(())
 }
