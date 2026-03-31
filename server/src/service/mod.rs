@@ -1125,24 +1125,31 @@ impl Service {
                     }
                     break;
                 } else if let Some(item) = collection.item_from_path(object).await {
-                    if locked == item.is_locked().await {
+                    // If collection is locked, can't perform any item lock/unlock operations
+                    if collection_locked {
+                        // Unlocking an item when collection is locked requires unlocking collection
+                        if !locked {
+                            with_prompt.push(object.clone());
+                        } else {
+                            // Can't lock an item when collection is locked
+                            return Err(ServiceError::IsLocked(format!(
+                                "Cannot lock item {} when collection is locked",
+                                object
+                            )));
+                        }
+                    } else if locked == item.is_locked().await {
                         tracing::debug!(
                             "Item: {} is already {}.",
                             object,
                             if locked { "locked" } else { "unlocked" }
                         );
                         without_prompt.push(object.clone());
-                    // If the collection is unlocked, we can lock/unlock the
-                    // item directly
-                    } else if !collection_locked {
+                    } else {
+                        // Collection is unlocked, we can lock/unlock the item directly
                         let keyring = collection.keyring.read().await;
                         item.set_locked(locked, keyring.as_ref().unwrap().as_unlocked())
                             .await?;
                         without_prompt.push(object.clone());
-                    } else {
-                        // Collection is locked, unlocking the item requires unlocking the
-                        // collection
-                        with_prompt.push(object.clone());
                     }
                     break;
                 }

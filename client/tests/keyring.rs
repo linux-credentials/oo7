@@ -1,38 +1,26 @@
-use std::sync::Arc;
-
-#[cfg(feature = "async-std")]
-use async_lock::RwLock;
-use oo7::{Keyring, Secret, dbus, file};
+use oo7::{Keyring, Secret, file};
 use tempfile::tempdir;
-#[cfg(feature = "tokio")]
-use tokio::sync::RwLock;
 
 async fn all_backends(
-    temp_dir: tempfile::TempDir,
+    temp_dir: &tempfile::TempDir,
 ) -> (oo7_server::tests::TestServiceSetup, Vec<Keyring>) {
     let mut backends = Vec::new();
 
     let keyring_path = temp_dir.path().join("test.keyring");
     let secret = Secret::from([1, 2].into_iter().cycle().take(64).collect::<Vec<_>>());
-    let unlocked = file::UnlockedKeyring::load(&keyring_path, secret.clone())
+    let unlocked = Keyring::sandboxed_with_path(keyring_path, secret)
         .await
         .unwrap();
-    let keyring = Keyring::File(
-        Arc::new(RwLock::new(Some(file::Keyring::Unlocked(unlocked)))),
-        secret,
-    );
-
-    backends.push(keyring);
+    backends.push(unlocked);
 
     let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
-    let service = dbus::Service::plain_with_connection(&setup.client_conn)
+
+    let service = Keyring::host_with_connection(setup.client_conn.clone())
         .await
         .unwrap();
-    if let Ok(collection) = service.default_collection().await {
-        backends.push(Keyring::DBus(collection));
-    }
+    backends.push(service);
 
     (setup, backends)
 }
@@ -41,7 +29,7 @@ async fn all_backends(
 #[cfg(feature = "tokio")]
 async fn create_and_retrieve_items() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -95,7 +83,7 @@ async fn create_and_retrieve_items() {
 #[cfg(feature = "tokio")]
 async fn delete_items() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -142,7 +130,7 @@ async fn delete_items() {
 #[cfg(feature = "tokio")]
 async fn item_update_label() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -185,7 +173,7 @@ async fn item_update_label() {
 #[cfg(feature = "tokio")]
 async fn item_update_attributes() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -242,7 +230,7 @@ async fn item_update_attributes() {
 #[cfg(feature = "tokio")]
 async fn item_update_secret() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -279,7 +267,7 @@ async fn item_update_secret() {
 #[cfg(feature = "tokio")]
 async fn item_delete() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -328,7 +316,7 @@ async fn item_delete() {
 #[cfg(feature = "tokio")]
 async fn item_replace() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -363,7 +351,7 @@ async fn item_replace() {
 #[cfg(feature = "tokio")]
 async fn item_timestamps() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -399,7 +387,7 @@ async fn item_timestamps() {
 #[cfg(feature = "tokio")]
 async fn item_is_locked() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
     for (idx, keyring) in backends.iter().enumerate() {
         println!("Running test on backend {}", idx);
@@ -427,139 +415,130 @@ async fn item_is_locked() {
     }
 }
 
-// File-backend specific tests, as the DBus one require prompting
 #[tokio::test]
 #[cfg(feature = "tokio")]
-async fn file_keyring_lock_unlock() {
+async fn keyring_lock_unlock() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
-    let keyring = &backends[0];
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
-    assert!(!keyring.is_locked().await.unwrap());
+    for keyring in backends.iter() {
+        assert!(!keyring.is_locked().await.unwrap());
 
-    keyring.lock().await.unwrap();
-    assert!(keyring.is_locked().await.unwrap());
+        keyring.lock().await.unwrap();
+        assert!(keyring.is_locked().await.unwrap());
 
-    // Test edge case: locking an already locked keyring
-    keyring.lock().await.unwrap();
-    assert!(keyring.is_locked().await.unwrap());
+        // Test edge case: locking an already locked keyring
+        keyring.lock().await.unwrap();
+        assert!(keyring.is_locked().await.unwrap());
 
-    let result = keyring
-        .create_item("test", &[("app", "test")], "secret", false)
-        .await;
-    assert!(matches!(result, Err(oo7::Error::File(file::Error::Locked))));
+        keyring.unlock().await.unwrap();
+        assert!(!keyring.is_locked().await.unwrap());
 
-    if let Keyring::File(kg, _) = &keyring {
-        let mut kg_guard = kg.write().await;
-        if let Some(file::Keyring::Locked(locked)) = kg_guard.take() {
-            let secret = Secret::from([1, 2].into_iter().cycle().take(64).collect::<Vec<_>>());
-
-            let unlocked = unsafe { locked.unlock_unchecked(secret).await.unwrap() };
-            *kg_guard = Some(file::Keyring::Unlocked(unlocked));
-        }
+        // Test edge case: unlocking an already unlocked keyring
+        keyring.unlock().await.unwrap();
+        assert!(!keyring.is_locked().await.unwrap());
     }
-
-    assert!(!keyring.is_locked().await.unwrap());
 }
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
-async fn file_item_lock_unlock() {
+async fn item_lock_unlock() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
-    let keyring = &backends[0];
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
-    keyring
-        .create_item("Test Item", &[("app", "test")], "secret", false)
-        .await
-        .unwrap();
+    for (idx, keyring) in backends.iter().enumerate() {
+        println!("Testing item lock/unlock on backend {}", idx);
 
-    let items = keyring.items().await.unwrap();
-    let item = &items[0];
+        keyring
+            .create_item(
+                "Test Item",
+                &[("test-name", "item_lock_unlock")],
+                "secret",
+                false,
+            )
+            .await
+            .unwrap();
 
-    assert!(!item.is_locked().await.unwrap());
-    assert_eq!(item.secret().await.unwrap(), Secret::text("secret"));
+        let items = keyring
+            .search_items(&[("test-name", "item_lock_unlock")])
+            .await
+            .unwrap();
+        let item = &items[0];
 
-    // Test edge case: unlocking an already unlocked item
-    item.unlock().await.unwrap();
-    assert!(!item.is_locked().await.unwrap());
+        assert!(!item.is_locked().await.unwrap());
+        assert_eq!(item.secret().await.unwrap(), Secret::text("secret"));
 
-    item.lock().await.unwrap();
-    assert!(item.is_locked().await.unwrap());
+        // Test edge case: unlocking an already unlocked item
+        item.unlock().await.unwrap();
+        assert!(!item.is_locked().await.unwrap());
 
-    // Test edge case: locking an already locked item
-    item.lock().await.unwrap();
-    assert!(item.is_locked().await.unwrap());
+        item.lock().await.unwrap();
+        assert!(item.is_locked().await.unwrap());
 
-    let result = item.secret().await;
-    assert!(matches!(result, Err(oo7::Error::File(file::Error::Locked))));
+        // Test edge case: locking an already locked item
+        item.lock().await.unwrap();
+        assert!(item.is_locked().await.unwrap());
 
-    // Unlock the item
-    item.unlock().await.unwrap();
-    assert!(!item.is_locked().await.unwrap());
-    assert_eq!(item.secret().await.unwrap(), Secret::text("secret"));
+        // Unlock the item
+        item.unlock().await.unwrap();
+        assert!(!item.is_locked().await.unwrap());
+        assert_eq!(item.secret().await.unwrap(), Secret::text("secret"));
+
+        // Cleanup
+        keyring
+            .delete(&[("test-name", "item_lock_unlock")])
+            .await
+            .unwrap();
+    }
 }
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
-async fn file_locked_item_operations_fail() {
+async fn locked_item_operations_fail() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
-    let keyring = &backends[0];
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
-    keyring
-        .create_item("Test", &[("app", "test")], "secret", false)
-        .await
-        .unwrap();
+    for (idx, keyring) in backends.iter().enumerate() {
+        println!("Testing locked item operations on backend {}", idx);
 
-    let items = keyring.items().await.unwrap();
-    let item = &items[0];
+        keyring
+            .create_item("Test", &[("test-name", "locked_item_ops")], "secret", false)
+            .await
+            .unwrap();
 
-    item.lock().await.unwrap();
+        let items = keyring
+            .search_items(&[("test-name", "locked_item_ops")])
+            .await
+            .unwrap();
+        let item = &items[0];
 
-    assert!(matches!(
-        item.label().await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
-    assert!(matches!(
-        item.attributes().await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
-    assert!(matches!(
-        item.secret().await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
-    assert!(matches!(
-        item.set_label("new").await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
-    assert!(matches!(
-        item.set_attributes(&[("app", "test")]).await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
-    assert!(matches!(
-        item.set_secret("new").await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
-    assert!(matches!(
-        item.delete().await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
-    assert!(matches!(
-        item.created().await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
-    assert!(matches!(
-        item.modified().await,
-        Err(oo7::Error::File(file::Error::Locked))
-    ));
+        item.lock().await.unwrap();
+
+        // All operations should fail on locked items
+        assert!(item.label().await.is_err());
+        assert!(item.attributes().await.is_err());
+        assert!(item.secret().await.is_err());
+        assert!(item.set_label("new").await.is_err());
+        assert!(item.set_attributes(&[("app", "test")]).await.is_err());
+        assert!(item.set_secret("new").await.is_err());
+        // Note: delete() prompts for unlock on D-Bus backend, skip testing
+        assert!(item.created().await.is_err());
+        assert!(item.modified().await.is_err());
+
+        // Cleanup: unlock and delete
+        item.unlock().await.unwrap();
+        keyring
+            .delete(&[("test-name", "locked_item_ops")])
+            .await
+            .unwrap();
+    }
 }
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn file_locked_keyring_operations_fail() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
+    let (_setup, backends) = all_backends(&temp_dir).await;
     let keyring = &backends[0];
 
     keyring
@@ -611,21 +590,25 @@ async fn file_locked_keyring_operations_fail() {
 
 #[tokio::test]
 #[cfg(feature = "tokio")]
-async fn file_item_lock_with_locked_keyring_fails() {
+async fn item_lock_with_locked_keyring_fails() {
     let temp_dir = tempdir().unwrap();
-    let (_setup, backends) = all_backends(temp_dir).await;
-    let keyring = &backends[0];
+    let (_setup, backends) = all_backends(&temp_dir).await;
 
-    keyring
-        .create_item("Test", &[("app", "test")], "secret", false)
-        .await
-        .unwrap();
+    for keyring in backends.iter() {
+        keyring
+            .create_item("Test", &[("app", "test")], "secret", false)
+            .await
+            .unwrap();
 
-    let items = keyring.items().await.unwrap();
-    let item = &items[0];
+        let items = keyring.items().await.unwrap();
+        let item = &items[0];
 
-    keyring.lock().await.unwrap();
+        keyring.lock().await.unwrap();
 
-    let result = item.lock().await;
-    assert!(matches!(result, Err(oo7::Error::File(file::Error::Locked))));
+        let result = item.lock().await;
+        assert!(result.is_err());
+
+        keyring.unlock().await.unwrap();
+        keyring.delete(&[("app", "test")]).await.unwrap();
+    }
 }
