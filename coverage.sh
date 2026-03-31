@@ -13,7 +13,7 @@ for crypto in "${CRYPTO_FEATURES[@]}"; do
   cargo tarpaulin \
     --package oo7 \
     --no-default-features \
-    --features "tracing,tokio,${crypto}" \
+    --features "tracing,tokio,schema,${crypto}" \
     --ignore-panics \
     --out Lcov \
     --output-dir coverage-raw
