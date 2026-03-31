@@ -37,7 +37,7 @@ oo7 = { workspace = true, features = ["tokio"] }
 rpassword = "7.4"
 serde.workspace = true
 serde_repr = "0.1"
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-stream = "0.1"
 tracing = "0.1"
