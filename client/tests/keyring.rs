@@ -1,3 +1,5 @@
+#[cfg(feature = "schema")]
+use oo7::{ContentType, SecretSchema};
 use oo7::{Keyring, Secret, file};
 use tempfile::tempdir;
 
@@ -610,5 +612,134 @@ async fn item_lock_with_locked_keyring_fails() {
 
         keyring.unlock().await.unwrap();
         keyring.delete(&[("app", "test")]).await.unwrap();
+    }
+}
+
+#[tokio::test]
+#[cfg(all(feature = "tokio", feature = "schema"))]
+async fn attributes_as() {
+    #[derive(SecretSchema, Debug, Default, PartialEq)]
+    #[schema(name = "org.example.Test")]
+    struct TestSchema {
+        username: String,
+        port: Option<u16>,
+    }
+
+    let temp_dir = tempdir().unwrap();
+    let (_setup, backends) = all_backends(&temp_dir).await;
+
+    for (idx, keyring) in backends.iter().enumerate() {
+        println!("Testing attributes_as on backend {}", idx);
+
+        // Create an item with text content
+        keyring
+            .create_item(
+                "Text Item",
+                &TestSchema {
+                    username: "alice".to_string(),
+                    port: Some(8080),
+                },
+                Secret::text("my-password"),
+                true,
+            )
+            .await
+            .unwrap();
+
+        // Create an item with blob content
+        keyring
+            .create_item(
+                "Blob Item",
+                &TestSchema {
+                    username: "bob".to_string(),
+                    port: None,
+                },
+                Secret::blob(b"binary data"),
+                true,
+            )
+            .await
+            .unwrap();
+
+        // Search for the text item
+        let text_items = keyring
+            .search_items(&TestSchema {
+                username: "alice".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(text_items.len(), 1);
+        let text_item = &text_items[0];
+
+        // Verify content type
+        let attrs = text_item.attributes().await.unwrap();
+        assert_eq!(attrs.get("xdg:content-type").unwrap(), "text/plain");
+        assert_eq!(
+            text_item.secret().await.unwrap().content_type(),
+            ContentType::Text
+        );
+
+        // Test attributes_as
+        let schema = text_item.attributes_as::<TestSchema>().await.unwrap();
+        assert_eq!(
+            schema,
+            TestSchema {
+                username: "alice".to_string(),
+                port: Some(8080)
+            }
+        );
+        assert_eq!(schema.username, "alice");
+        assert_eq!(schema.port, Some(8080));
+
+        // Search for the blob item
+        let blob_items = keyring
+            .search_items(&TestSchema {
+                username: "bob".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(blob_items.len(), 1);
+        let blob_item = &blob_items[0];
+
+        // Verify content type
+        let attrs = blob_item.attributes().await.unwrap();
+        assert_eq!(
+            attrs.get("xdg:content-type").unwrap(),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            blob_item.secret().await.unwrap().content_type(),
+            ContentType::Blob
+        );
+
+        // Test attributes_as
+        let schema = blob_item.attributes_as::<TestSchema>().await.unwrap();
+        assert_eq!(
+            schema,
+            TestSchema {
+                username: "bob".to_string(),
+                port: None
+            }
+        );
+        assert_eq!(schema.username, "bob");
+        assert_eq!(schema.port, None);
+
+        // Cleanup
+        keyring
+            .delete(&TestSchema {
+                username: "alice".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        keyring
+            .delete(&TestSchema {
+                username: "bob".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
     }
 }
