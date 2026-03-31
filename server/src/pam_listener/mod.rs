@@ -34,11 +34,51 @@ struct PamMessage {
     new_secret: Vec<u8>,
 }
 
+#[derive(Serialize, Deserialize, Type)]
+struct PamResponse {
+    success: bool,
+    error_message: String,
+}
+
 impl PamMessage {
     fn from_bytes(bytes: &[u8]) -> Result<Self, zvariant::Error> {
         let ctxt = Context::new_dbus(zvariant::LE, 0);
         let data = Data::new(bytes, ctxt);
         data.deserialize().map(|(msg, _)| msg)
+    }
+}
+
+impl PamResponse {
+    fn success() -> Self {
+        Self {
+            success: true,
+            error_message: String::new(),
+        }
+    }
+
+    fn error(message: String) -> Self {
+        Self {
+            success: false,
+            error_message: message,
+        }
+    }
+
+    #[cfg(test)]
+    fn from_bytes(bytes: &[u8]) -> Result<Self, zvariant::Error> {
+        let ctxt = Context::new_dbus(zvariant::LE, 0);
+        let data = Data::new(bytes, ctxt);
+        data.deserialize().map(|(msg, _)| msg)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, zvariant::Error> {
+        let ctxt = Context::new_dbus(zvariant::LE, 0);
+        let encoded = zvariant::to_bytes(ctxt, self)?;
+        let message_bytes = encoded.to_vec();
+
+        // Prepend length prefix (4 bytes, little-endian)
+        let mut result = (message_bytes.len() as u32).to_le_bytes().to_vec();
+        result.extend_from_slice(&message_bytes);
+        Ok(result)
     }
 }
 
@@ -149,7 +189,7 @@ impl PamListener {
         let message = PamMessage::from_bytes(&message_bytes)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
 
-        match message.operation {
+        let response = match message.operation {
             PamOperation::Unlock => {
                 tracing::info!("Received unlock request for user: {}", message.username);
                 tracing::debug!(
@@ -169,6 +209,7 @@ impl PamListener {
                             "Successfully unlocked collections for user: {}",
                             message.username
                         );
+                        PamResponse::success()
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -176,6 +217,7 @@ impl PamListener {
                             message.username,
                             e
                         );
+                        PamResponse::error(e.to_string())
                     }
                 }
             }
@@ -208,6 +250,7 @@ impl PamListener {
                             .write()
                             .await
                             .insert(message.username.clone(), new_secret);
+                        PamResponse::success()
                     }
                     Err(e) => {
                         tracing::error!(
@@ -215,9 +258,17 @@ impl PamListener {
                             message.username,
                             e
                         );
+                        PamResponse::error(e.to_string())
                     }
                 }
             }
+        };
+
+        // Send response back to client
+        use tokio::io::AsyncWriteExt;
+        if let Ok(response_bytes) = response.to_bytes() {
+            let _ = stream.write_all(&response_bytes).await;
+            let _ = stream.flush().await;
         }
 
         Ok(())
