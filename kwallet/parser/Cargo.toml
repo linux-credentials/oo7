@@ -16,7 +16,7 @@ exclude.workspace = true
 blowfish = "0.9"
 cbc = "0.1"
 ecb = "0.1"
-md5 = "0.7"
+md5 = "0.8"
 sha1 = "0.10"
 sha2 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["simple"] }
