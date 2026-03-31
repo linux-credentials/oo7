@@ -222,7 +222,8 @@ fn validate_sha1(data: &[u8], expected_hash: &[u8]) -> Result<()> {
 
 /// Compute MD5 hash
 pub fn compute_md5(data: &[u8]) -> [u8; 16] {
-    md5::compute(data).into()
+    use md5::Digest;
+    md5::Md5::digest(data).into()
 }
 
 /// Extract wallet data from decrypted payload and validate SHA-1 hash
