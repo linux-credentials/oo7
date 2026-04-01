@@ -1159,7 +1159,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     let work_keyring = discovered
         .iter()
-        .find(|(_, label, _, _)| label == "Work")
+        .find(|(_, label, ..)| label == "Work")
         .unwrap();
     assert!(
         !work_keyring.3.is_locked(),
@@ -1168,7 +1168,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     let personal_keyring = discovered
         .iter()
-        .find(|(_, label, _, _)| label == "Personal")
+        .find(|(_, label, ..)| label == "Personal")
         .unwrap();
     assert!(
         personal_keyring.3.is_locked(),
@@ -1178,7 +1178,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     // Test 4: Verify login keyring gets default alias
     let login_keyring = discovered
         .iter()
-        .find(|(_, label, _, _)| label == "Login")
+        .find(|(_, label, ..)| label == "Login")
         .unwrap();
     assert_eq!(
         login_keyring.2,
@@ -1193,7 +1193,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     // Test 5: Verify labels are properly capitalized
     let labels: Vec<_> = discovered
         .iter()
-        .map(|(_, label, _, _)| label.as_str())
+        .map(|(_, label, ..)| label.as_str())
         .collect();
     assert!(labels.contains(&"Work"), "Should have Work with capital W");
     assert!(
@@ -1355,10 +1355,7 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let discovered = service.discover_keyrings(Some(v0_secret.clone())).await?;
     assert_eq!(discovered.len(), 2, "Should discover both keyrings");
 
-    let legacy = discovered
-        .iter()
-        .find(|(_, l, _, _)| l == "Legacy")
-        .unwrap();
+    let legacy = discovered.iter().find(|(_, l, ..)| l == "Legacy").unwrap();
     assert!(!legacy.3.is_locked(), "V0 should be migrated and unlocked");
     assert_eq!(
         service.pending_migrations.lock().await.len(),
@@ -1453,7 +1450,7 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     let kdewallet = discovered
         .iter()
-        .find(|(_, l, _, _)| l == "Kdewallet")
+        .find(|(_, l, ..)| l == "Kdewallet")
         .unwrap();
     assert!(
         !kdewallet.3.is_locked(),

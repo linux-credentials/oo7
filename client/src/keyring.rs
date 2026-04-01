@@ -400,7 +400,7 @@ impl Item {
         T: for<'a> std::convert::TryFrom<&'a HashMap<String, String>, Error = crate::SchemaError>,
     {
         match self {
-            Self::File(_, _) => T::try_from(&self.attributes().await?)
+            Self::File(..) => T::try_from(&self.attributes().await?)
                 .map_err(crate::file::Error::Schema)
                 .map_err(Into::into),
             Self::DBus(_) => T::try_from(&self.attributes().await?)
