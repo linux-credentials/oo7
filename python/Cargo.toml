@@ -19,4 +19,4 @@ crate-type = ["cdylib"]
 oo7_rs = { package = "oo7", path = "../client", version = "0.6.0-alpha" }
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py38"] }
 pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }

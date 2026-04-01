@@ -13,18 +13,18 @@ rust-version.workspace = true
 exclude.workspace = true
 
 [dependencies]
+base64.workspace = true
 blowfish = "0.9"
-cbc = "0.1"
-ecb = "0.1"
-md-5 = "0.10"
-sha1 = "0.10"
-sha2 = "0.10"
-pbkdf2 = { version = "0.12", default-features = false, features = ["simple"] }
+cbc.workspace = true
 cipher = { version = "0.4", features = ["block-padding"] }
-zeroize = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-base64 = { workspace = true }
+ecb = "0.1"
+md-5.workspace = true
+pbkdf2 = { workspace = true, default-features = false, features = ["simple"] }
+serde.workspace = true
+serde_json.workspace = true
+sha1 = "0.10"
+sha2.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 hex = "0.4"
