@@ -14,16 +14,16 @@ name = "pam_oo7"
 crate-type = ["cdylib"]
 
 [dependencies]
-libc = "0.2"
+libc.workspace = true
+serde.workspace = true
+serde_repr.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "net", "io-util", "sync", "time"] }
-serde = { workspace = true }
-serde_repr = "0.1"
-zvariant = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing.workspace = true
 tracing-journald = "0.3"
-zeroize = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+zeroize.workspace = true
+zvariant.workspace = true
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "net", "io-util", "sync", "time", "macros"] }

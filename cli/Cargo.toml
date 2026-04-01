@@ -13,15 +13,15 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-anstyle = "1.0.13"
-time = { version = "0.3", default-features = false, features = ["alloc", "formatting", "local-offset"] }
+anstyle = "1.0"
 clap.workspace = true
 hex = "0.4"
 oo7 = { workspace = true, features = ["tokio"] }
-rpassword = "7.4.0"
-tokio = { workspace = true, features = [ "macros", "rt"] }
-serde_json = { workspace = true }
-serde = { workspace = true }
+rpassword.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time = { version = "0.3", default-features = false, features = ["alloc", "formatting", "local-offset"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 default = ["native_crypto"]
