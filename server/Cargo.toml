@@ -15,7 +15,7 @@ name = "oo7-daemon"
 path = "src/main.rs"
 
 [lib]
-name = "oo7_server"
+name = "oo7_daemon"
 path = "src/lib.rs"
 test = false
 

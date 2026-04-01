@@ -5,7 +5,7 @@ use tempfile::tempdir;
 
 async fn all_backends(
     temp_dir: &tempfile::TempDir,
-) -> (oo7_server::tests::TestServiceSetup, Vec<Keyring>) {
+) -> (oo7_daemon::tests::TestServiceSetup, Vec<Keyring>) {
     let mut backends = Vec::new();
 
     let keyring_path = temp_dir.path().join("test.keyring");
@@ -15,7 +15,7 @@ async fn all_backends(
         .unwrap();
     backends.push(unlocked);
 
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
 

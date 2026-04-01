@@ -82,7 +82,7 @@ mod tests {
     #[cfg(feature = "tokio")]
     async fn test_migrate_from_dbus_to_file() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+        let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
             .await
             .unwrap();
 

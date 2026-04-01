@@ -1,4 +1,4 @@
-// Library interface for oo7_server
+// Library interface for oo7_daemon
 // Only expose test utilities when the test-util feature is enabled
 #![allow(unused)]
 #![deny(unsafe_code)]

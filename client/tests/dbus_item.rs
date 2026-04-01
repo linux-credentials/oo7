@@ -4,7 +4,7 @@ use oo7::dbus::Service;
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn label_mutation() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -39,7 +39,7 @@ async fn label_mutation() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn secret_mutation() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -73,7 +73,7 @@ async fn secret_mutation() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn secret_mutation_encrypted() {
-    let setup = oo7_server::tests::TestServiceSetup::encrypted_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::encrypted_session(true)
         .await
         .unwrap();
     let service = Service::encrypted_with_connection(&setup.client_conn)
@@ -107,7 +107,7 @@ async fn secret_mutation_encrypted() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn attributes_mutation() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -155,7 +155,7 @@ async fn attributes_mutation() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn text_secret_type() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -182,7 +182,7 @@ async fn text_secret_type() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn blob_secret_type() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -213,7 +213,7 @@ async fn blob_secret_type() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn timestamps() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -256,7 +256,7 @@ async fn timestamps() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn deleted_error() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -329,7 +329,7 @@ async fn deleted_error() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn lock_unlock() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -360,7 +360,7 @@ async fn lock_unlock() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn item_created_signal() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -407,7 +407,7 @@ async fn item_created_signal() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn item_changed_signal() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -455,7 +455,7 @@ async fn item_changed_signal() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn item_deleted_signal() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)

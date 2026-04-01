@@ -4,7 +4,7 @@ use oo7::dbus::Service;
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn create_collection() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -32,7 +32,7 @@ async fn create_collection() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn default_collections() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -46,7 +46,7 @@ async fn default_collections() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn encrypted_session() {
-    let setup = oo7_server::tests::TestServiceSetup::encrypted_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::encrypted_session(true)
         .await
         .unwrap();
     let service = Service::encrypted_with_connection(&setup.client_conn)
@@ -58,7 +58,7 @@ async fn encrypted_session() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn plain_session() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -70,7 +70,7 @@ async fn plain_session() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn collection_created_signal() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -107,7 +107,7 @@ async fn collection_created_signal() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn collection_changed_signal() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
@@ -148,7 +148,7 @@ async fn collection_changed_signal() {
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn collection_deleted_signal() {
-    let setup = oo7_server::tests::TestServiceSetup::plain_session(true)
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session(true)
         .await
         .unwrap();
     let service = Service::plain_with_connection(&setup.client_conn)
