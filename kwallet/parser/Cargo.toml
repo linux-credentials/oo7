@@ -17,7 +17,7 @@ base64.workspace = true
 blowfish = "0.9"
 cbc.workspace = true
 cipher = { version = "0.4", features = ["block-padding"] }
-ecb = "0.1"
+ecb = "0.2"
 md-5.workspace = true
 pbkdf2 = { workspace = true, default-features = false, features = ["simple"] }
 serde.workspace = true
