@@ -14,7 +14,7 @@ exclude.workspace = true
 
 [dependencies]
 base64.workspace = true
-blowfish = "0.9"
+blowfish = "0.10"
 cbc.workspace = true
 cipher = { version = "0.4", features = ["block-padding"] }
 ecb = "0.1"
