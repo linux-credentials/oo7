@@ -106,7 +106,7 @@ jobs:
 
       - name: Get main branch coverage for comparison
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             // Find the latest successful coverage run on main that has the baseline artifact
@@ -166,7 +166,7 @@ jobs:
 
       - name: Post coverage comment on PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const prCoverage = parseFloat(process.env.PR_COVERAGE || '0.00');
