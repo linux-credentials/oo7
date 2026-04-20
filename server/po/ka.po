@@ -1,0 +1,84 @@
+# Georgian translation for oo7.
+# Copyright (C) 2026 oo7's authors
+# This file is distributed under the same license as the oo7 package.
+# Ekaterine Papava <papava.e@gtu.ge>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: oo7 main\n"
+"Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
+"POT-Creation-Date: 2026-04-20 03:30+0000\n"
+"PO-Revision-Date: 2026-04-20 05:58+0200\n"
+"Last-Translator: Ekaterine Papava <papava.e@gtu.ge>\n"
+"Language-Team: Georgian <ka@li.org>\n"
+"Language: ka\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.9\n"
+
+#: ../src/gnome/prompter.rs:132
+msgid "Change Keyring Password"
+msgstr "ბრელოკის პაროლის შეცვლა"
+
+#: ../src/gnome/prompter.rs:133
+#, rust-format
+msgid "Choose a new password for the “{}” keyring"
+msgstr "აირჩიეთ ახალი პაროლი ბრელოკისთვის \"{}\""
+
+#: ../src/gnome/prompter.rs:136
+#, rust-format
+msgid ""
+"An application wants to change the password for the “{}” keyring. Choose the "
+"new password you want to use for it."
+msgstr "აპლიკაციას ბრელოკის \"{}\" პაროლის შეცვლა უნდა. აირჩიეთ ახალი პაროლი."
+
+#: ../src/gnome/prompter.rs:141
+msgid "This operation cannot be reverted"
+msgstr "ეს ოპერაცია შეუქცევადია"
+
+#: ../src/gnome/prompter.rs:147
+msgid "Continue"
+msgstr "გაგრძელება"
+
+#: ../src/gnome/prompter.rs:148 ../src/gnome/prompter.rs:174
+#: ../src/gnome/prompter.rs:196
+msgid "Cancel"
+msgstr "გაუქმება"
+
+#: ../src/gnome/prompter.rs:158
+msgid "Unlock Keyring"
+msgstr "ბრელოკის განბლოკვა"
+
+#: ../src/gnome/prompter.rs:159
+msgid "Authentication required"
+msgstr "საჭროა ავთენტიკაცია"
+
+#: ../src/gnome/prompter.rs:162
+#, rust-format
+msgid "An application wants access to the keyring '{}', but it is locked"
+msgstr "აპლიკაციას სურს წვდომა ბრელოკთან \"{}\", მაგრამ ის დაბლოკილია"
+
+#: ../src/gnome/prompter.rs:173
+msgid "Unlock"
+msgstr "განბლოკვა"
+
+#: ../src/gnome/prompter.rs:180
+msgid "New Keyring Password"
+msgstr "ბრელოკის ახალი პაროლი"
+
+#: ../src/gnome/prompter.rs:181
+msgid "Choose password for new keyring"
+msgstr "აირჩიეთ ახალი ბრელოკის პაროლი"
+
+#: ../src/gnome/prompter.rs:184
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called “{}”. Choose the "
+"password you want to use for it."
+msgstr ""
+"აპლიკაციას სურს ახალი ბრელოკის, სახელად \"{}\" შექმნა. აირჩიეთ მისი პაროლი."
+
+#: ../src/gnome/prompter.rs:195
+msgid "Create"
+msgstr "შექმნა"
