@@ -30,7 +30,7 @@ exclude = ["org.freedesktop.Secrets.xml"]
 ashpd = { version = "0.13", default-features = false }
 base64 = "0.22"
 cbc = "0.1"
-clap = { version = "4.5", features = ["cargo", "derive"] }
+clap = { version = "4.6", features = ["cargo", "derive"] }
 endi = "1.1"
 futures-channel = "0.3"
 futures-lite = "2.6"
