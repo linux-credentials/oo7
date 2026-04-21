@@ -13,7 +13,7 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-aes = { version = "0.8", features = ["zeroize"], optional = true }
+aes = { version = "0.9", features = ["zeroize"], optional = true }
 ashpd = { workspace = true, features = ["secret"] }
 async-fs = { version = "2.2", optional = true }
 async-io = { version = "2.6", optional = true }
