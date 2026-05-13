@@ -2,7 +2,7 @@ use std::{collections::HashMap, future::pending, os::unix::net::UnixStream, sync
 mod error;
 
 use ashpd::{
-    AppID, PortalError, async_trait,
+    PortalError, async_trait,
     desktop::HandleToken,
     zbus::{self, zvariant::OwnedValue},
 };
@@ -36,7 +36,7 @@ impl ashpd::backend::secret::SecretImpl for Secret {
     async fn retrieve(
         &self,
         token: HandleToken,
-        app_id: ashpd::AppID,
+        app_id: ashpd::MaybeAppID,
         fd: std::os::fd::OwnedFd,
     ) -> ashpd::backend::Result<HashMap<String, OwnedValue>> {
         tracing::debug!("Request from app: {app_id}");
@@ -66,9 +66,15 @@ impl ashpd::backend::secret::SecretImpl for Secret {
 }
 
 /// Generates, stores and send the secret back to the fd stream
-async fn send_secret_to_app(app_id: &AppID, fd: std::os::fd::OwnedFd) -> Result<()> {
+async fn send_secret_to_app(app_id: &ashpd::MaybeAppID, fd: std::os::fd::OwnedFd) -> Result<()> {
     let service = Service::new().await?;
     let collection = service.default_collection().await?;
+    let Ok(app_id) = app_id.inner() else {
+        return Err(
+            ashpd::PortalError::InvalidArgument(format!("A valid App ID is required")).into(),
+        );
+    };
+
     let attributes = &[("app_id", app_id)];
 
     // Write the secret to the FD.
