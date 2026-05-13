@@ -71,7 +71,7 @@ async fn send_secret_to_app(app_id: &ashpd::MaybeAppID, fd: std::os::fd::OwnedFd
     let collection = service.default_collection().await?;
     let Ok(app_id) = app_id.inner() else {
         return Err(
-            ashpd::PortalError::InvalidArgument(format!("A valid App ID is required")).into(),
+            ashpd::PortalError::InvalidArgument("A valid App ID is required".to_string()).into(),
         );
     };
 
