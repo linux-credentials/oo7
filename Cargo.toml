@@ -43,7 +43,7 @@ num-bigint-dig = { version = "0.9", features = ["zeroize"] }
 oo7 = { path = "client", version = "0.6.0-alpha", default-features = false, features = ["unstable", "tracing"] }
 openssl = "0.10"
 pbkdf2 = { version = "0.13", default-features = false }
-rpassword = "7.4"
+rpassword = "7.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_repr = "0.1"
