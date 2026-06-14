@@ -94,10 +94,13 @@ impl Collection {
     }
 
     async fn delete_unlocked(&self) -> Result<(), ServiceError> {
-        let keyring_guard = self.keyring.read().await;
-        let keyring = match keyring_guard.as_ref() {
-            Some(k) if !k.is_locked() => k.as_unlocked(),
-            _ => return Err(ServiceError::IsLocked("Collection is locked".to_owned())),
+        let keyring_path = {
+            let keyring_guard = self.keyring.read().await;
+            let keyring = match keyring_guard.as_ref() {
+                Some(k) if !k.is_locked() => k.as_unlocked(),
+                _ => return Err(ServiceError::IsLocked("Collection is locked".to_owned())),
+            };
+            keyring.path().map(|p| p.to_path_buf())
         };
 
         let object_server = self.service.object_server();
@@ -110,7 +113,7 @@ impl Collection {
         drop(items);
 
         // Delete the keyring file if it's persistent
-        if let Some(path) = keyring.path() {
+        if let Some(path) = keyring_path {
             tokio::fs::remove_file(&path).await.map_err(|err| {
                 custom_service_error(&format!("Failed to delete keyring file: {err}"))
             })?;
@@ -262,6 +265,12 @@ impl Collection {
             .await
             .map_err(|err| custom_service_error(&format!("Failed to create a new item {err}.")))?;
 
+        let key = keyring
+            .key()
+            .await
+            .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
+        drop(keyring_guard);
+
         let n_items = *self.item_index.read().await;
         let item_path = OwnedObjectPath::try_from(format!("{}/{n_items}", self.path)).unwrap();
 
@@ -278,7 +287,7 @@ impl Collection {
 
         // Remove any existing items with the same attributes
         if replace {
-            let existing_items = self.search_inner_items(&attributes).await?;
+            let existing_items = self.search_items_with_key(&attributes, &key).await?;
             if !existing_items.is_empty() {
                 let mut items = self.items.lock().await;
                 for existing in &existing_items {
@@ -459,7 +468,16 @@ impl Collection {
             .key()
             .await
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
+        drop(keyring_guard);
 
+        self.search_items_with_key(attributes, &key).await
+    }
+
+    async fn search_items_with_key(
+        &self,
+        attributes: &HashMap<String, String>,
+        key: &oo7::Key,
+    ) -> Result<Vec<item::Item>, ServiceError> {
         let mut matching_items = Vec::new();
         let items = self.items.lock().await;
 
@@ -468,7 +486,7 @@ impl Collection {
             let file_item = inner.as_ref().unwrap();
 
             // Use the oo7::file::Item's matches_attributes method
-            if file_item.matches_attributes(attributes, &key) {
+            if file_item.matches_attributes(attributes, key) {
                 matching_items.push(item_wrapper.clone());
             }
         }
