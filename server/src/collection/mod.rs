@@ -94,8 +94,11 @@ impl Collection {
     }
 
     async fn delete_unlocked(&self) -> Result<(), ServiceError> {
-        let keyring = self.keyring.read().await;
-        let keyring = keyring.as_ref().unwrap().as_unlocked();
+        let keyring_guard = self.keyring.read().await;
+        let keyring = match keyring_guard.as_ref() {
+            Some(k) if !k.is_locked() => k.as_unlocked(),
+            _ => return Err(ServiceError::IsLocked("Collection is locked".to_owned())),
+        };
 
         let object_server = self.service.object_server();
 
@@ -222,8 +225,11 @@ impl Collection {
         secret: DBusSecretInner,
         replace: bool,
     ) -> Result<OwnedObjectPath, ServiceError> {
-        let keyring = self.keyring.read().await;
-        let keyring = keyring.as_ref().unwrap().as_unlocked();
+        let keyring_guard = self.keyring.read().await;
+        let keyring = match keyring_guard.as_ref() {
+            Some(k) if !k.is_locked() => k.as_unlocked(),
+            _ => return Err(ServiceError::IsLocked("Collection is locked".to_owned())),
+        };
 
         let DBusSecretInner(ref session_path, ref iv, ref secret_bytes, ref content_type) = secret;
         let label = properties.label();
@@ -441,15 +447,15 @@ impl Collection {
         &self,
         attributes: &HashMap<String, String>,
     ) -> Result<Vec<item::Item>, ServiceError> {
-        // If collection is locked, we can't search
-        if self.is_locked().await {
+        let keyring_guard = self.keyring.read().await;
+        let Some(keyring) = keyring_guard.as_ref() else {
+            return Ok(Vec::new());
+        };
+        if keyring.is_locked() {
             return Ok(Vec::new());
         }
-
-        let keyring_guard = self.keyring.read().await;
-        let keyring = keyring_guard.as_ref().unwrap().as_unlocked();
-
         let key = keyring
+            .as_unlocked()
             .key()
             .await
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
@@ -589,18 +595,19 @@ impl Collection {
             )));
         }
 
-        if self.is_locked().await {
-            return Err(ServiceError::IsLocked(format!(
-                "Cannot delete an item `{path}`  in a locked collection "
-            )));
-        }
-
         let attributes = item.attributes().await.map_err(|err| {
             custom_service_error(&format!("Failed to read item attributes {err}"))
         })?;
 
-        let keyring = self.keyring.read().await;
-        let keyring = keyring.as_ref().unwrap().as_unlocked();
+        let keyring_guard = self.keyring.read().await;
+        let keyring = match keyring_guard.as_ref() {
+            Some(k) if !k.is_locked() => k.as_unlocked(),
+            _ => {
+                return Err(ServiceError::IsLocked(format!(
+                    "Cannot delete an item `{path}` in a locked collection"
+                )));
+            }
+        };
 
         keyring
             .delete(&attributes)
