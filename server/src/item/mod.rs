@@ -98,16 +98,15 @@ impl Item {
             )));
         };
 
-        if self.is_locked().await {
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().unwrap();
+        if inner.is_locked() {
             tracing::error!("Cannot get secret of a locked object `{}`", self.path);
             return Err(ServiceError::IsLocked(format!(
                 "Cannot get secret of a locked object `{}`.",
                 self.path
             )));
         }
-
-        let inner = self.inner.lock().await;
-        let inner = inner.as_ref().unwrap();
         let secret = inner.as_unlocked().secret();
         let content_type = secret.content_type();
 
@@ -148,17 +147,16 @@ impl Item {
             )));
         };
 
-        if self.is_locked().await {
-            tracing::error!("Cannot set secret of a locked object `{}`", self.path);
-            return Err(ServiceError::IsLocked(format!(
-                "Cannot set secret of a locked object `{}`.",
-                self.path
-            )));
-        }
-
         {
             let mut inner = self.inner.lock().await;
             let inner = inner.as_mut().unwrap();
+            if inner.is_locked() {
+                tracing::error!("Cannot set secret of a locked object `{}`", self.path);
+                return Err(ServiceError::IsLocked(format!(
+                    "Cannot set secret of a locked object `{}`.",
+                    self.path
+                )));
+            }
 
             match session.aes_key() {
                 Some(key) => {
@@ -209,19 +207,16 @@ impl Item {
 
     #[zbus(property, name = "Attributes")]
     pub async fn attributes(&self) -> zbus::fdo::Result<HashMap<String, String>> {
-        if self.is_locked().await {
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().unwrap();
+        if inner.is_locked() {
             return Err(zbus::fdo::Error::Failed(format!(
                 "Cannot get attributes of a locked object `{}`.",
                 self.path
             )));
         }
 
-        Ok(self
-            .inner
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
+        Ok(inner
             .as_unlocked()
             .attributes()
             .iter()
@@ -234,20 +229,16 @@ impl Item {
         &self,
         attributes: HashMap<String, String>,
     ) -> Result<(), zbus::Error> {
-        if self.is_locked().await {
-            tracing::error!("Cannot set attributes of a locked object `{}`", self.path);
-            return Err(zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(
-                format!("Cannot set attributes of a locked object `{}`.", self.path),
-            ))));
-        }
-
         {
             let mut inner = self.inner.lock().await;
-            inner
-                .as_mut()
-                .unwrap()
-                .as_mut_unlocked()
-                .set_attributes(&attributes);
+            let inner = inner.as_mut().unwrap();
+            if inner.is_locked() {
+                tracing::error!("Cannot set attributes of a locked object `{}`", self.path);
+                return Err(zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(
+                    format!("Cannot set attributes of a locked object `{}`.", self.path),
+                ))));
+            }
+            inner.as_mut_unlocked().set_attributes(&attributes);
         }
 
         let signal_emitter = self
@@ -267,35 +258,30 @@ impl Item {
 
     #[zbus(property, name = "Label")]
     pub async fn label(&self) -> zbus::fdo::Result<String> {
-        if self.is_locked().await {
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().unwrap();
+        if inner.is_locked() {
             return Err(zbus::fdo::Error::Failed(format!(
                 "Cannot get label of a locked object `{}`.",
                 self.path
             )));
         }
 
-        Ok(self
-            .inner
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
-            .as_unlocked()
-            .label()
-            .to_owned())
+        Ok(inner.as_unlocked().label().to_owned())
     }
 
     #[zbus(property, name = "Label")]
     pub async fn set_label(&self, label: &str) -> Result<(), zbus::Error> {
-        if self.is_locked().await {
-            tracing::error!("Cannot set label of a locked object `{}`", self.path);
-            return Err(zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(
-                format!("Cannot set label of a locked object `{}`.", self.path),
-            ))));
-        }
         {
             let mut inner = self.inner.lock().await;
-            inner.as_mut().unwrap().as_mut_unlocked().set_label(label);
+            let inner = inner.as_mut().unwrap();
+            if inner.is_locked() {
+                tracing::error!("Cannot set label of a locked object `{}`", self.path);
+                return Err(zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(
+                    format!("Cannot set label of a locked object `{}`.", self.path),
+                ))));
+            }
+            inner.as_mut_unlocked().set_label(label);
         }
 
         let signal_emitter = self
@@ -316,42 +302,28 @@ impl Item {
 
     #[zbus(property, name = "Created")]
     pub async fn created_at(&self) -> zbus::fdo::Result<u64> {
-        if self.is_locked().await {
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().unwrap();
+        if inner.is_locked() {
             return Err(zbus::fdo::Error::Failed(format!(
                 "Cannot get created timestamp of a locked object `{}`.",
                 self.path
             )));
         }
-
-        Ok(self
-            .inner
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
-            .as_unlocked()
-            .created()
-            .as_secs())
+        Ok(inner.as_unlocked().created().as_secs())
     }
 
     #[zbus(property, name = "Modified")]
     pub async fn modified_at(&self) -> zbus::fdo::Result<u64> {
-        if self.is_locked().await {
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().unwrap();
+        if inner.is_locked() {
             return Err(zbus::fdo::Error::Failed(format!(
                 "Cannot get modified timestamp of a locked object `{}`.",
                 self.path
             )));
         }
-
-        Ok(self
-            .inner
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
-            .as_unlocked()
-            .modified()
-            .as_secs())
+        Ok(inner.as_unlocked().modified().as_secs())
     }
 }
 
