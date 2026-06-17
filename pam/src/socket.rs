@@ -143,12 +143,12 @@ pub fn send_secret_to_daemon(
     }
 }
 
-/// Start the oo7-daemon with --login, passing the secret via stdin pipe.
+/// Start the oo7-daemon-login helper, passing the secret via stdin pipe.
 ///
-/// Like gnome-keyring, we pipe the login password to the daemon's stdin so it
-/// can unlock the keyring once the D-Bus session bus becomes available.
-fn start_daemon_with_login(secret: &[u8], uid: u32) -> Result<(), SocketError> {
-    tracing::info!("Starting oo7-daemon with --login, passing secret via stdin");
+/// The helper holds the secret on a socket until oo7-daemon connects and
+/// retrieves it via memfd.
+fn start_login_helper(secret: &[u8]) -> Result<(), SocketError> {
+    tracing::info!("Starting oo7-daemon-login helper");
 
     let mut pipe_fds = [0 as libc::c_int; 2];
     if unsafe { libc::pipe(pipe_fds.as_mut_ptr()) } < 0 {
@@ -165,44 +165,21 @@ fn start_daemon_with_login(secret: &[u8], uid: u32) -> Result<(), SocketError> {
             }
             Err(SocketError::Connect(io::Error::last_os_error()))
         }
-        0 => {
-            // Child process — becomes the daemon
-            unsafe {
-                libc::close(pipe_write);
+        0 => unsafe {
+            libc::close(pipe_write);
 
-                // Set HOME from passwd entry so the daemon can find keyrings
-                let pw = libc::getpwuid(uid);
-                if !pw.is_null() && !(*pw).pw_dir.is_null() {
-                    libc::setenv(c"HOME".as_ptr(), (*pw).pw_dir, 1);
-                }
-
-                // Pipe becomes stdin
-                libc::dup2(pipe_read, 0);
-                if pipe_read > 0 {
-                    libc::close(pipe_read);
-                }
-
-                // stdout/stderr to /dev/null
-                let dev_null = libc::open(c"/dev/null".as_ptr(), libc::O_RDWR);
-                if dev_null >= 0 {
-                    libc::dup2(dev_null, 1);
-                    libc::dup2(dev_null, 2);
-                    if dev_null > 2 {
-                        libc::close(dev_null);
-                    }
-                }
-
-                // Exec the daemon
-                let daemon_path = c"/usr/libexec/oo7-daemon".as_ptr();
-                let login_flag = c"--login".as_ptr();
-                let args = [daemon_path, login_flag, std::ptr::null()];
-                libc::execv(daemon_path, args.as_ptr());
-
-                libc::_exit(1);
+            libc::dup2(pipe_read, 0);
+            if pipe_read > 0 {
+                libc::close(pipe_read);
             }
-        }
+
+            let helper_path = c"/usr/libexec/oo7-daemon-login".as_ptr();
+            let args = [helper_path, std::ptr::null()];
+            libc::execv(helper_path, args.as_ptr());
+
+            libc::_exit(1);
+        },
         child_pid => {
-            //  Write secret to pipe and close
             unsafe {
                 libc::close(pipe_read);
 
@@ -221,7 +198,7 @@ fn start_daemon_with_login(secret: &[u8], uid: u32) -> Result<(), SocketError> {
                 libc::close(pipe_write);
             }
 
-            tracing::info!("Started oo7-daemon with PID {child_pid}, secret piped via stdin");
+            tracing::info!("Started oo7-daemon-login with PID {child_pid}");
             Ok(())
         }
     }
@@ -240,8 +217,8 @@ async fn send_secret_to_daemon_async(
     tracing::debug!("Connecting to daemon socket at: {}", socket_path.display());
 
     // Try to connect to an already-running daemon's socket.
-    // If auto_start is set and no daemon is running, start one with --login and
-    // pipe the secret via stdin (like gnome-keyring), returning immediately.
+    // If auto_start is set and no daemon is running, start the login helper
+    // which holds the secret until oo7-daemon connects and retrieves it.
     let mut stream = match timeout(
         Duration::from_millis(SOCKET_TIMEOUT_MS),
         UnixStream::connect(&socket_path),
@@ -250,11 +227,8 @@ async fn send_secret_to_daemon_async(
     {
         Ok(Ok(s)) => s,
         Ok(Err(e)) if auto_start => {
-            tracing::info!(
-                "Daemon not running ({}), starting daemon with --login",
-                e.kind()
-            );
-            start_daemon_with_login(&message.new_secret, uid)?;
+            tracing::info!("Daemon not running ({}), starting login helper", e.kind());
+            start_login_helper(&message.new_secret)?;
             return Ok(());
         }
         Ok(Err(e)) => {

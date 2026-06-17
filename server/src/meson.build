@@ -15,14 +15,16 @@ cargo_build = custom_target(
   'cargo-build',
   build_by_default: true,
   build_always_stale: true,
-  output: meson.project_name(),
+  output: [meson.project_name(), 'oo7-daemon-login'],
   console: true,
   install: true,
-  install_dir: libexecdir,
+  install_dir: [libexecdir, libexecdir],
   command: [
     cargo, 'build',
     cargo_options,
     '&&',
-    'cp', 'src' / rust_target / meson.project_name(), '@OUTPUT@',
+    'cp', 'src' / rust_target / meson.project_name(), '@OUTPUT0@',
+    '&&',
+    'cp', 'src' / rust_target / 'oo7-daemon-login', '@OUTPUT1@',
   ]
 )
