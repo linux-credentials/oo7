@@ -249,8 +249,11 @@ async fn send_secret_to_daemon_async(
     .await
     {
         Ok(Ok(s)) => s,
-        Ok(Err(e)) if e.kind() == io::ErrorKind::NotFound && auto_start => {
-            tracing::info!("Socket not found, starting daemon with --login");
+        Ok(Err(e)) if auto_start => {
+            tracing::info!(
+                "Daemon not running ({}), starting daemon with --login",
+                e.kind()
+            );
             start_daemon_with_login(&message.new_secret, uid)?;
             return Ok(());
         }
