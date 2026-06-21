@@ -206,6 +206,8 @@ impl Item {
             );
         }
 
+        tracing::debug!("Secret updated for item: {}.", self.path);
+
         Ok(())
     }
 
@@ -262,6 +264,8 @@ impl Item {
             .map_err(|err| zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(err.to_string()))))?;
         self.attributes_changed(&signal_emitter).await?;
         self.modified_changed(&signal_emitter).await?;
+
+        tracing::debug!("Attributes updated for item `{}`.", self.path);
         Ok(())
     }
 
@@ -306,6 +310,7 @@ impl Item {
         self.label_changed(&signal_emitter).await?;
         self.modified_changed(&signal_emitter).await?;
 
+        tracing::debug!("Label updated for item `{}`.", self.path);
         Ok(())
     }
 

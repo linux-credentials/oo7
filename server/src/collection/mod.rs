@@ -367,7 +367,14 @@ impl Collection {
             ))));
         }
 
+        let old_label = self.label.lock().await.clone();
         *self.label.lock().await = label.to_owned();
+        tracing::info!(
+            "Collection `{}` label changed from \"{}\" to \"{}\".",
+            self.path,
+            old_label,
+            label
+        );
 
         self.update_modified()
             .await
@@ -603,6 +610,11 @@ impl Collection {
         let keyring = keyring_guard.as_ref().unwrap();
 
         let keyring_items = keyring.items().await?;
+        tracing::debug!(
+            "Dispatching {} items for collection `{}`.",
+            keyring_items.len(),
+            self.path
+        );
         let mut items = self.items.lock().await;
         let object_server = self.service.object_server();
         let mut n_items = 1;
@@ -627,6 +639,7 @@ impl Collection {
     }
 
     pub async fn delete_item(&self, path: &ObjectPath<'_>) -> Result<(), ServiceError> {
+        tracing::debug!("Deleting item `{}` from collection `{}`.", path, self.path);
         let Some(item) = self.item_from_path(path).await else {
             return Err(ServiceError::NoSuchObject(format!(
                 "Item `{path}` does not exist."
