@@ -43,6 +43,7 @@ pub enum PrompterType {
     #[allow(clippy::upper_case_acronyms)]
     GNOME,
     Plasma,
+    Cli,
 }
 
 #[derive(Clone)]
@@ -519,7 +520,7 @@ impl Service {
     const LOGIN_ALIAS: &str = "login";
 
     /// Set the prompter type override
-    #[cfg(test)]
+    #[allow(unused)]
     pub(crate) async fn set_prompter_type(&self, prompter_type: PrompterType) {
         *self.prompter_type_override.lock().await = Some(prompter_type);
     }
@@ -530,14 +531,21 @@ impl Service {
             return *override_type;
         }
 
-        #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-        {
-            if in_plasma_environment(self.connection()).await {
-                return PrompterType::Plasma;
+        let has_display = std::env::var_os("DISPLAY").is_some_and(|v| !v.is_empty())
+            || std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty());
+
+        if has_display {
+            #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+            {
+                if in_plasma_environment(self.connection()).await {
+                    return PrompterType::Plasma;
+                }
             }
+
+            return PrompterType::GNOME;
         }
 
-        PrompterType::GNOME
+        PrompterType::Cli
     }
 
     pub(crate) fn new(

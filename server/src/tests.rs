@@ -12,7 +12,7 @@ use crate::gnome::{
     prompter::{PromptType, Properties, Reply},
     secret_exchange,
 };
-use crate::service::Service;
+use crate::service::{PrompterType, Service};
 
 /// Helper to create a peer-to-peer connection pair using Unix socket
 async fn create_p2p_connection()
@@ -83,6 +83,7 @@ impl TestServiceSetup {
             secret.clone(),
         )
         .await?;
+        server.set_prompter_type(PrompterType::GNOME).await;
 
         // Create and serve the mock prompter
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
@@ -150,6 +151,7 @@ impl TestServiceSetup {
             secret.clone(),
         )
         .await?;
+        server.set_prompter_type(PrompterType::GNOME).await;
 
         // Create and serve the mock prompter
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
@@ -233,6 +235,7 @@ impl TestServiceSetup {
         service
             .initialize(server_conn, discovered, secret.clone(), false)
             .await?;
+        service.set_prompter_type(PrompterType::GNOME).await;
 
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
         let mock_prompter = {
