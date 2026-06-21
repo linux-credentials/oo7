@@ -118,10 +118,35 @@ impl Service {
             }
         };
 
-        tracing::info!("Client {} connected", sender);
-
-        let session = Session::new(aes_key.map(Arc::new), self.clone(), sender).await;
+        let peer_name = async {
+            let proxy = zbus::fdo::DBusProxy::new(self.connection()).await.ok()?;
+            let pid = proxy
+                .get_connection_unix_process_id(sender.as_ref().into())
+                .await
+                .ok()?;
+            let cmdline = tokio::fs::read(format!("/proc/{pid}/cmdline")).await.ok()?;
+            let name = cmdline.split(|&b| b == 0).next()?;
+            let name = std::path::Path::new(std::str::from_utf8(name).ok()?)
+                .file_name()?
+                .to_str()?;
+            Some(format!("{name}[{pid}]"))
+        }
+        .await;
+        let session = Session::new(
+            aes_key.map(Arc::new),
+            self.clone(),
+            sender.clone(),
+            peer_name,
+        )
+        .await;
         let path = OwnedObjectPath::from(session.path().clone());
+
+        match session.peer_name() {
+            Some(name) => {
+                tracing::info!("Client {} ({}) connected, session: {}", sender, name, path)
+            }
+            None => tracing::info!("Client {} connected, session: {}", sender, path),
+        }
 
         self.sessions
             .lock()
@@ -1094,10 +1119,14 @@ impl Service {
                 .as_ref()
                 .expect("A disconnected client requires an old_owner");
             if let Some(session) = self.session_from_sender(old_owner).await {
+                let client_name = match session.peer_name() {
+                    Some(name) => format!("{old_owner} ({name})"),
+                    None => old_owner.to_string(),
+                };
                 match session.close().await {
                     Ok(_) => tracing::info!(
                         "Client {} disconnected. Session: {} closed.",
-                        old_owner,
+                        client_name,
                         session.path()
                     ),
                     Err(err) => tracing::error!("Failed to close session: {}", err),
@@ -1237,6 +1266,16 @@ impl Service {
         let sessions = self.sessions.lock().await;
 
         sessions.values().find(|s| s.sender() == sender).cloned()
+    }
+
+    pub async fn peer_display_name(&self, sender: &UniqueName<'_>) -> String {
+        match self.session_from_sender(sender).await {
+            Some(session) => match session.peer_name() {
+                Some(name) => format!("{sender} ({name})"),
+                None => sender.to_string(),
+            },
+            None => sender.to_string(),
+        }
     }
 
     pub async fn session(&self, path: &ObjectPath<'_>) -> Option<Session> {

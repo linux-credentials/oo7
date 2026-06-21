@@ -43,7 +43,15 @@ pub struct Collection {
 #[interface(name = "org.freedesktop.Secret.Collection")]
 impl Collection {
     #[zbus(out_args("prompt"))]
-    pub async fn delete(&self) -> Result<OwnedObjectPath, ServiceError> {
+    pub async fn delete(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> Result<OwnedObjectPath, ServiceError> {
+        let caller = if let Some(sender) = header.sender() {
+            self.service.peer_display_name(sender).await
+        } else {
+            "unknown".to_string()
+        };
         // Check if collection is locked
         if self.is_locked().await {
             // Create a prompt to unlock and delete the collection
@@ -57,12 +65,13 @@ impl Collection {
             let prompt_path = OwnedObjectPath::from(prompt.path().clone());
 
             let collection = self.clone();
+            let caller_owned = caller;
             let action =
                 crate::prompt::PromptAction::new(move |unlock_secret: Secret| async move {
                     // Unlock the collection
                     collection.set_locked(false, Some(unlock_secret)).await?;
 
-                    collection.delete_unlocked().await?;
+                    collection.delete_unlocked(&caller_owned).await?;
 
                     Ok(zvariant::Value::new(OwnedObjectPath::default())
                         .try_into_owned()
@@ -89,11 +98,11 @@ impl Collection {
             return Ok(prompt_path);
         }
 
-        self.delete_unlocked().await?;
+        self.delete_unlocked(&caller).await?;
         Ok(OwnedObjectPath::default())
     }
 
-    async fn delete_unlocked(&self) -> Result<(), ServiceError> {
+    async fn delete_unlocked(&self, caller: &str) -> Result<(), ServiceError> {
         let keyring_path = {
             let keyring_guard = self.keyring.read().await;
             let keyring = match keyring_guard.as_ref() {
@@ -131,7 +140,7 @@ impl Collection {
         // Notify service to remove from collections list
         self.service.remove_collection(&self.path).await;
 
-        tracing::info!("Collection `{}` deleted.", self.path);
+        tracing::info!("Collection `{}` deleted by {caller}.", self.path);
 
         Ok(())
     }
@@ -171,7 +180,14 @@ impl Collection {
         properties: Properties,
         secret: DBusSecretInner,
         replace: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> Result<(OwnedObjectPath, OwnedObjectPath), ServiceError> {
+        let caller = if let Some(sender) = header.sender() {
+            self.service.peer_display_name(sender).await
+        } else {
+            "unknown".to_string()
+        };
+        tracing::debug!("CreateItem called by {caller} with session {}", secret.0);
         if self.is_locked().await {
             // Create a prompt to unlock the collection and create the item
             let prompt = crate::prompt::Prompt::new(
@@ -240,7 +256,11 @@ impl Collection {
         let mut attributes = properties.attributes().unwrap().to_owned();
 
         let Some(session) = self.service.session(session_path).await else {
-            tracing::error!("The session `{}` does not exist.", session_path);
+            tracing::error!(
+                "The session `{}` does not exist, referenced while creating item in collection `{}`.",
+                session_path,
+                self.path
+            );
             return Err(ServiceError::NoSession(format!(
                 "The session `{session_path}` does not exist."
             )));
@@ -312,7 +332,13 @@ impl Collection {
         Self::item_created(&signal_emitter, &item_path).await?;
         self.items_changed(&signal_emitter).await?;
 
-        tracing::info!("Item `{item_path}` created.");
+        match session.peer_name() {
+            Some(name) => tracing::info!(
+                "Item `{item_path}` created by {} ({name}).",
+                session.sender()
+            ),
+            None => tracing::info!("Item `{item_path}` created by {}.", session.sender()),
+        }
 
         Ok(item_path)
     }

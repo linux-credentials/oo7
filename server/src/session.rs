@@ -17,6 +17,7 @@ pub struct Session {
     service: Service,
     path: OwnedObjectPath,
     sender: UniqueName<'static>,
+    peer_name: Option<String>,
 }
 
 #[interface(name = "org.freedesktop.Secret.Session")]
@@ -37,6 +38,7 @@ impl Session {
         aes_key: Option<Arc<Key>>,
         service: Service,
         sender: UniqueName<'static>,
+        peer_name: Option<String>,
     ) -> Self {
         let index = service.session_index().await;
         Self {
@@ -45,11 +47,16 @@ impl Session {
             aes_key,
             service,
             sender,
+            peer_name,
         }
     }
 
     pub fn sender(&self) -> &UniqueName<'static> {
         &self.sender
+    }
+
+    pub fn peer_name(&self) -> Option<&str> {
+        self.peer_name.as_deref()
     }
 
     pub fn path(&self) -> &ObjectPath<'_> {
