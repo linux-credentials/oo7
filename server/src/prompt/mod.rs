@@ -105,133 +105,17 @@ impl Prompt {
     pub async fn prompt(&self, window_id: Optional<&str>) -> Result<(), ServiceError> {
         let window_id = (*window_id).and_then(|w| ashpd::WindowIdentifierType::from_str(w).ok());
 
-        let prompter_type = self.service.prompter_type().await;
-
-        #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-        {
-            if prompter_type == PrompterType::Plasma {
-                if self.plasma_callback.get().is_some() {
-                    return Err(custom_service_error(
-                        "A prompt callback is ongoing already.",
-                    ));
-                }
-
-                let callback =
-                    PlasmaPrompterCallback::new(self.service.clone(), self.path.clone()).await;
-                let path = OwnedObjectPath::from(callback.path().clone());
-
-                // We are sure the callback is not set at this point, so it is fine to ignore
-                // the result of set
-                let _ = self.plasma_callback.set(callback.clone());
-                self.service
-                    .object_server()
-                    .at(&path, callback.clone())
-                    .await?;
-                tracing::debug!("Prompt `{}` created.", self.path);
-
-                return callback.start(&self.role, window_id, &self.label).await;
-            }
+        match self.service.prompter_type().await {
+            #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+            PrompterType::Plasma => self.prompt_plasma(window_id).await,
+            #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+            PrompterType::GNOME => self.prompt_gnome(window_id).await,
+            PrompterType::Cli => self.prompt_cli().await,
+            #[allow(unreachable_patterns)]
+            _ => Err(custom_service_error(
+                "No prompt backend available in the current environment.",
+            )),
         }
-
-        #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-        {
-            if prompter_type == PrompterType::GNOME {
-                if self.gnome_callback.get().is_some() {
-                    return Err(custom_service_error(
-                        "A GNOME prompt callback is ongoing already.",
-                    ));
-                };
-
-                let callback =
-                    GNOMEPrompterCallback::new(window_id, self.service.clone(), self.path.clone())
-                        .await
-                        .map_err(|err| {
-                            custom_service_error(&format!(
-                                "Failed to create GNOMEPrompterCallback {err}."
-                            ))
-                        })?;
-
-                let path = OwnedObjectPath::from(callback.path().clone());
-
-                // We are sure the callback is not set at this point, so it is fine to ignore
-                // the result of set
-                let _ = self.gnome_callback.set(callback.clone());
-                self.service.object_server().at(&path, callback).await?;
-                tracing::debug!("Prompt `{}` created.", self.path);
-
-                // Starts GNOME System Prompting.
-                // Spawned separately to avoid blocking the early return of the current
-                // execution.
-                let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
-                tokio::spawn(async move { prompter.begin_prompting(&path).await });
-
-                return Ok(());
-            }
-        }
-
-        // Fallback: try CLI prompter registered on the bus
-        if let Ok(proxy) = CliPrompterProxy::new(self.service.connection()).await {
-            let label = &self.label;
-            let description = match self.role {
-                PromptRole::Unlock =>  formatx!(
-                    gettext("An application wants access to the keyring '{}', but it is locked",),
-                    label,
-                )
-                .expect("Wrong format in translatable string"),
-                PromptRole::CreateCollection =>
-                    formatx!(
-                        gettext("An application wants access to the keyring '{}', but it is locked",),
-                        label,
-                    )
-                    .expect("Wrong format in translatable string"),
-                PromptRole::ChangePassword =>
-                    formatx!(
-                        gettext("An application wants to change the password for the “{}” keyring. Choose the new password you want to use for it."),
-                        label,
-                    )
-                    .expect("Wrong format in translatable string"),
-            };
-            match proxy.prompt(&self.label, &description).await {
-                Ok((fd, true)) => {
-                    let std_stream = std::os::unix::net::UnixStream::from(
-                        fd.as_fd().try_clone_to_owned().expect("Failed to clone fd"),
-                    );
-                    let mut stream = tokio::net::UnixStream::from_std(std_stream)
-                        .expect("Failed to create Tokio UnixStream");
-                    let mut buffer = String::new();
-                    stream.read_to_string(&mut buffer).await.map_err(|e| {
-                        custom_service_error(&format!(
-                            "Failed to read secret from CLI prompter: {e}"
-                        ))
-                    })?;
-                    let secret = Secret::from(buffer);
-
-                    match self.role {
-                        PromptRole::Unlock => {
-                            self.on_unlock_collection(secret).await?;
-                        }
-                        PromptRole::CreateCollection => {
-                            self.on_create_collection(secret).await?;
-                        }
-                        PromptRole::ChangePassword => {
-                            self.on_change_password(secret).await?;
-                        }
-                    }
-                    return Ok(());
-                }
-                Ok((_, false)) => {
-                    tracing::info!("CLI prompter dismissed by user.");
-                }
-                Err(e) => {
-                    tracing::debug!("CLI prompter not available: {e}");
-                }
-            }
-        }
-
-        #[allow(unreachable_code)]
-        Err(custom_service_error(
-            "No prompt backend available in the current environment.",
-        ))
     }
 
     pub async fn dismiss(&self) -> Result<(), ServiceError> {
@@ -416,6 +300,118 @@ impl Prompt {
             Err(err) => Err(custom_service_error(&format!(
                 "Failed to change password: {err}."
             ))),
+        }
+    }
+
+    #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+    async fn prompt_plasma(
+        &self,
+        window_id: Option<ashpd::WindowIdentifierType>,
+    ) -> Result<(), ServiceError> {
+        if self.plasma_callback.get().is_some() {
+            return Err(custom_service_error(
+                "A prompt callback is ongoing already.",
+            ));
+        }
+
+        let callback = PlasmaPrompterCallback::new(self.service.clone(), self.path.clone()).await;
+        let path = OwnedObjectPath::from(callback.path().clone());
+
+        let _ = self.plasma_callback.set(callback.clone());
+        self.service
+            .object_server()
+            .at(&path, callback.clone())
+            .await?;
+        tracing::debug!("Prompt `{}` created.", self.path);
+
+        callback.start(&self.role, window_id, &self.label).await
+    }
+
+    #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+    async fn prompt_gnome(
+        &self,
+        window_id: Option<ashpd::WindowIdentifierType>,
+    ) -> Result<(), ServiceError> {
+        if self.gnome_callback.get().is_some() {
+            return Err(custom_service_error(
+                "A GNOME prompt callback is ongoing already.",
+            ));
+        };
+
+        let callback =
+            GNOMEPrompterCallback::new(window_id, self.service.clone(), self.path.clone())
+                .await
+                .map_err(|err| {
+                    custom_service_error(&format!("Failed to create GNOMEPrompterCallback {err}."))
+                })?;
+
+        let path = OwnedObjectPath::from(callback.path().clone());
+
+        let _ = self.gnome_callback.set(callback.clone());
+        self.service.object_server().at(&path, callback).await?;
+        tracing::debug!("Prompt `{}` created.", self.path);
+
+        let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
+        tokio::spawn(async move { prompter.begin_prompting(&path).await });
+
+        Ok(())
+    }
+
+    async fn prompt_cli(&self) -> Result<(), ServiceError> {
+        let proxy = CliPrompterProxy::new(self.service.connection())
+            .await
+            .map_err(|e| custom_service_error(&format!("CLI prompter not available: {e}")))?;
+
+        let label = &self.label;
+        let description = match self.role {
+            PromptRole::Unlock => formatx!(
+                gettext("An application wants access to the keyring '{}', but it is locked"),
+                label,
+            )
+            .expect("Wrong format in translatable string"),
+            PromptRole::CreateCollection => formatx!(
+                gettext("An application wants to create a new keyring called '{}'. Choose the password you want to use for it."),
+                label,
+            )
+            .expect("Wrong format in translatable string"),
+            PromptRole::ChangePassword => formatx!(
+                gettext("An application wants to change the password for the '{}' keyring. Choose the new password you want to use for it."),
+                label,
+            )
+            .expect("Wrong format in translatable string"),
+        };
+
+        match proxy.prompt(&self.label, &description).await {
+            Ok((fd, true)) => {
+                let std_stream = std::os::unix::net::UnixStream::from(
+                    fd.as_fd().try_clone_to_owned().expect("Failed to clone fd"),
+                );
+                let mut stream = tokio::net::UnixStream::from_std(std_stream)
+                    .expect("Failed to create Tokio UnixStream");
+                let mut buffer = String::new();
+                stream.read_to_string(&mut buffer).await.map_err(|e| {
+                    custom_service_error(&format!("Failed to read secret from CLI prompter: {e}"))
+                })?;
+                let secret = Secret::from(buffer);
+
+                match self.role {
+                    PromptRole::Unlock => {
+                        self.on_unlock_collection(secret).await?;
+                    }
+                    PromptRole::CreateCollection => {
+                        self.on_create_collection(secret).await?;
+                    }
+                    PromptRole::ChangePassword => {
+                        self.on_change_password(secret).await?;
+                    }
+                }
+                Ok(())
+            }
+            Ok((_, false)) => {
+                tracing::info!("CLI prompter dismissed by user.");
+                Err(custom_service_error("Prompt dismissed by user."))
+            }
+            Err(e) => Err(custom_service_error(&format!("CLI prompter failed: {e}"))),
         }
     }
 }
