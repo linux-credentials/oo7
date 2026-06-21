@@ -1066,28 +1066,22 @@ impl Service {
             tracing::info!("Created default 'Login' collection ({})", is_locked);
         }
 
-        // Set up discovered collections
+        // Build all collections under the lock, then register on D-Bus after
+        // releasing it to avoid deadlocks with incoming calls.
+        let mut built_collections: Vec<(Collection, String)> = Vec::new();
+
         for (name, label, alias, keyring) in discovered_keyrings {
+            tracing::info!("Setting up collection '{name}' (alias: {alias}).");
             let (unique_label, unique_alias) =
                 Self::make_unique_label_and_alias(&collections, &label, &alias);
             let collection =
                 Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
             collections.insert(collection.path().to_owned().into(), collection.clone());
-            collection.dispatch_items().await?;
-            object_server
-                .at(collection.path(), collection.clone())
-                .await?;
-
-            // If this is the default collection, also register it at the alias path
-            if unique_alias == oo7::dbus::Service::DEFAULT_COLLECTION {
-                object_server
-                    .at(DEFAULT_COLLECTION_ALIAS_PATH, collection)
-                    .await?;
-            }
+            built_collections.push((collection, unique_alias));
         }
 
         // Always create session collection (always temporary)
-        let collection = Collection::new(
+        let session_collection = Collection::new(
             "session",
             "session",
             oo7::dbus::Service::SESSION_COLLECTION,
@@ -1095,12 +1089,29 @@ impl Service {
             Keyring::Unlocked(UnlockedKeyring::temporary(Secret::random().unwrap()).await?),
         )
         .await;
-        object_server
-            .at(collection.path(), collection.clone())
-            .await?;
-        collections.insert(collection.path().to_owned().into(), collection);
+        collections.insert(
+            session_collection.path().to_owned().into(),
+            session_collection.clone(),
+        );
 
-        drop(collections); // Release the lock
+        drop(collections);
+
+        // Now register on D-Bus and dispatch items without holding the lock
+        for (collection, alias) in &built_collections {
+            collection.dispatch_items().await?;
+            object_server
+                .at(collection.path(), collection.clone())
+                .await?;
+
+            if alias == oo7::dbus::Service::DEFAULT_COLLECTION {
+                object_server
+                    .at(DEFAULT_COLLECTION_ALIAS_PATH, collection.clone())
+                    .await?;
+            }
+        }
+
+        let session_path = session_collection.path().to_owned();
+        object_server.at(&session_path, session_collection).await?;
 
         // Spawn client disconnect handler
         let service = self.clone();
