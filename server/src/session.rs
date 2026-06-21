@@ -1,8 +1,12 @@
 // org.freedesktop.Secret.Session
 
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use oo7::{Key, dbus::ServiceError};
+use tokio::sync::Mutex;
 use zbus::{
     interface,
     names::UniqueName,
@@ -11,6 +15,8 @@ use zbus::{
 
 use crate::Service;
 
+const SESSION_STALE_TIMEOUT: Duration = Duration::from_secs(60);
+
 #[derive(Clone)]
 pub struct Session {
     aes_key: Option<Arc<Key>>,
@@ -18,6 +24,7 @@ pub struct Session {
     path: OwnedObjectPath,
     sender: UniqueName<'static>,
     peer_name: Option<String>,
+    disconnected_at: Arc<Mutex<Option<Instant>>>,
 }
 
 #[interface(name = "org.freedesktop.Secret.Session")]
@@ -48,6 +55,7 @@ impl Session {
             service,
             sender,
             peer_name,
+            disconnected_at: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -65,6 +73,21 @@ impl Session {
 
     pub fn aes_key(&self) -> Option<Arc<Key>> {
         self.aes_key.as_ref().map(Arc::clone)
+    }
+
+    pub async fn mark_stale(&self) {
+        *self.disconnected_at.lock().await = Some(Instant::now());
+    }
+
+    pub async fn unmark_stale(&self) {
+        *self.disconnected_at.lock().await = None;
+    }
+
+    pub async fn is_stale(&self) -> bool {
+        self.disconnected_at
+            .lock()
+            .await
+            .is_some_and(|t| t.elapsed() > SESSION_STALE_TIMEOUT)
     }
 }
 

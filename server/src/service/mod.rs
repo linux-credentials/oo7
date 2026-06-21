@@ -1095,6 +1095,10 @@ impl Service {
         let service = self.clone();
         tokio::spawn(async move { service.on_client_disconnect().await });
 
+        // Spawn stale session cleanup task
+        let service = self.clone();
+        tokio::spawn(async move { service.cleanup_stale_sessions().await });
+
         Ok(())
     }
 
@@ -1123,17 +1127,42 @@ impl Service {
                     Some(name) => format!("{old_owner} ({name})"),
                     None => old_owner.to_string(),
                 };
-                match session.close().await {
-                    Ok(_) => tracing::info!(
-                        "Client {} disconnected. Session: {} closed.",
-                        client_name,
-                        session.path()
-                    ),
-                    Err(err) => tracing::error!("Failed to close session: {}", err),
-                }
+                session.mark_stale().await;
+                tracing::info!(
+                    "Client {} disconnected. Session: {} marked for cleanup.",
+                    client_name,
+                    session.path()
+                );
             }
         }
         Ok(())
+    }
+
+    async fn cleanup_stale_sessions(&self) {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            let stale_paths: Vec<_> = {
+                let sessions = self.sessions.lock().await;
+                let mut paths = Vec::new();
+                for (path, session) in sessions.iter() {
+                    if session.is_stale().await {
+                        paths.push(path.clone());
+                    }
+                }
+                paths
+            };
+            for path in stale_paths {
+                if let Some(session) = self.session(&path).await {
+                    match session.close().await {
+                        Ok(_) => tracing::info!("Stale session {} cleaned up.", path),
+                        Err(err) => {
+                            tracing::error!("Failed to clean up stale session {}: {}", path, err)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub async fn set_locked(
@@ -1279,7 +1308,9 @@ impl Service {
     }
 
     pub async fn session(&self, path: &ObjectPath<'_>) -> Option<Session> {
-        self.sessions.lock().await.get(path).cloned()
+        let session = self.sessions.lock().await.get(path).cloned()?;
+        session.unmark_stale().await;
+        Some(session)
     }
 
     pub async fn remove_session(&self, path: &ObjectPath<'_>) {
