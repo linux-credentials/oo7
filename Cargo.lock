@@ -1199,6 +1199,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "zbus",
 ]
 
 [[package]]

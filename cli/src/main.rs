@@ -17,6 +17,38 @@ use time::{OffsetDateTime, UtcOffset};
 const BINARY_NAME: &str = env!("CARGO_BIN_NAME");
 const H_STYLE: anstyle::Style = anstyle::Style::new().bold().underline();
 
+struct CliPrompter;
+
+#[zbus::interface(name = "org.freedesktop.secrets.CliPrompter")]
+impl CliPrompter {
+    async fn prompt(
+        &self,
+        _label: &str,
+        description: &str,
+    ) -> zbus::fdo::Result<(zbus::zvariant::OwnedFd, bool)> {
+        let password = match rpassword::prompt_password(format!("{description}: ")) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to read password: {e}");
+                return Err(zbus::fdo::Error::Failed(e.to_string()));
+            }
+        };
+        let (read_fd, write_fd) = std::os::unix::net::UnixStream::pair()
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+        {
+            use std::io::Write;
+            (&write_fd)
+                .write_all(password.as_bytes())
+                .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+        }
+        drop(write_fd);
+        Ok((
+            zbus::zvariant::OwnedFd::from(std::os::fd::OwnedFd::from(read_fd)),
+            true,
+        ))
+    }
+}
+
 enum Error {
     Owned(String),
     Borrowed(&'static str),
@@ -45,6 +77,12 @@ impl From<oo7::file::Error> for Error {
 
 impl From<oo7::dbus::Error> for Error {
     fn from(err: oo7::dbus::Error) -> Error {
+        Self::Owned(err.to_string())
+    }
+}
+
+impl From<zbus::Error> for Error {
+    fn from(err: zbus::Error) -> Error {
         Self::Owned(err.to_string())
     }
 }
@@ -377,12 +415,13 @@ impl Commands {
             (None, None)
         };
 
-        let keyring = match (path, secret) {
+        let (_prompter_conn, keyring) = match (path, secret) {
             (Some(path), Some(secret)) => {
                 #[allow(unsafe_code)]
-                unsafe {
+                let keyring = unsafe {
                     Keyring::File(oo7::file::UnlockedKeyring::load_unchecked(path, secret).await?)
-                }
+                };
+                (None, keyring)
             }
 
             (Some(_), None) => {
@@ -400,7 +439,15 @@ impl Commands {
                 } else {
                     service.default_collection().await?
                 };
-                Keyring::Collection(collection)
+
+                let conn = zbus::Connection::session().await?;
+                conn.request_name("org.freedesktop.secrets.CliPrompter")
+                    .await?;
+                conn.object_server()
+                    .at("/org/freedesktop/secrets/CliPrompter", CliPrompter)
+                    .await?;
+
+                (Some(conn), Keyring::Collection(collection))
             }
         };
 

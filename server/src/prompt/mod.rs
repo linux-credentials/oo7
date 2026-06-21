@@ -1,9 +1,14 @@
 // org.freedesktop.Secret.Prompt
 
-use std::{future::Future, pin::Pin, str::FromStr, sync::Arc};
+use std::{future::Future, os::fd::AsFd, pin::Pin, str::FromStr, sync::Arc};
 
+use formatx::formatx;
+use gettextrs::gettext;
 use oo7::{Secret, dbus::ServiceError};
-use tokio::sync::{Mutex, OnceCell};
+use tokio::{
+    io::AsyncReadExt,
+    sync::{Mutex, OnceCell},
+};
 use zbus::{
     interface,
     object_server::SignalEmitter,
@@ -18,6 +23,20 @@ use crate::{
     error::custom_service_error,
     service::{PrompterType, Service},
 };
+
+#[zbus::proxy(
+    interface = "org.freedesktop.secrets.CliPrompter",
+    default_service = "org.freedesktop.secrets.CliPrompter",
+    default_path = "/org/freedesktop/secrets/CliPrompter"
+)]
+trait CliPrompter {
+    #[zbus(no_autostart)]
+    async fn prompt(
+        &self,
+        label: &str,
+        description: &str,
+    ) -> zbus::Result<(zbus::zvariant::OwnedFd, bool)>;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptRole {
@@ -147,6 +166,65 @@ impl Prompt {
                 tokio::spawn(async move { prompter.begin_prompting(&path).await });
 
                 return Ok(());
+            }
+        }
+
+        // Fallback: try CLI prompter registered on the bus
+        if let Ok(proxy) = CliPrompterProxy::new(self.service.connection()).await {
+            let label = &self.label;
+            let description = match self.role {
+                PromptRole::Unlock =>  formatx!(
+                    gettext("An application wants access to the keyring '{}', but it is locked",),
+                    label,
+                )
+                .expect("Wrong format in translatable string"),
+                PromptRole::CreateCollection =>
+                    formatx!(
+                        gettext("An application wants access to the keyring '{}', but it is locked",),
+                        label,
+                    )
+                    .expect("Wrong format in translatable string"),
+                PromptRole::ChangePassword =>
+                    formatx!(
+                        gettext("An application wants to change the password for the “{}” keyring. Choose the new password you want to use for it."),
+                        label,
+                    )
+                    .expect("Wrong format in translatable string"),
+            };
+            match proxy.prompt(&self.label, &description).await {
+                Ok((fd, true)) => {
+                    let std_stream = std::os::unix::net::UnixStream::from(
+                        fd.as_fd().try_clone_to_owned().expect("Failed to clone fd"),
+                    );
+                    let mut stream = tokio::net::UnixStream::from_std(std_stream)
+                        .expect("Failed to create Tokio UnixStream");
+                    let mut buffer = String::new();
+                    stream.read_to_string(&mut buffer).await.map_err(|e| {
+                        custom_service_error(&format!(
+                            "Failed to read secret from CLI prompter: {e}"
+                        ))
+                    })?;
+                    let secret = Secret::from(buffer);
+
+                    match self.role {
+                        PromptRole::Unlock => {
+                            self.on_unlock_collection(secret).await?;
+                        }
+                        PromptRole::CreateCollection => {
+                            self.on_create_collection(secret).await?;
+                        }
+                        PromptRole::ChangePassword => {
+                            self.on_change_password(secret).await?;
+                        }
+                    }
+                    return Ok(());
+                }
+                Ok((_, false)) => {
+                    tracing::info!("CLI prompter dismissed by user.");
+                }
+                Err(e) => {
+                    tracing::debug!("CLI prompter not available: {e}");
+                }
             }
         }
 

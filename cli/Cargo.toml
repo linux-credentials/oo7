@@ -22,6 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 time = { version = "0.3", default-features = false, features = ["alloc", "formatting", "local-offset"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
+zbus.workspace = true
 
 [features]
 default = ["native_crypto"]
