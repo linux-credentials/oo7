@@ -5,10 +5,14 @@ use std::{
     time::Duration,
 };
 
-use tokio::{io::AsyncWriteExt, net::UnixStream, time::timeout};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::UnixStream,
+    time::timeout,
+};
 use zeroize::Zeroizing;
 
-use crate::protocol::PamMessage;
+use crate::protocol::{PamMessage, PamResponse};
 
 /// Timeout for socket operations (in milliseconds)
 const SOCKET_TIMEOUT_MS: u64 = 5000;
@@ -340,7 +344,42 @@ async fn send_secret_to_daemon_async(
 
     stream.flush().await.map_err(SocketError::Send)?;
 
-    tracing::debug!("Sent message to daemon, waiting for response");
+    tracing::debug!("Sent message to daemon, reading response");
+
+    let mut length_bytes = [0u8; 4];
+    match timeout(
+        Duration::from_millis(SOCKET_TIMEOUT_MS),
+        stream.read_exact(&mut length_bytes),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {
+            let length = u32::from_le_bytes(length_bytes) as usize;
+            let mut response_bytes = vec![0u8; length];
+            if let Ok(Ok(_)) = timeout(
+                Duration::from_millis(SOCKET_TIMEOUT_MS),
+                stream.read_exact(&mut response_bytes),
+            )
+            .await
+            {
+                match PamResponse::from_bytes(&response_bytes) {
+                    Ok(response) if response.success => {
+                        tracing::debug!("Daemon accepted secret");
+                    }
+                    Ok(response) => {
+                        tracing::warn!("Daemon rejected secret: {}", response.error_message);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse daemon response: {e}");
+                    }
+                }
+            }
+        }
+        _ => {
+            tracing::debug!("No response from daemon");
+        }
+    }
+
     Ok(())
 }
 
