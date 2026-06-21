@@ -1,4 +1,9 @@
-use std::{io, path::PathBuf, time::Duration};
+use std::{
+    io,
+    os::unix::fs::{FileTypeExt, MetadataExt},
+    path::PathBuf,
+    time::Duration,
+};
 
 use tokio::{io::AsyncWriteExt, net::UnixStream, time::timeout};
 use zeroize::Zeroizing;
@@ -49,6 +54,7 @@ pub enum SocketError {
     Send(io::Error),
     Serialize(zvariant::Error),
     Timeout,
+    InvalidSocket(String),
 }
 
 impl std::fmt::Display for SocketError {
@@ -58,6 +64,7 @@ impl std::fmt::Display for SocketError {
             Self::Send(e) => write!(f, "Failed to send message: {e}"),
             Self::Serialize(e) => write!(f, "Failed to serialize message: {e}"),
             Self::Timeout => write!(f, "Operation timed out"),
+            Self::InvalidSocket(msg) => write!(f, "Invalid socket: {msg}"),
         }
     }
 }
@@ -67,7 +74,7 @@ impl std::error::Error for SocketError {
         match self {
             Self::Connect(e) | Self::Send(e) => Some(e),
             Self::Serialize(e) => Some(e),
-            Self::Timeout => None,
+            Self::Timeout | Self::InvalidSocket(_) => None,
         }
     }
 }
@@ -260,9 +267,38 @@ async fn send_secret_to_daemon_async(
 
     tracing::debug!("Connecting to daemon socket at: {}", socket_path.display());
 
-    // Try to connect to an already-running daemon's socket.
-    // If auto_start is set and no daemon is running, start the login helper
-    // which holds the secret until oo7-daemon connects and retrieves it.
+    // Validate socket ownership before connecting to prevent interception
+    // by a fake socket placed by another user.
+    match socket_path.symlink_metadata() {
+        Ok(meta) => {
+            if meta.file_type().is_symlink() {
+                return Err(SocketError::InvalidSocket(
+                    "socket path is a symlink".to_string(),
+                ));
+            }
+            if !meta.file_type().is_socket() {
+                return Err(SocketError::InvalidSocket(
+                    "path is not a socket".to_string(),
+                ));
+            }
+            if meta.uid() != uid {
+                return Err(SocketError::InvalidSocket(format!(
+                    "socket owned by UID {} but expected {}",
+                    meta.uid(),
+                    uid
+                )));
+            }
+        }
+        Err(e) if auto_start && e.kind() == io::ErrorKind::NotFound => {
+            tracing::info!("Socket not found, starting login helper");
+            start_login_helper(&message.new_secret)?;
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(SocketError::Connect(e));
+        }
+    }
+
     let mut stream = match timeout(
         Duration::from_millis(SOCKET_TIMEOUT_MS),
         UnixStream::connect(&socket_path),
