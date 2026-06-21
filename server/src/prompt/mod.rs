@@ -386,6 +386,9 @@ impl Prompt {
                 let std_stream = std::os::unix::net::UnixStream::from(
                     fd.as_fd().try_clone_to_owned().expect("Failed to clone fd"),
                 );
+                std_stream.set_nonblocking(true).map_err(|e| {
+                    custom_service_error(&format!("Failed to set non-blocking: {e}"))
+                })?;
                 let mut stream = tokio::net::UnixStream::from_std(std_stream)
                     .expect("Failed to create Tokio UnixStream");
                 let mut buffer = String::new();
