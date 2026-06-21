@@ -21,7 +21,15 @@ pub struct Item {
 #[zbus::interface(name = "org.freedesktop.Secret.Item")]
 impl Item {
     #[zbus(out_args("Prompt"))]
-    pub async fn delete(&self) -> Result<OwnedObjectPath, ServiceError> {
+    pub async fn delete(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> Result<OwnedObjectPath, ServiceError> {
+        let caller = if let Some(sender) = header.sender() {
+            self.service.peer_display_name(sender).await
+        } else {
+            "unknown".to_string()
+        };
         let Some(collection) = self
             .service
             .collection_from_path(&self.collection_path)
@@ -47,13 +55,14 @@ impl Item {
 
             let item_self = self.clone();
             let coll = collection.clone();
+            let caller = caller.to_owned();
             let action =
                 crate::prompt::PromptAction::new(move |unlock_secret: oo7::Secret| async move {
                     // Unlock the collection
                     coll.set_locked(false, Some(unlock_secret)).await?;
 
                     // Now delete the item
-                    item_self.delete_unlocked(&coll).await?;
+                    item_self.delete_unlocked(&coll, &caller).await?;
 
                     Ok(zbus::zvariant::Value::new(OwnedObjectPath::default())
                         .try_into_owned()
@@ -82,7 +91,7 @@ impl Item {
         }
 
         // Item and collection are unlocked, proceed directly
-        self.delete_unlocked(&collection).await?;
+        self.delete_unlocked(&collection, &caller).await?;
         Ok(OwnedObjectPath::default())
     }
 
@@ -389,7 +398,11 @@ impl Item {
         Ok(())
     }
 
-    async fn delete_unlocked(&self, collection: &Collection) -> Result<(), ServiceError> {
+    async fn delete_unlocked(
+        &self,
+        collection: &Collection,
+        caller: &str,
+    ) -> Result<(), ServiceError> {
         // Delete from keyring and collection's items list
         collection.delete_item(&self.path).await?;
 
@@ -403,7 +416,7 @@ impl Item {
         let signal_emitter = self.service.signal_emitter(&self.collection_path)?;
         Collection::item_deleted(&signal_emitter, &self.path).await?;
 
-        tracing::info!("Item `{}` deleted.", &self.path);
+        tracing::info!("Item `{}` deleted by {caller}.", &self.path);
 
         Ok(())
     }
