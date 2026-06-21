@@ -8,6 +8,40 @@ use crate::protocol::PamMessage;
 /// Timeout for socket operations (in milliseconds)
 const SOCKET_TIMEOUT_MS: u64 = 5000;
 
+struct SavedSignals {
+    sigpipe: libc::sigaction,
+    sigchld: libc::sigaction,
+}
+
+impl SavedSignals {
+    fn new() -> Self {
+        unsafe {
+            let mut saved = Self {
+                sigpipe: std::mem::zeroed(),
+                sigchld: std::mem::zeroed(),
+            };
+
+            let mut action: libc::sigaction = std::mem::zeroed();
+            action.sa_sigaction = libc::SIG_IGN;
+            libc::sigaction(libc::SIGPIPE, &action, &mut saved.sigpipe);
+
+            action.sa_sigaction = libc::SIG_DFL;
+            libc::sigaction(libc::SIGCHLD, &action, &mut saved.sigchld);
+
+            saved
+        }
+    }
+}
+
+impl Drop for SavedSignals {
+    fn drop(&mut self) {
+        unsafe {
+            libc::sigaction(libc::SIGPIPE, &self.sigpipe, std::ptr::null_mut());
+            libc::sigaction(libc::SIGCHLD, &self.sigchld, std::ptr::null_mut());
+        }
+    }
+}
+
 /// Error type for socket operations
 #[derive(Debug)]
 pub enum SocketError {
@@ -62,8 +96,11 @@ pub fn send_secret_to_daemon(
         "Running as different user (current UID={current_uid}, target UID={uid}), forking to switch credentials"
     );
 
+    let saved_signals = SavedSignals::new();
+
     match unsafe { libc::fork() } {
         -1 => {
+            drop(saved_signals);
             tracing::error!("Failed to fork process for credential switch");
             Err(SocketError::Connect(io::Error::last_os_error()))
         }
@@ -116,11 +153,14 @@ pub fn send_secret_to_daemon(
                 } else if wait_result == -1 {
                     let err = io::Error::last_os_error();
                     if err.kind() != io::ErrorKind::Interrupted {
+                        drop(saved_signals);
                         tracing::error!("Failed to wait for child process: {err}",);
                         return Err(SocketError::Connect(err));
                     }
                 }
             }
+
+            drop(saved_signals);
 
             if libc::WIFEXITED(status) {
                 let exit_code = libc::WEXITSTATUS(status);
@@ -157,8 +197,11 @@ fn start_login_helper(secret: &[u8]) -> Result<(), SocketError> {
     let pipe_read = pipe_fds[0];
     let pipe_write = pipe_fds[1];
 
+    let saved_signals = SavedSignals::new();
+
     match unsafe { libc::fork() } {
         -1 => {
+            drop(saved_signals);
             unsafe {
                 libc::close(pipe_read);
                 libc::close(pipe_write);
@@ -198,6 +241,7 @@ fn start_login_helper(secret: &[u8]) -> Result<(), SocketError> {
                 libc::close(pipe_write);
             }
 
+            drop(saved_signals);
             tracing::info!("Started oo7-daemon-login with PID {child_pid}");
             Ok(())
         }
