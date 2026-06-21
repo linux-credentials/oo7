@@ -30,6 +30,7 @@ pub struct Session {
 #[interface(name = "org.freedesktop.Secret.Session")]
 impl Session {
     pub async fn close(&self) -> Result<(), ServiceError> {
+        tracing::info!("Closing session {} for {}.", self.path, self.sender);
         self.service.remove_session(&self.path).await;
         self.service
             .object_server()

@@ -251,6 +251,7 @@ impl Service {
         &self,
         objects: Vec<OwnedObjectPath>,
     ) -> Result<(Vec<OwnedObjectPath>, OwnedObjectPath), ServiceError> {
+        tracing::info!("Unlock requested for {} objects.", objects.len());
         let (unlocked, not_unlocked) = self.set_locked(false, &objects).await?;
         if !not_unlocked.is_empty() {
             // Extract the label and collection before creating the prompt
@@ -388,7 +389,7 @@ impl Service {
         &self,
         objects: Vec<OwnedObjectPath>,
     ) -> Result<(Vec<OwnedObjectPath>, OwnedObjectPath), ServiceError> {
-        // set_locked now handles locking directly (without prompts)
+        tracing::info!("Lock requested for {} objects.", objects.len());
         let (locked, not_locked) = self.set_locked(true, &objects).await?;
         // Locking never requires prompts, so not_locked should always be empty
         debug_assert!(
@@ -404,6 +405,11 @@ impl Service {
         items: Vec<OwnedObjectPath>,
         session: OwnedObjectPath,
     ) -> Result<HashMap<OwnedObjectPath, DBusSecretInner>, ServiceError> {
+        tracing::debug!(
+            "GetSecrets called for {} items with session {}.",
+            items.len(),
+            session
+        );
         let mut secrets = HashMap::new();
         let collections = self.collections.lock().await;
 
@@ -431,6 +437,11 @@ impl Service {
             }
         }
 
+        tracing::debug!(
+            "GetSecrets returned {} of {} requested secrets.",
+            secrets.len(),
+            items.len()
+        );
         Ok(secrets)
     }
 
