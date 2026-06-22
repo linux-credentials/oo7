@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-03-14 19:10+0000\n"
-"PO-Revision-Date: 2026-03-14 22:43+0100\n"
+"POT-Creation-Date: 2026-06-22 03:36+0000\n"
+"PO-Revision-Date: 2026-06-22 07:26+0200\n"
 "Last-Translator: Martin Srebotnjak <miles@filmsi.net>\n"
 "Language-Team: Slovenian GNOME Translation Team <gnome-si@googlegroups.com>\n"
 "Language: sl\n"
@@ -59,7 +59,7 @@ msgstr "Odkleni zbirko ključev"
 msgid "Authentication required"
 msgstr "Zahtevana je overitev"
 
-#: ../src/gnome/prompter.rs:162
+#: ../src/gnome/prompter.rs:162 ../src/prompt/mod.rs:368
 #, rust-format
 msgid "An application wants access to the keyring '{}', but it is locked"
 msgstr "Program želi dostopati do zbirke ključev »{}«, vendar je zaklenjena"
@@ -88,3 +88,21 @@ msgstr ""
 #: ../src/gnome/prompter.rs:195
 msgid "Create"
 msgstr "Ustvari"
+
+#: ../src/prompt/mod.rs:373
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called '{}'. Choose the "
+"password you want to use for it."
+msgstr ""
+"Program želi ustvariti novo zbirko ključev z imenom »{}«. Izberite geslo, ki "
+"ga želite zanjo uporabljati."
+
+#: ../src/prompt/mod.rs:378
+#, rust-format
+msgid ""
+"An application wants to change the password for the '{}' keyring. Choose the "
+"new password you want to use for it."
+msgstr ""
+"Program želi spremeniti geslo zbirko ključev »{}«. Izberite novo geslo, ki "
+"ga želite zanjo uporabljati."
