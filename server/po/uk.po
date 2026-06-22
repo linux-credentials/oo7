@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-03-14 17:27+0000\n"
-"PO-Revision-Date: 2026-03-14 21:09+0200\n"
+"POT-Creation-Date: 2026-06-22 15:40+0000\n"
+"PO-Revision-Date: 2026-06-22 20:33+0300\n"
 "Last-Translator: Yuri Chornoivan <yurchor@ukr.net>\n"
 "Language-Team: Ukrainian <trans-uk@lists.fedoraproject.org>\n"
 "Language: uk\n"
@@ -34,8 +34,8 @@ msgid ""
 "An application wants to change the password for the “{}” keyring. Choose the "
 "new password you want to use for it."
 msgstr ""
-"Програма має намір змінити пароль до сховища ключів «{}». Виберіть новий"
-" пароль, яким ви хочете користуватися для нього."
+"Програма має намір змінити пароль до сховища ключів «{}». Виберіть новий "
+"пароль, яким ви хочете користуватися для нього."
 
 #: ../src/gnome/prompter.rs:141
 msgid "This operation cannot be reverted"
@@ -58,12 +58,12 @@ msgstr "Розблокувати сховище ключів"
 msgid "Authentication required"
 msgstr "Слід пройти розпізнавання"
 
-#: ../src/gnome/prompter.rs:162
+#: ../src/gnome/prompter.rs:162 ../src/prompt/mod.rs:368
 #, rust-format
 msgid "An application wants access to the keyring '{}', but it is locked"
 msgstr ""
-"Програмах хоче отримати доступ до сховища ключів «{}», але сховище"
-" заблоковано"
+"Програмах хоче отримати доступ до сховища ключів «{}», але сховище "
+"заблоковано"
 
 #: ../src/gnome/prompter.rs:173
 msgid "Unlock"
@@ -83,9 +83,33 @@ msgid ""
 "An application wants to create a new keyring called “{}”. Choose the "
 "password you want to use for it."
 msgstr ""
-"Програма намагається створити сховище ключів із назвою «{}». Виберіть"
-" пароль, яким ви хочете скористатися для нього."
+"Програма намагається створити сховище ключів із назвою «{}». Виберіть "
+"пароль, яким ви хочете скористатися для нього."
 
 #: ../src/gnome/prompter.rs:195
 msgid "Create"
 msgstr "Створити"
+
+#: ../src/prompt/mod.rs:373
+#, rust-format
+#| msgid ""
+#| "An application wants to create a new keyring called “{}”. Choose the "
+#| "password you want to use for it."
+msgid ""
+"An application wants to create a new keyring called '{}'. Choose the "
+"password you want to use for it."
+msgstr ""
+"Програма намагається створити сховище ключів із назвою «{}». Виберіть "
+"пароль, яким ви хочете скористатися для нього."
+
+#: ../src/prompt/mod.rs:378
+#, rust-format
+#| msgid ""
+#| "An application wants to change the password for the “{}” keyring. Choose "
+#| "the new password you want to use for it."
+msgid ""
+"An application wants to change the password for the '{}' keyring. Choose the "
+"new password you want to use for it."
+msgstr ""
+"Програма має намір змінити пароль до сховища ключів «{}». Виберіть новий "
+"пароль, яким ви хочете користуватися для нього."
