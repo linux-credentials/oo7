@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-04-20 03:30+0000\n"
-"PO-Revision-Date: 2026-04-20 05:58+0200\n"
+"POT-Creation-Date: 2026-06-22 15:40+0000\n"
+"PO-Revision-Date: 2026-06-23 03:57+0200\n"
 "Last-Translator: Ekaterine Papava <papava.e@gtu.ge>\n"
 "Language-Team: Georgian <ka@li.org>\n"
 "Language: ka\n"
@@ -52,9 +52,9 @@ msgstr "ბრელოკის განბლოკვა"
 
 #: ../src/gnome/prompter.rs:159
 msgid "Authentication required"
-msgstr "საჭროა ავთენტიკაცია"
+msgstr "აუცილებელია ავთენტიკაცია"
 
-#: ../src/gnome/prompter.rs:162
+#: ../src/gnome/prompter.rs:162 ../src/prompt/mod.rs:368
 #, rust-format
 msgid "An application wants access to the keyring '{}', but it is locked"
 msgstr "აპლიკაციას სურს წვდომა ბრელოკთან \"{}\", მაგრამ ის დაბლოკილია"
@@ -82,3 +82,20 @@ msgstr ""
 #: ../src/gnome/prompter.rs:195
 msgid "Create"
 msgstr "შექმნა"
+
+#: ../src/prompt/mod.rs:373
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called '{}'. Choose the "
+"password you want to use for it."
+msgstr ""
+"აპლიკაციას სურს ახალი ბრელოკის, სახელად \"{}\" შექმნა. აირჩიეთ მისი პაროლი."
+
+#: ../src/prompt/mod.rs:378
+#, rust-format
+msgid ""
+"An application wants to change the password for the '{}' keyring. Choose the "
+"new password you want to use for it."
+msgstr ""
+"აპლიკაციას სურს ბრელოკის \"{}\" პაროლის შეცვლა. აირჩიეთ ახალი პაროლი, "
+"რომელიც გნებავთ, გამოიყენოთ."
