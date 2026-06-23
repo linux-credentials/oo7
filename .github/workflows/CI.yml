@@ -10,7 +10,7 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Check
         run: cargo check
@@ -19,7 +19,7 @@ jobs:
     name: Test Suite
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build client (async-std / native)
@@ -83,14 +83,14 @@ jobs:
   cargo-deny:
       runs-on: ubuntu-latest
       steps:
-        - uses: actions/checkout@v6
+        - uses: actions/checkout@v7
         - uses: EmbarkStudios/cargo-deny-action@v2
 
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
@@ -101,7 +101,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
         run: dnf install -y git meson gcc systemd
