@@ -80,6 +80,68 @@ impl Keyring {
         ))
     }
 
+    /// Variant of [`new`](Self::new) that skips existing items validation
+    /// when using the file backend.
+    ///
+    /// See [`sandboxed_with_path_unchecked`](Self::sandboxed_with_path_unchecked)
+    /// for details.
+    pub async fn new_unchecked() -> Result<Self> {
+        if ashpd::is_sandboxed() {
+            match Self::sandboxed_unchecked().await {
+                Ok(keyring) => Ok(keyring),
+                Err(crate::Error::File(file::Error::Portal(ashpd::Error::PortalNotFound(_)))) => {
+                    #[cfg(feature = "tracing")]
+                    tracing::debug!(
+                        "org.freedesktop.portal.Secrets is not available, falling back to the Secret Service backend"
+                    );
+                    Self::host().await
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            Self::host().await
+        }
+    }
+
+    /// Variant of [`sandboxed`](Self::sandboxed) that skips existing items
+    /// validation.
+    ///
+    /// See [`sandboxed_with_path_unchecked`](Self::sandboxed_with_path_unchecked)
+    /// for details.
+    pub async fn sandboxed_unchecked() -> Result<Self> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Using file backend (sandboxed unchecked mode)");
+
+        let secret = Secret::sandboxed().await?;
+        let path = crate::file::api::Keyring::default_path()?;
+        Self::sandboxed_with_path_unchecked(&path, secret).await
+    }
+
+    /// Variant of [`sandboxed_with_path`](Self::sandboxed_with_path) that does
+    /// not verify that existing items can be decrypted with the provided
+    /// secret.
+    ///
+    /// Items encrypted with a previous secret will fail to decrypt individually
+    /// but won't prevent the keyring from being used. Use
+    /// [`UnlockedKeyring::delete_broken_items`](file::UnlockedKeyring::delete_broken_items)
+    /// to remove unreadable items.
+    #[allow(unsafe_code)]
+    pub async fn sandboxed_with_path_unchecked(
+        path: impl AsRef<std::path::Path>,
+        secret: Secret,
+    ) -> Result<Self> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Using file backend with custom path (unchecked mode)");
+
+        // SAFETY: this is not truly unsafe in the memory-safety sense;
+        // `load_unchecked` merely skips item validation.
+        let file = unsafe { file::UnlockedKeyring::load_unchecked(path, secret.clone()).await? };
+        Ok(Self::File(
+            Arc::new(RwLock::new(Some(file::Keyring::Unlocked(file)))),
+            secret,
+        ))
+    }
+
     /// Use the D-Bus Secret Service.
     pub async fn host() -> Result<Self> {
         #[cfg(feature = "tracing")]
