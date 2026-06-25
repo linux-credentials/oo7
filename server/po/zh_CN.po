@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-03-14 21:43+0000\n"
-"PO-Revision-Date: 2026-03-15 11:16+0800\n"
+"POT-Creation-Date: 2026-06-24 15:39+0000\n"
+"PO-Revision-Date: 2026-06-25 08:05+0800\n"
 "Last-Translator: lumingzh <lumingzh@qq.com>\n"
 "Language-Team: Chinese (China) <i18n-zh@googlegroups.com>\n"
 "Language: zh_CN\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Gtranslator 49.0\n"
+"X-Generator: Gtranslator 50.0\n"
 
 #: ../src/gnome/prompter.rs:132
 msgid "Change Keyring Password"
@@ -55,7 +55,7 @@ msgstr "解锁密钥环"
 msgid "Authentication required"
 msgstr "需要认证"
 
-#: ../src/gnome/prompter.rs:162
+#: ../src/gnome/prompter.rs:162 ../src/prompt/mod.rs:368
 #, rust-format
 msgid "An application wants access to the keyring '{}', but it is locked"
 msgstr "有应用程序想要访问密钥环“{}”，但其已锁定"
@@ -82,3 +82,17 @@ msgstr "有应用程序想要创建名称为“{}”的新密钥环。请选择�
 #: ../src/gnome/prompter.rs:195
 msgid "Create"
 msgstr "创建"
+
+#: ../src/prompt/mod.rs:373
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called '{}'. Choose the "
+"password you want to use for it."
+msgstr "有应用程序想要创建名称为“{}”的新密钥环。请选择您要对其使用的密码。"
+
+#: ../src/prompt/mod.rs:378
+#, rust-format
+msgid ""
+"An application wants to change the password for the '{}' keyring. Choose the "
+"new password you want to use for it."
+msgstr "有应用程序想要更改“{}”密钥环的密码。请选择您要对其使用的新密码。"
