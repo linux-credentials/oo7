@@ -307,7 +307,9 @@ impl Collection {
 
         // Remove any existing items with the same attributes
         if replace {
-            let existing_items = self.search_items_with_key(&attributes, &key).await?;
+            let existing_items = self
+                .search_items_with_key(&attributes, key.as_deref())
+                .await?;
             if !existing_items.is_empty() {
                 let mut items = self.items.lock().await;
                 for existing in &existing_items {
@@ -503,13 +505,13 @@ impl Collection {
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
         drop(keyring_guard);
 
-        self.search_items_with_key(attributes, &key).await
+        self.search_items_with_key(attributes, key.as_deref()).await
     }
 
     async fn search_items_with_key(
         &self,
         attributes: &HashMap<String, String>,
-        key: &oo7::Key,
+        key: Option<&oo7::Key>,
     ) -> Result<Vec<item::Item>, ServiceError> {
         let mut matching_items = Vec::new();
         let items = self.items.lock().await;

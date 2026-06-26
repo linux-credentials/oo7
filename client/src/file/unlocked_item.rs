@@ -7,7 +7,7 @@ use super::{
     Error, LockedItem,
     api::{EncryptedItem, GVARIANT_ENCODING},
 };
-use crate::{AsAttributes, CONTENT_TYPE_ATTRIBUTE, Key, Secret, crypto, secret::ContentType};
+use crate::{AsAttributes, CONTENT_TYPE_ATTRIBUTE, Key, Mac, Secret, crypto, secret::ContentType};
 
 /// An item stored in the file backend.
 #[derive(
@@ -160,20 +160,35 @@ impl UnlockedItem {
     }
 
     /// Lock the item with the given key.
-    pub fn lock(self, key: &Key) -> Result<LockedItem, Error> {
+    pub fn lock(self, key: Option<&Key>) -> Result<LockedItem, Error> {
         let inner = self.encrypt(key)?;
         Ok(LockedItem { inner })
     }
 
-    pub(crate) fn encrypt(&self, key: &Key) -> Result<EncryptedItem, Error> {
-        key.check_strength()?;
-
-        let iv = crypto::generate_iv()?;
-
-        self.encrypt_inner(key, &iv)
+    pub(crate) fn encrypt(&self, key: Option<&Key>) -> Result<EncryptedItem, Error> {
+        match key {
+            Some(key) => {
+                key.check_strength()?;
+                let iv = crypto::generate_iv()?;
+                self.encrypt_encrypted(key, &iv)
+            }
+            None => self.encrypt_plaintext(),
+        }
     }
 
-    fn encrypt_inner(&self, key: &Key, iv: &[u8]) -> Result<EncryptedItem, Error> {
+    fn encrypt_plaintext(&self) -> Result<EncryptedItem, Error> {
+        let blob = zvariant::to_bytes(*GVARIANT_ENCODING, &self)?.to_vec();
+        Ok(EncryptedItem {
+            hashed_attributes: self
+                .attributes
+                .iter()
+                .map(|(k, v)| (k.to_owned(), Mac::new(v.as_bytes().to_vec())))
+                .collect(),
+            blob,
+        })
+    }
+
+    fn encrypt_encrypted(&self, key: &Key, iv: &[u8]) -> Result<EncryptedItem, Error> {
         let decrypted = Zeroizing::new(zvariant::to_bytes(*GVARIANT_ENCODING, &self)?.to_vec());
 
         let mut blob = crypto::encrypt(&*decrypted, key, iv)?;
@@ -339,7 +354,7 @@ mod tests {
             secret: b"bar".to_vec(),
         };
 
-        let encrypted = item.encrypt_inner(&key, &iv).unwrap();
+        let encrypted = item.encrypt_encrypted(&key, &iv).unwrap();
         assert!(encrypted.has_attribute("fooness", &attribute_value_mac));
 
         let blob = &encrypted.blob;
@@ -361,7 +376,7 @@ mod tests {
             ]
         );
 
-        let decrypted = encrypted.decrypt(&key).unwrap();
+        let decrypted = encrypted.decrypt(Some(&key)).unwrap();
 
         // The decrypted item matches the original one but with the content-type
         // attribute set.

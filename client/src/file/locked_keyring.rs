@@ -99,7 +99,7 @@ impl LockedKeyring {
             let mut n_broken_items = 0;
             let mut n_valid_items = 0;
             for encrypted_item in &inner_keyring.items {
-                if encrypted_item.is_valid(&key) {
+                if encrypted_item.is_valid(Some(&key)) {
                     n_valid_items += 1;
                 } else {
                     n_broken_items += 1;
@@ -139,7 +139,7 @@ impl LockedKeyring {
             path: self.path,
             mtime: self.mtime,
             key: Mutex::new(key),
-            secret: Mutex::new(Arc::new(secret)),
+            secret: Mutex::new(Some(Arc::new(secret))),
         })
     }
 

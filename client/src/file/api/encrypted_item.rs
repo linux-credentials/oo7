@@ -5,7 +5,7 @@ use zbus::zvariant::Type;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use super::{Error, UnlockedItem};
-use crate::{Key, Mac, crypto};
+use crate::{AsAttributes, Key, Mac, crypto};
 
 #[derive(Deserialize, Serialize, Type, Debug, Clone, Zeroize, ZeroizeOnDrop)]
 pub(crate) struct EncryptedItem {
@@ -20,7 +20,35 @@ impl EncryptedItem {
         self.hashed_attributes.get(key) == Some(value_mac)
     }
 
-    fn try_decrypt_inner(&self, key: &Key) -> Result<UnlockedItem, Error> {
+    fn has_plaintext_attribute(&self, key: &str, value: &str) -> bool {
+        self.hashed_attributes
+            .get(key)
+            .is_some_and(|mac| mac.as_slice() == value.as_bytes())
+    }
+
+    pub fn matches(&self, attributes: &impl AsAttributes, key: Option<&Key>) -> bool {
+        match key {
+            Some(key) => {
+                let hashed = attributes.hash(key);
+                hashed
+                    .iter()
+                    .all(|(k, v)| v.as_ref().is_ok_and(|v| self.has_attribute(k.as_str(), v)))
+            }
+            None => attributes
+                .as_attributes()
+                .iter()
+                .all(|(k, v)| self.has_plaintext_attribute(k.as_str(), v.as_str())),
+        }
+    }
+
+    fn try_decrypt_inner(&self, key: Option<&Key>) -> Result<UnlockedItem, Error> {
+        match key {
+            Some(key) => self.try_decrypt_encrypted(key),
+            None => UnlockedItem::try_from(self.blob.as_slice()),
+        }
+    }
+
+    fn try_decrypt_encrypted(&self, key: &Key) -> Result<UnlockedItem, Error> {
         let n = self.blob.len();
         let n_mac = crypto::mac_len();
         let n_iv = crypto::iv_len();
@@ -45,11 +73,11 @@ impl EncryptedItem {
         Ok(item)
     }
 
-    pub fn is_valid(&self, key: &Key) -> bool {
+    pub fn is_valid(&self, key: Option<&Key>) -> bool {
         self.try_decrypt_inner(key).is_ok()
     }
 
-    pub fn decrypt(self, key: &Key) -> Result<UnlockedItem, Error> {
+    pub fn decrypt(self, key: Option<&Key>) -> Result<UnlockedItem, Error> {
         self.try_decrypt_inner(key)
     }
 

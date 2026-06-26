@@ -34,7 +34,7 @@ pub struct UnlockedKeyring {
     /// file changes before writing
     pub(super) mtime: Mutex<Option<std::time::SystemTime>>,
     pub(super) key: Mutex<Option<Arc<Key>>>,
-    pub(super) secret: Mutex<Arc<Secret>>,
+    pub(super) secret: Mutex<Option<Arc<Secret>>>,
 }
 
 impl UnlockedKeyring {
@@ -102,7 +102,19 @@ impl UnlockedKeyring {
             path: None,
             mtime: Default::default(),
             key: Default::default(),
-            secret: Mutex::new(Arc::new(secret)),
+            secret: Mutex::new(Some(Arc::new(secret))),
+        })
+    }
+
+    /// Creates a temporary unencrypted backend, that is never stored on disk.
+    pub async fn temporary_unencrypted() -> Result<Self, Error> {
+        let keyring = api::Keyring::new()?;
+        Ok(Self {
+            keyring: Arc::new(RwLock::new(keyring)),
+            path: None,
+            mtime: Default::default(),
+            key: Default::default(),
+            secret: Mutex::new(None),
         })
     }
 
@@ -122,7 +134,7 @@ impl UnlockedKeyring {
                 path: Some(path.as_ref().to_path_buf()),
                 mtime: Default::default(),
                 key: Default::default(),
-                secret: Mutex::new(Arc::new(secret)),
+                secret: Mutex::new(Some(Arc::new(secret))),
             }),
             Err(Error::VersionMismatch(Some(version)))
                 if version[0] == api::LEGACY_MAJOR_VERSION =>
@@ -141,7 +153,7 @@ impl UnlockedKeyring {
                     tracing::debug_span!("migrate_items", item_count = decrypted_items.len());
 
                 for item in decrypted_items {
-                    let encrypted_item = item.encrypt(&key)?;
+                    let encrypted_item = item.encrypt(Some(&key))?;
                     keyring.items.push(encrypted_item);
                 }
 
@@ -150,7 +162,7 @@ impl UnlockedKeyring {
                     path: Some(path.as_ref().to_path_buf()),
                     mtime: Default::default(),
                     key: Default::default(),
-                    secret: Mutex::new(Arc::new(secret)),
+                    secret: Mutex::new(Some(Arc::new(secret))),
                 })
             }
             Err(err) => Err(err),
@@ -186,7 +198,7 @@ impl UnlockedKeyring {
                 path: Some(v1_path),
                 mtime: Default::default(),
                 key: Default::default(),
-                secret: Mutex::new(Arc::new(secret)),
+                secret: Mutex::new(Some(Arc::new(secret))),
             })
         }
     }
@@ -262,19 +274,21 @@ impl UnlockedKeyring {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, item)))]
     pub async fn lock_item(&self, item: UnlockedItem) -> Result<LockedItem, Error> {
         let key = self.derive_key().await?;
-        item.lock(&key)
+        item.lock(key.as_deref())
     }
 
     /// Unlock an item using the keyring's key.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, item)))]
     pub async fn unlock_item(&self, item: LockedItem) -> Result<UnlockedItem, Error> {
         let key = self.derive_key().await?;
-        item.unlock(&key)
+        item.unlock(key.as_deref())
     }
 
     /// Get the encryption key for this keyring.
+    ///
+    /// Returns `None` for unencrypted keyrings.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub async fn key(&self) -> Result<Arc<Key>, crate::crypto::Error> {
+    pub async fn key(&self) -> Result<Option<Arc<Key>>, crate::crypto::Error> {
         self.derive_key().await
     }
 
@@ -317,7 +331,7 @@ impl UnlockedKeyring {
             .items
             .iter()
             .map(|e| {
-                (*e).clone().decrypt(&key).map_err(|err| {
+                (*e).clone().decrypt(key.as_deref()).map_err(|err| {
                     InvalidItemError::new(
                         err,
                         e.hashed_attributes.keys().map(|x| x.to_string()).collect(),
@@ -345,7 +359,7 @@ impl UnlockedKeyring {
     ) -> Result<Vec<UnlockedItem>, Error> {
         let key = self.derive_key().await?;
         let keyring = self.keyring.read().await;
-        let results = keyring.search_items(attributes, &key)?;
+        let results = keyring.search_items(attributes, key.as_deref())?;
 
         #[cfg(feature = "tracing")]
         tracing::debug!("Found {} matching items", results.len());
@@ -362,7 +376,7 @@ impl UnlockedKeyring {
         let key = self.derive_key().await?;
         let keyring = self.keyring.read().await;
 
-        keyring.lookup_item(attributes, &key)
+        keyring.lookup_item(attributes, key.as_deref())
     }
 
     /// Find the index in the list of items of the first item matching the
@@ -375,7 +389,7 @@ impl UnlockedKeyring {
         let key = self.derive_key().await?;
         let keyring = self.keyring.read().await;
 
-        Ok(keyring.lookup_item_index(attributes, &key))
+        Ok(keyring.lookup_item_index(attributes, key.as_deref()))
     }
 
     /// Delete an item.
@@ -387,7 +401,7 @@ impl UnlockedKeyring {
         {
             let key = self.derive_key().await?;
             let mut keyring = self.keyring.write().await;
-            keyring.remove_items(attributes, &key)?;
+            keyring.remove_items(attributes, key.as_deref())?;
         };
 
         self.write().await?;
@@ -424,10 +438,10 @@ impl UnlockedKeyring {
             let key = self.derive_key().await?;
             let mut keyring = self.keyring.write().await;
             if replace {
-                keyring.remove_items(attributes, &key)?;
+                keyring.remove_items(attributes, key.as_deref())?;
             }
             let item = UnlockedItem::new(label, attributes, secret);
-            let encrypted_item = item.encrypt(&key)?;
+            let encrypted_item = item.encrypt(key.as_deref())?;
             keyring.items.push(encrypted_item);
             item
         };
@@ -457,7 +471,7 @@ impl UnlockedKeyring {
             let mut keyring = self.keyring.write().await;
 
             if let Some(item_store) = keyring.items.get_mut(index) {
-                *item_store = item.encrypt(&key)?;
+                *item_store = item.encrypt(key.as_deref())?;
             } else {
                 return Err(Error::InvalidItemIndex(index));
             }
@@ -499,10 +513,10 @@ impl UnlockedKeyring {
 
         for (label, attributes, secret, replace) in items {
             if replace {
-                keyring.remove_items(&attributes, &key)?;
+                keyring.remove_items(&attributes, key.as_deref())?;
             }
             let item = UnlockedItem::new(label, &attributes, secret);
-            let encrypted_item = item.encrypt(&key)?;
+            let encrypted_item = item.encrypt(key.as_deref())?;
             keyring.items.push(encrypted_item);
         }
 
@@ -539,12 +553,17 @@ impl UnlockedKeyring {
         Ok(())
     }
 
-    /// Return key, derive and store it first if not initialized
+    /// Return key, derive and store it first if not initialized.
+    ///
+    /// Returns `None` when no secret is set (unencrypted keyring).
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    async fn derive_key(&self) -> Result<Arc<Key>, crate::crypto::Error> {
+    async fn derive_key(&self) -> Result<Option<Arc<Key>>, crate::crypto::Error> {
         let keyring = Arc::clone(&self.keyring);
         let secret_lock = self.secret.lock().await;
-        let secret = Arc::clone(&secret_lock);
+        let secret = match secret_lock.as_ref() {
+            Some(secret) => Arc::clone(secret),
+            None => return Ok(None),
+        };
         drop(secret_lock);
 
         let mut key_lock = self.key.lock().await;
@@ -564,7 +583,7 @@ impl UnlockedKeyring {
             *key_lock = Some(Arc::new(key));
         }
 
-        Ok(Arc::clone(key_lock.as_ref().unwrap()))
+        Ok(key_lock.clone())
     }
 
     /// Change keyring secret
@@ -583,7 +602,7 @@ impl UnlockedKeyring {
             tracing::debug_span!("decrypt_for_reencrypt", total_items = keyring.items.len());
 
         for item in &keyring.items {
-            items.push(item.clone().decrypt(&key)?);
+            items.push(item.clone().decrypt(key.as_deref())?);
         }
         drop(keyring);
 
@@ -591,7 +610,7 @@ impl UnlockedKeyring {
         tracing::debug!("Updating secret and resetting key");
 
         let mut secret_lock = self.secret.lock().await;
-        *secret_lock = Arc::new(secret);
+        *secret_lock = Some(Arc::new(secret));
         drop(secret_lock);
 
         let mut key_lock = self.key.lock().await;
@@ -612,7 +631,7 @@ impl UnlockedKeyring {
 
         let mut keyring = self.keyring.write().await;
         for item in items {
-            let encrypted_item = item.encrypt(&key)?;
+            let encrypted_item = item.encrypt(key.as_deref())?;
             keyring.items.push(encrypted_item);
         }
         drop(keyring);
@@ -650,7 +669,7 @@ impl UnlockedKeyring {
         let _span = tracing::debug_span!("identify_broken", total_items = keyring.items.len());
 
         for (index, encrypted_item) in keyring.items.iter().enumerate() {
-            if !encrypted_item.is_valid(&key) {
+            if !encrypted_item.is_valid(key.as_deref()) {
                 broken_items.push(index);
             }
         }
