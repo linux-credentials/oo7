@@ -11,7 +11,7 @@ pub struct LockedItem {
 
 impl LockedItem {
     /// Unlocks the item.
-    pub fn unlock(self, key: &Key) -> Result<UnlockedItem, file::Error> {
+    pub fn unlock(self, key: Option<&Key>) -> Result<UnlockedItem, file::Error> {
         self.inner.decrypt(key)
     }
 }

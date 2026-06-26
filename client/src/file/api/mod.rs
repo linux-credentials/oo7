@@ -190,17 +190,11 @@ impl Keyring {
     pub fn search_items(
         &self,
         attributes: &impl AsAttributes,
-        key: &Key,
+        key: Option<&Key>,
     ) -> Result<Vec<UnlockedItem>, Error> {
-        let hashed_search = attributes.hash(key);
-
         self.items
             .iter()
-            .filter(|e| {
-                hashed_search
-                    .iter()
-                    .all(|(k, v)| v.as_ref().is_ok_and(|v| e.has_attribute(k.as_str(), v)))
-            })
+            .filter(|e| e.matches(attributes, key))
             .map(|e| (*e).clone().decrypt(key))
             .collect()
     }
@@ -208,53 +202,35 @@ impl Keyring {
     pub fn lookup_item(
         &self,
         attributes: &impl AsAttributes,
-        key: &Key,
+        key: Option<&Key>,
     ) -> Result<Option<UnlockedItem>, Error> {
-        let hashed_search = attributes.hash(key);
-
         self.items
             .iter()
-            .find(|e| {
-                hashed_search
-                    .iter()
-                    .all(|(k, v)| v.as_ref().is_ok_and(|v| e.has_attribute(k.as_str(), v)))
-            })
+            .find(|e| e.matches(attributes, key))
             .map(|e| (*e).clone().decrypt(key))
             .transpose()
     }
 
-    pub fn lookup_item_index(&self, attributes: &impl AsAttributes, key: &Key) -> Option<usize> {
-        let hashed_search = attributes.hash(key);
-
-        self.items.iter().position(|e| {
-            hashed_search
-                .iter()
-                .all(|(k, v)| v.as_ref().is_ok_and(|v| e.has_attribute(k.as_str(), v)))
-        })
+    pub fn lookup_item_index(
+        &self,
+        attributes: &impl AsAttributes,
+        key: Option<&Key>,
+    ) -> Option<usize> {
+        self.items.iter().position(|e| e.matches(attributes, key))
     }
 
-    pub fn remove_items(&mut self, attributes: &impl AsAttributes, key: &Key) -> Result<(), Error> {
-        let hashed_search = attributes.hash(key);
-
-        // Validate items to be removed before actually removing them
+    pub fn remove_items(
+        &mut self,
+        attributes: &impl AsAttributes,
+        key: Option<&Key>,
+    ) -> Result<(), Error> {
         for item in &self.items {
-            if hashed_search
-                .iter()
-                .all(|(k, v)| v.as_ref().is_ok_and(|v| item.has_attribute(k.as_str(), v)))
-            {
-                // Validate by checking if it can be decrypted
-                if !item.is_valid(key) {
-                    return Err(Error::MacError);
-                }
+            if item.matches(attributes, key) && !item.is_valid(key) {
+                return Err(Error::MacError);
             }
         }
 
-        // Remove matching items
-        self.items.retain(|e| {
-            !hashed_search
-                .iter()
-                .all(|(k, v)| v.as_ref().is_ok_and(|v| e.has_attribute(k.as_str(), v)))
-        });
+        self.items.retain(|e| !e.matches(attributes, key));
 
         Ok(())
     }
@@ -328,7 +304,7 @@ impl Keyring {
 
         // Check if at least one item can be decrypted with this key
         // We only need to check one item to validate the password
-        Ok(self.items.iter().any(|item| item.is_valid(&key)))
+        Ok(self.items.iter().any(|item| item.is_valid(Some(&key))))
     }
 
     /// Get the modification timestamp
@@ -405,15 +381,15 @@ mod tests {
         let mut keyring = Keyring::new()?;
         let key = keyring.derive_key(&SECRET.to_vec().into())?;
 
-        keyring
-            .items
-            .push(UnlockedItem::new("Label", needle, Secret::blob("MyPassword")).encrypt(&key)?);
+        keyring.items.push(
+            UnlockedItem::new("Label", needle, Secret::blob("MyPassword")).encrypt(Some(&key))?,
+        );
 
-        assert_eq!(keyring.search_items(needle, &key)?.len(), 1);
+        assert_eq!(keyring.search_items(needle, Some(&key))?.len(), 1);
 
-        keyring.remove_items(needle, &key)?;
+        keyring.remove_items(needle, Some(&key))?;
 
-        assert_eq!(keyring.search_items(needle, &key)?.len(), 0);
+        assert_eq!(keyring.search_items(needle, Some(&key))?.len(), 0);
 
         Ok(())
     }
@@ -427,14 +403,15 @@ mod tests {
 
         new_keyring.items.push(
             UnlockedItem::new("My Label", &[("my-tag", "my tag value")], "A Password")
-                .encrypt(&key)?,
+                .encrypt(Some(&key))?,
         );
         new_keyring.dump("/tmp/test.keyring", None).await?;
 
         let blob = tokio::fs::read("/tmp/test.keyring").await?;
 
         let loaded_keyring = Keyring::try_from(blob.as_slice())?;
-        let loaded_items = loaded_keyring.search_items(&[("my-tag", "my tag value")], &key)?;
+        let loaded_items =
+            loaded_keyring.search_items(&[("my-tag", "my tag value")], Some(&key))?;
 
         assert_eq!(loaded_items[0].secret(), Secret::text("A Password"));
         assert_eq!(loaded_items[0].secret().content_type(), ContentType::Text);

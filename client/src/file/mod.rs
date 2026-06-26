@@ -82,7 +82,7 @@ impl Item {
     }
 
     /// Check if this item matches the given attributes
-    pub fn matches_attributes(&self, attributes: &impl AsAttributes, key: &Key) -> bool {
+    pub fn matches_attributes(&self, attributes: &impl AsAttributes, key: Option<&Key>) -> bool {
         match self {
             Self::Unlocked(unlocked) => {
                 let item_attrs = unlocked.attributes();
@@ -90,17 +90,7 @@ impl Item {
                     item_attrs.get(k.as_str()).map(|v| v.as_ref()) == Some(value.as_str())
                 })
             }
-            Self::Locked(locked) => {
-                let hashed_attrs = attributes.hash(key);
-
-                hashed_attrs.iter().all(|(attr_key, mac_result)| {
-                    mac_result
-                        .as_ref()
-                        .ok()
-                        .map(|mac| locked.inner.has_attribute(attr_key.as_str(), mac))
-                        .unwrap_or(false)
-                })
-            }
+            Self::Locked(locked) => locked.inner.matches(attributes, key),
         }
     }
 }
