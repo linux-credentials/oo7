@@ -111,7 +111,11 @@ impl PlasmaPrompterCallback {
                 .await
                 .expect("error reading secret");
             tracing::debug!("Read secret from fd, length {}", buffer.len());
-            oo7::Secret::from(buffer)
+            if buffer.is_empty() {
+                None
+            } else {
+                Some(oo7::Secret::from(buffer))
+            }
         };
 
         self.on_reply(&prompt, secret).await
@@ -207,7 +211,7 @@ impl PlasmaPrompterCallback {
     async fn on_reply(
         &self,
         prompt: &Prompt,
-        secret: Secret,
+        secret: Option<Secret>,
     ) -> Result<CallbackAction, ServiceError> {
         // Handle each role differently based on what validation/preparation is needed
         match prompt.role() {

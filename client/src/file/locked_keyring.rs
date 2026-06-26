@@ -44,6 +44,11 @@ impl LockedKeyring {
         Ok(keyring.validate_secret(secret)?)
     }
 
+    pub async fn validate_unencrypted(&self) -> Result<bool, Error> {
+        let keyring = self.keyring.read().await;
+        Ok(keyring.validate_unencrypted())
+    }
+
     /// Return the associated file if any.
     pub fn path(&self) -> Option<&std::path::Path> {
         self.path.as_deref()
@@ -140,6 +145,29 @@ impl LockedKeyring {
             mtime: self.mtime,
             key: Mutex::new(key),
             secret: Mutex::new(Some(Arc::new(secret))),
+        })
+    }
+
+    /// Unlocks a keyring without a secret, for unencrypted keyrings.
+    ///
+    /// Validates that existing items (if any) can be read without
+    /// encryption. Returns [`Error::IncorrectSecret`] if encrypted items
+    /// are found.
+    pub async fn unlock_unencrypted(self) -> Result<UnlockedKeyring, Error> {
+        let inner_keyring = self.keyring.read().await;
+        for encrypted_item in &inner_keyring.items {
+            if !encrypted_item.is_valid(None) {
+                return Err(Error::IncorrectSecret);
+            }
+        }
+        drop(inner_keyring);
+
+        Ok(UnlockedKeyring {
+            keyring: self.keyring,
+            path: self.path,
+            mtime: self.mtime,
+            key: Mutex::new(None),
+            secret: Mutex::new(None),
         })
     }
 

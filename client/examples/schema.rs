@@ -13,7 +13,7 @@ struct PasswordSchema {
 async fn main() -> oo7::Result<()> {
     let temp_dir = tempfile::tempdir().unwrap();
     let keyring_path = temp_dir.path().join("test.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, Secret::text("test_password")).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(Secret::text("test_password"))).await?;
 
     println!("=== Creating items ===");
 

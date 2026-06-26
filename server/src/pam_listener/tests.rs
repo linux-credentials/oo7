@@ -139,7 +139,7 @@ async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Erro
 
     // Create a v1 keyring with a known password
     let secret = Secret::from("my-secure-password");
-    let keyring = UnlockedKeyring::open_at(temp_dir.path(), "work", secret.clone()).await?;
+    let keyring = UnlockedKeyring::open_at(temp_dir.path(), "work", Some(secret.clone())).await?;
     keyring
         .create_item(
             "Work Item",
@@ -208,7 +208,8 @@ async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
 
     let old_secret = Secret::from("old-password");
-    let keyring = UnlockedKeyring::open_at(temp_dir.path(), "work", old_secret.clone()).await?;
+    let keyring =
+        UnlockedKeyring::open_at(temp_dir.path(), "work", Some(old_secret.clone())).await?;
     keyring
         .create_item(
             "Work Item",

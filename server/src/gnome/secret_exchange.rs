@@ -52,9 +52,7 @@ pub fn retrieve(exchange: &str, aes_key: &Key) -> Option<oo7::Secret> {
     // AES ciphertext must be a multiple of 16 bytes (block size)
     // and at least 16 bytes (minimum for PKCS7 padding)
     if secret.is_empty() || secret.len() % 16 != 0 {
-        // Invalid ciphertext - return a false secret to avoid decryption errors
-        let false_secret = vec![0, 1];
-        return Some(oo7::Secret::from(false_secret));
+        return None;
     }
 
     let iv = decoded.get(IV)?;

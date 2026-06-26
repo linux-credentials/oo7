@@ -67,9 +67,9 @@ impl Collection {
             let collection = self.clone();
             let caller_owned = caller;
             let action =
-                crate::prompt::PromptAction::new(move |unlock_secret: Secret| async move {
+                crate::prompt::PromptAction::new(move |unlock_secret: Option<Secret>| async move {
                     // Unlock the collection
-                    collection.set_locked(false, Some(unlock_secret)).await?;
+                    collection.set_locked(false, unlock_secret).await?;
 
                     collection.delete_unlocked(&caller_owned).await?;
 
@@ -201,8 +201,8 @@ impl Collection {
 
             let collection = self.clone();
             let action =
-                crate::prompt::PromptAction::new(move |unlock_secret: Secret| async move {
-                    collection.set_locked(false, Some(unlock_secret)).await?;
+                crate::prompt::PromptAction::new(move |unlock_secret: Option<Secret>| async move {
+                    collection.set_locked(false, unlock_secret).await?;
 
                     let item_path = collection
                         .create_item_unlocked(properties, secret, replace)
@@ -554,13 +554,15 @@ impl Collection {
                     Keyring::Locked(unlocked.lock())
                 }
                 (Keyring::Locked(locked_kr), false) => {
-                    let secret = secret.ok_or_else(|| {
-                        custom_service_error("Cannot unlock collection without a secret")
-                    })?;
-
                     let keyring_path = locked_kr.path().map(|p| p.to_path_buf());
 
-                    let unlocked = match locked_kr.unlock(secret).await {
+                    let unlock_result = if let Some(secret) = secret {
+                        locked_kr.unlock(secret).await
+                    } else {
+                        locked_kr.unlock_unencrypted().await
+                    };
+
+                    let unlocked = match unlock_result {
                         Ok(unlocked) => unlocked,
                         Err(err) => {
                             // Reload the locked keyring from disk before returning error

@@ -44,8 +44,9 @@ impl UnlockedKeyring {
     ///
     /// * `path` - The path to the file backend.
     /// * `secret` - The service key, usually retrieved from the Secrets portal.
+    ///   Pass `None` for unencrypted keyrings.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(secret), fields(path = ?path.as_ref())))]
-    pub async fn load(path: impl AsRef<Path>, secret: Secret) -> Result<Self, Error> {
+    pub async fn load(path: impl AsRef<Path>, secret: Option<Secret>) -> Result<Self, Error> {
         Self::load_inner(path, secret, true).await
     }
 
@@ -69,27 +70,27 @@ impl UnlockedKeyring {
         path: impl AsRef<Path>,
         secret: Secret,
     ) -> Result<Self, Error> {
-        Self::load_inner(path, secret, false).await
+        Self::load_inner(path, Some(secret), false).await
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(secret), fields(path = ?path.as_ref(), validate_items = validate_items)))]
     async fn load_inner(
         path: impl AsRef<Path>,
-        secret: Secret,
+        secret: Option<Secret>,
         validate_items: bool,
     ) -> Result<Self, Error> {
         #[cfg(feature = "tracing")]
         tracing::debug!("Trying to load keyring file at {:?}", path.as_ref());
-        if validate_items {
-            LockedKeyring::load(path).await?.unlock(secret).await
-        } else {
-            #[allow(unsafe_code)]
-            unsafe {
-                LockedKeyring::load(path)
-                    .await?
-                    .unlock_unchecked(secret)
-                    .await
+        let locked = LockedKeyring::load(path).await?;
+        match secret {
+            Some(secret) if validate_items => locked.unlock(secret).await,
+            Some(secret) => {
+                #[allow(unsafe_code)]
+                unsafe {
+                    locked.unlock_unchecked(secret).await
+                }
             }
+            None => locked.unlock_unencrypted().await,
         }
     }
 
@@ -122,7 +123,7 @@ impl UnlockedKeyring {
     async fn migrate(
         file: &mut fs::File,
         path: impl AsRef<Path>,
-        secret: Secret,
+        secret: Option<Secret>,
     ) -> Result<Self, Error> {
         let metadata = file.metadata().await?;
         let mut content = Vec::with_capacity(metadata.len() as usize);
@@ -134,7 +135,7 @@ impl UnlockedKeyring {
                 path: Some(path.as_ref().to_path_buf()),
                 mtime: Default::default(),
                 key: Default::default(),
-                secret: Mutex::new(Some(Arc::new(secret))),
+                secret: Mutex::new(secret.map(Arc::new)),
             }),
             Err(Error::VersionMismatch(Some(version)))
                 if version[0] == api::LEGACY_MAJOR_VERSION =>
@@ -144,16 +145,17 @@ impl UnlockedKeyring {
 
                 let legacy_keyring = api::LegacyKeyring::try_from(content.as_slice())?;
                 let mut keyring = api::Keyring::new()?;
-                let key = keyring.derive_key(&secret)?;
 
-                let decrypted_items = legacy_keyring.decrypt_items(&secret)?;
+                let key = secret.as_ref().map(|s| keyring.derive_key(s)).transpose()?;
+                let decrypted_items = legacy_keyring
+                    .decrypt_items(&secret.clone().unwrap_or_else(|| Secret::from(vec![])))?;
 
                 #[cfg(feature = "tracing")]
                 let _migrate_span =
                     tracing::debug_span!("migrate_items", item_count = decrypted_items.len());
 
                 for item in decrypted_items {
-                    let encrypted_item = item.encrypt(Some(&key))?;
+                    let encrypted_item = item.encrypt(key.as_ref())?;
                     keyring.items.push(encrypted_item);
                 }
 
@@ -162,7 +164,7 @@ impl UnlockedKeyring {
                     path: Some(path.as_ref().to_path_buf()),
                     mtime: Default::default(),
                     key: Default::default(),
-                    secret: Mutex::new(Some(Arc::new(secret))),
+                    secret: Mutex::new(secret.map(Arc::new)),
                 })
             }
             Err(err) => Err(err),
@@ -175,7 +177,7 @@ impl UnlockedKeyring {
     async fn open_with_paths(
         v1_path: PathBuf,
         v0_path: PathBuf,
-        secret: Secret,
+        secret: Option<Secret>,
     ) -> Result<Self, Error> {
         if v1_path.exists() {
             #[cfg(feature = "tracing")]
@@ -198,7 +200,7 @@ impl UnlockedKeyring {
                 path: Some(v1_path),
                 mtime: Default::default(),
                 key: Default::default(),
-                secret: Mutex::new(Some(Arc::new(secret))),
+                secret: Mutex::new(secret.map(Arc::new)),
             })
         }
     }
@@ -213,7 +215,7 @@ impl UnlockedKeyring {
     /// * `name` - The name of the keyring.
     /// * `secret` - The service key, usually retrieved from the Secrets portal.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(secret)))]
-    pub async fn open(name: &str, secret: Secret) -> Result<Self, Error> {
+    pub async fn open(name: &str, secret: Option<Secret>) -> Result<Self, Error> {
         let v1_path = api::Keyring::path(name, api::MAJOR_VERSION)?;
         let v0_path = api::Keyring::path(name, api::LEGACY_MAJOR_VERSION)?;
         Self::open_with_paths(v1_path, v0_path, secret).await
@@ -240,8 +242,12 @@ impl UnlockedKeyring {
     /// # use oo7::{Secret, file::UnlockedKeyring};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let temp_dir = tempfile::tempdir()?;
-    /// let keyring =
-    ///     UnlockedKeyring::open_at(temp_dir.path(), "test-keyring", Secret::from("password")).await?;
+    /// let keyring = UnlockedKeyring::open_at(
+    ///     temp_dir.path(),
+    ///     "test-keyring",
+    ///     Some(Secret::from("password")),
+    /// )
+    /// .await?;
     /// keyring
     ///     .create_item("item", &[("attr", "value")], Secret::text("secret"), false)
     ///     .await?;
@@ -254,7 +260,7 @@ impl UnlockedKeyring {
     pub async fn open_at(
         data_dir: impl AsRef<Path>,
         name: &str,
-        secret: Secret,
+        secret: Option<Secret>,
     ) -> Result<Self, Error> {
         let v1_path = api::Keyring::path_at(&data_dir, name, api::MAJOR_VERSION);
         let v0_path = api::Keyring::path_at(&data_dir, name, api::LEGACY_MAJOR_VERSION);
@@ -651,6 +657,11 @@ impl UnlockedKeyring {
     pub async fn validate_secret(&self, secret: &Secret) -> Result<bool, Error> {
         let keyring = self.keyring.read().await;
         Ok(keyring.validate_secret(secret)?)
+    }
+
+    pub async fn validate_unencrypted(&self) -> Result<bool, Error> {
+        let keyring = self.keyring.read().await;
+        Ok(keyring.validate_unencrypted())
     }
 
     /// Delete any item that cannot be decrypted with the key associated to the

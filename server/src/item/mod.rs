@@ -56,10 +56,10 @@ impl Item {
             let item_self = self.clone();
             let coll = collection.clone();
             let caller = caller.to_owned();
-            let action =
-                crate::prompt::PromptAction::new(move |unlock_secret: oo7::Secret| async move {
+            let action = crate::prompt::PromptAction::new(
+                move |unlock_secret: Option<oo7::Secret>| async move {
                     // Unlock the collection
-                    coll.set_locked(false, Some(unlock_secret)).await?;
+                    coll.set_locked(false, unlock_secret).await?;
 
                     // Now delete the item
                     item_self.delete_unlocked(&coll, &caller).await?;
@@ -67,7 +67,8 @@ impl Item {
                     Ok(zbus::zvariant::Value::new(OwnedObjectPath::default())
                         .try_into_owned()
                         .unwrap())
-                });
+                },
+            );
 
             prompt.set_action(action).await;
 

@@ -59,7 +59,7 @@ async fn test_keyring_lifecycle() -> oo7::Result<()> {
 
     // Measure keyring creation
     let start = Instant::now();
-    let keyring = UnlockedKeyring::load(&keyring_path, secret.clone()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(secret.clone())).await?;
     let create_time = start.elapsed();
     info!("Fresh keyring creation: {:?}", create_time);
 
@@ -79,7 +79,7 @@ async fn test_keyring_lifecycle() -> oo7::Result<()> {
     // Measure keyring reload (with existing data)
     drop(keyring);
     let start = Instant::now();
-    let keyring = UnlockedKeyring::load(&keyring_path, secret).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(secret)).await?;
     let reload_time = start.elapsed();
     info!("Keyring reload with 1 item: {:?}", reload_time);
 
@@ -103,7 +103,7 @@ async fn test_bulk_operations() -> oo7::Result<()> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("bulk_test.keyring");
     let secret = oo7::Secret::from("test-secret-key-that-is-long-enough".as_bytes());
-    let keyring = UnlockedKeyring::load(&keyring_path, secret).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(secret)).await?;
 
     // Test creating multiple items individually
     let item_counts = [10, 50, 100];
@@ -166,7 +166,7 @@ async fn test_scaling_behavior() -> oo7::Result<()> {
 
         // Create fresh keyring with 'size' items
         std::fs::remove_file(&keyring_path).ok(); // Remove if exists
-        let keyring = UnlockedKeyring::load(&keyring_path, secret.clone()).await?;
+        let keyring = UnlockedKeyring::load(&keyring_path, Some(secret.clone())).await?;
 
         // Populate keyring
         if size > 0 {
@@ -188,7 +188,7 @@ async fn test_scaling_behavior() -> oo7::Result<()> {
         // Test reload performance
         drop(keyring);
         let start = Instant::now();
-        let keyring = UnlockedKeyring::load(&keyring_path, secret.clone()).await?;
+        let keyring = UnlockedKeyring::load(&keyring_path, Some(secret.clone())).await?;
         let reload_time = start.elapsed();
         info!("Reload with {} items: {:?}", size, reload_time);
 
@@ -227,7 +227,7 @@ async fn test_search_performance() -> oo7::Result<()> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("search_test.keyring");
     let secret = oo7::Secret::from("test-secret-key-that-is-long-enough".as_bytes());
-    let keyring = UnlockedKeyring::load(&keyring_path, secret).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(secret)).await?;
 
     // Create diverse set of items for search testing
     let apps = ["browser", "email", "social", "development", "finance"];

@@ -1071,7 +1071,7 @@ async fn complete_collection_creation_no_pending() -> Result<(), Box<dyn std::er
 
     let result = setup
         .server
-        .complete_collection_creation(&fake_prompt_path, secret)
+        .complete_collection_creation(&fake_prompt_path, Some(secret))
         .await;
 
     // Should get NoSuchObject error
@@ -1102,7 +1102,7 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     // Create multiple keyrings with different passwords
     // Add items to each so password validation works
     let secret1 = Secret::from("password-for-work");
-    let keyring1 = UnlockedKeyring::open_at(temp_dir.path(), "work", secret1.clone()).await?;
+    let keyring1 = UnlockedKeyring::open_at(temp_dir.path(), "work", Some(secret1.clone())).await?;
     keyring1
         .create_item(
             "Work Item",
@@ -1114,7 +1114,8 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     keyring1.write().await?;
 
     let secret2 = Secret::from("password-for-personal");
-    let keyring2 = UnlockedKeyring::open_at(temp_dir.path(), "personal", secret2.clone()).await?;
+    let keyring2 =
+        UnlockedKeyring::open_at(temp_dir.path(), "personal", Some(secret2.clone())).await?;
     keyring2
         .create_item(
             "Personal Item",
@@ -1127,7 +1128,8 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a "login" keyring which should get the default alias
     let secret3 = Secret::from("password-for-login");
-    let keyring3 = UnlockedKeyring::open_at(temp_dir.path(), "login", secret3.clone()).await?;
+    let keyring3 =
+        UnlockedKeyring::open_at(temp_dir.path(), "login", Some(secret3.clone())).await?;
     keyring3
         .create_item(
             "Login Item",
@@ -1326,7 +1328,8 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a v1 keyring for mixed scenario
     let v1_secret = Secret::from("v1-password");
-    let v1_keyring = UnlockedKeyring::open_at(temp_dir.path(), "modern", v1_secret.clone()).await?;
+    let v1_keyring =
+        UnlockedKeyring::open_at(temp_dir.path(), "modern", Some(v1_secret.clone())).await?;
     v1_keyring
         .create_item(
             "V1 Item",
@@ -1417,7 +1420,8 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a v1 keyring for mixed scenario
     let v1_secret = Secret::from("v1-password");
-    let v1_keyring = UnlockedKeyring::open_at(temp_dir.path(), "modern", v1_secret.clone()).await?;
+    let v1_keyring =
+        UnlockedKeyring::open_at(temp_dir.path(), "modern", Some(v1_secret.clone())).await?;
     v1_keyring
         .create_item(
             "V1 Item",

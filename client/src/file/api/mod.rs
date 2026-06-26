@@ -307,6 +307,10 @@ impl Keyring {
         Ok(self.items.iter().any(|item| item.is_valid(Some(&key))))
     }
 
+    pub fn validate_unencrypted(&self) -> bool {
+        self.items.iter().all(|item| item.is_valid(None))
+    }
+
     /// Get the modification timestamp
     pub fn modified_time(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.modified_time)

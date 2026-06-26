@@ -4,7 +4,7 @@
 //! use oo7::{Secret, file::UnlockedKeyring};
 //!
 //! # async fn run() -> oo7::Result<()> {
-//! let keyring = UnlockedKeyring::load("default.keyring", Secret::text("some_text")).await?;
+//! let keyring = UnlockedKeyring::load("default.keyring", Some(Secret::text("some_text"))).await?;
 //! keyring
 //!     .create_item("My Label", &[("account", "alice")], "My Password", true)
 //!     .await?;
@@ -120,6 +120,13 @@ impl Keyring {
         match self {
             Self::Locked(keyring) => keyring.validate_secret(secret).await,
             Self::Unlocked(keyring) => keyring.validate_secret(secret).await,
+        }
+    }
+
+    pub async fn validate_unencrypted(&self) -> Result<bool, Error> {
+        match self {
+            Self::Locked(keyring) => keyring.validate_unencrypted().await,
+            Self::Unlocked(keyring) => keyring.validate_unencrypted().await,
         }
     }
 

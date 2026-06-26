@@ -191,7 +191,7 @@ impl Service {
         // Create the collection creation action
         let service = self.clone();
         let creation_prompt_path = prompt_path.clone();
-        let action = PromptAction::new(move |secret: Secret| async move {
+        let action = PromptAction::new(move |secret: Option<Secret>| async move {
             let collection_path = service
                 .complete_collection_creation(&creation_prompt_path, secret)
                 .await?;
@@ -264,7 +264,7 @@ impl Service {
 
             // Create the unlock action
             let service = self.clone();
-            let action = PromptAction::new(move |secret: Secret| async move {
+            let action = PromptAction::new(move |secret: Option<Secret>| async move {
                 // The prompter will handle secret validation
                 // Here we just perform the unlock operation
 
@@ -290,7 +290,7 @@ impl Service {
                             );
 
                             // Attempt migration with the provided secret (no locks held)
-                            match migration.migrate(&service.data_dir, &secret).await {
+                            match migration.migrate(&service.data_dir, secret.as_ref()).await {
                                 Ok(unlocked_keyring) => {
                                     tracing::info!(
                                         "Successfully migrated '{}' during unlock",
@@ -323,14 +323,12 @@ impl Service {
                                         migration_name,
                                         e
                                     );
-                                    // Leave in pending_migrations, try normal unlock
-                                    let _ =
-                                        collection.set_locked(false, Some(secret.clone())).await;
+                                    let _ = collection.set_locked(false, secret.clone()).await;
                                 }
                             }
                         } else {
                             // Normal unlock
-                            let _ = collection.set_locked(false, Some(secret.clone())).await;
+                            let _ = collection.set_locked(false, secret.clone()).await;
                         }
                     } else {
                         // Try to find as item within collections
@@ -350,7 +348,7 @@ impl Service {
 
                         if let Some((collection, item, is_locked)) = found_collection {
                             if is_locked {
-                                let _ = collection.set_locked(false, Some(secret.clone())).await;
+                                let _ = collection.set_locked(false, secret.clone()).await;
                             } else {
                                 let keyring = collection.keyring.read().await;
                                 match keyring.as_ref() {
@@ -359,9 +357,7 @@ impl Service {
                                     }
                                     _ => {
                                         drop(keyring);
-                                        let _ = collection
-                                            .set_locked(false, Some(secret.clone()))
-                                            .await;
+                                        let _ = collection.set_locked(false, secret.clone()).await;
                                     }
                                 }
                             }
@@ -850,7 +846,7 @@ impl Service {
 
             if let Some(secret) = secret {
                 tracing::debug!("Attempting immediate migration of KWallet keyring '{name}'",);
-                match migration.migrate(&self.data_dir, secret).await {
+                match migration.migrate(&self.data_dir, Some(secret)).await {
                     Ok(unlocked) => {
                         tracing::info!("Successfully migrated KWallet keyring '{name}' to oo7",);
                         discovered.push((
@@ -966,7 +962,8 @@ impl Service {
 
                 if let Some(secret) = secret {
                     tracing::debug!("Attempting immediate migration of v0 keyring '{name}'",);
-                    match UnlockedKeyring::open_at(&self.data_dir, name, secret.clone()).await {
+                    match UnlockedKeyring::open_at(&self.data_dir, name, Some(secret.clone())).await
+                    {
                         Ok(unlocked) => {
                             tracing::info!("Successfully migrated v0 keyring '{name}' to v1",);
 
@@ -1046,7 +1043,7 @@ impl Service {
             tracing::info!("No default collection found, creating 'Login' keyring");
 
             let keyring = if let Some(secret) = secret {
-                UnlockedKeyring::open_at(&self.data_dir, Self::LOGIN_ALIAS, secret)
+                UnlockedKeyring::open_at(&self.data_dir, Self::LOGIN_ALIAS, Some(secret))
                     .await
                     .map(Keyring::Unlocked)
             } else {
@@ -1392,7 +1389,7 @@ impl Service {
         &self,
         label: &str,
         alias: &str,
-        secret: Secret,
+        secret: Option<Secret>,
     ) -> Result<OwnedObjectPath, ServiceError> {
         // Create a persistent keyring with the provided secret
         let keyring = UnlockedKeyring::open_at(&self.data_dir, &label.to_lowercase(), secret)
@@ -1448,7 +1445,7 @@ impl Service {
     pub async fn complete_collection_creation(
         &self,
         prompt_path: &ObjectPath<'_>,
-        secret: Secret,
+        secret: Option<Secret>,
     ) -> Result<OwnedObjectPath, ServiceError> {
         let Some((label, alias)) = self.pending_collection(prompt_path).await else {
             return Err(ServiceError::NoSuchObject(format!(
@@ -1545,7 +1542,7 @@ impl Service {
         for (name, migration) in pending.iter() {
             tracing::debug!("Attempting to migrate pending keyring: {name}");
 
-            match migration.migrate(&self.data_dir, secret).await {
+            match migration.migrate(&self.data_dir, Some(secret)).await {
                 Ok(unlocked) => {
                     let label = migration.label();
                     let alias = migration.alias();

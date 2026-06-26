@@ -31,7 +31,7 @@ async fn migrate_inner(
     attributes: Vec<impl AsAttributes>,
     replace: bool,
 ) -> Result<()> {
-    let file_backend = UnlockedKeyring::load(keyring_path, secret).await?;
+    let file_backend = UnlockedKeyring::load(keyring_path, Some(secret)).await?;
 
     let collection = service.default_collection().await?;
     let mut all_items = Vec::default();
@@ -146,7 +146,9 @@ mod tests {
         assert_eq!(items_after.len(), 0);
 
         // Verify items exist in file backend
-        let file_backend = UnlockedKeyring::load(&keyring_path, secret).await.unwrap();
+        let file_backend = UnlockedKeyring::load(&keyring_path, Some(secret))
+            .await
+            .unwrap();
         let migrated_items = file_backend
             .search_items(&[("app", "test-migration")])
             .await

@@ -65,7 +65,7 @@ impl InternalInterface {
 
         let collection_path = self
             .service
-            .create_collection_with_secret(&label, "", secret)
+            .create_collection_with_secret(&label, "", Some(secret))
             .await?;
 
         tracing::info!(
@@ -166,7 +166,7 @@ impl InternalInterface {
 
         let service = self.service.clone();
         let collection_path = collection.to_owned();
-        let action = PromptAction::new(move |new_secret: Secret| {
+        let action = PromptAction::new(move |new_secret: Option<Secret>| {
             let service = service.clone();
             let collection_path = collection_path.clone();
             async move {
@@ -177,9 +177,15 @@ impl InternalInterface {
 
                 let keyring_guard = collection.keyring.read().await;
                 if let Some(Keyring::Unlocked(unlocked)) = keyring_guard.as_ref() {
-                    unlocked.change_secret(new_secret).await.map_err(|err| {
-                        custom_service_error(&format!("Failed to change secret: {err}"))
-                    })?;
+                    if let Some(new_secret) = new_secret {
+                        unlocked.change_secret(new_secret).await.map_err(|err| {
+                            custom_service_error(&format!("Failed to change secret: {err}"))
+                        })?;
+                    } else {
+                        return Err(custom_service_error(
+                            "Cannot change to empty password via this interface",
+                        ));
+                    }
                 } else {
                     return Err(custom_service_error(
                         "Collection must be unlocked to change password",

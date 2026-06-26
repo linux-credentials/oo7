@@ -31,13 +31,13 @@ impl PendingMigration {
     pub async fn migrate(
         &self,
         data_dir: &PathBuf,
-        secret: &Secret,
+        secret: Option<&Secret>,
     ) -> Result<UnlockedKeyring, Error> {
         match self {
             Self::V0 { path, name, .. } => {
                 tracing::debug!("Migrating v0 keyring: {}", name);
 
-                let unlocked = UnlockedKeyring::open_at(data_dir, name, secret.clone()).await?;
+                let unlocked = UnlockedKeyring::open_at(data_dir, name, secret.cloned()).await?;
 
                 // Write migrated keyring
                 unlocked.write().await?;
@@ -57,6 +57,10 @@ impl PendingMigration {
             Self::KWallet { path, name, .. } => {
                 tracing::debug!("Migrating KWallet keyring: {}", name);
 
+                let secret = secret.ok_or_else(|| {
+                    Error::IO(std::io::Error::other("KWallet migration requires a secret"))
+                })?;
+
                 // Parse KWallet file in blocking task
                 let path_clone = path.clone();
                 let password = secret.to_vec();
@@ -71,7 +75,8 @@ impl PendingMigration {
                 tracing::info!("Parsed KWallet file '{}'", name);
 
                 // Create new oo7 keyring
-                let unlocked = UnlockedKeyring::open_at(data_dir, name, secret.clone()).await?;
+                let unlocked =
+                    UnlockedKeyring::open_at(data_dir, name, Some(secret.clone())).await?;
 
                 // Convert KWallet entries to oo7 items
                 let mut items = Vec::new();

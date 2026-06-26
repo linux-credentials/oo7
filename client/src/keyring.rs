@@ -73,7 +73,7 @@ impl Keyring {
         #[cfg(feature = "tracing")]
         tracing::debug!("Using file backend with custom path");
 
-        let file = file::UnlockedKeyring::load(path, secret.clone()).await?;
+        let file = file::UnlockedKeyring::load(path, Some(secret.clone())).await?;
         Ok(Self::File(
             Arc::new(RwLock::new(Some(file::Keyring::Unlocked(file)))),
             secret,

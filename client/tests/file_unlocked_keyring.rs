@@ -17,7 +17,7 @@ async fn repeated_write() -> Result<(), Error> {
     let path = temp_dir.path().join("test.keyring");
 
     let secret = Secret::from(vec![1, 2]);
-    let keyring = UnlockedKeyring::load(&path, secret).await?;
+    let keyring = UnlockedKeyring::load(&path, Some(secret)).await?;
 
     keyring.write().await?;
     keyring.write().await?;
@@ -30,7 +30,7 @@ async fn delete() -> Result<(), Error> {
     let temp_dir = tempdir()?;
     let path = temp_dir.path().join("test-delete.keyring");
 
-    let keyring = UnlockedKeyring::load(&path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&path, Some(strong_key())).await?;
     let attributes: HashMap<&str, &str> = HashMap::default();
     keyring
         .create_item("Label", &attributes, "secret", false)
@@ -51,7 +51,7 @@ async fn write_with_weak_key() -> Result<(), Error> {
     let path = temp_dir.path().join("write_with_weak_key.keyring");
 
     let secret = Secret::from(vec![1, 2]);
-    let keyring = UnlockedKeyring::load(&path, secret).await?;
+    let keyring = UnlockedKeyring::load(&path, Some(secret)).await?;
     let attributes: HashMap<&str, &str> = HashMap::default();
 
     let result = keyring
@@ -71,7 +71,7 @@ async fn write_with_strong_key() -> Result<(), Error> {
     let temp_dir = tempdir()?;
     let path = temp_dir.path().join("write_with_strong_key.keyring");
 
-    let keyring = UnlockedKeyring::load(&path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&path, Some(strong_key())).await?;
     let attributes: HashMap<&str, &str> = HashMap::default();
 
     keyring
@@ -86,7 +86,7 @@ async fn concurrent_writes() -> Result<(), Error> {
     let temp_dir = tempdir()?;
     let path = temp_dir.path().join("concurrent_writes.keyring");
 
-    let keyring = Arc::new(UnlockedKeyring::load(&path, strong_key()).await?);
+    let keyring = Arc::new(UnlockedKeyring::load(&path, Some(strong_key())).await?);
 
     let keyring_clone = keyring.clone();
     let handle_1 = tokio::task::spawn(async move { keyring_clone.write().await });
@@ -132,7 +132,7 @@ async fn migrate_from_legacy() -> Result<(), Error> {
     assert!(!v1_dir.join("default.keyring").exists());
 
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", Some(secret)).await?;
 
     check_items(&keyring).await?;
 
@@ -155,7 +155,7 @@ async fn migrate() -> Result<(), Error> {
     fs::copy(&fixture_path, &v0_dir.join("default.keyring")).await?;
 
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", Some(secret)).await?;
 
     assert!(!v1_dir.join("default.keyring").exists());
 
@@ -180,13 +180,13 @@ async fn open_wrong_password() -> Result<(), Error> {
     fs::copy(&fixture_path, &v1_dir.join("default.keyring")).await?;
 
     let secret = Secret::blob("wrong");
-    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", Some(secret)).await;
 
     assert!(keyring.is_err());
     assert!(matches!(keyring.unwrap_err(), Error::IncorrectSecret));
 
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", Some(secret)).await;
 
     assert!(keyring.is_ok());
 
@@ -206,7 +206,7 @@ async fn open() -> Result<(), Error> {
     fs::copy(&fixture_path, &v1_dir.join("default.keyring")).await?;
 
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", Some(secret)).await?;
 
     assert!(v1_dir.join("default.keyring").exists());
 
@@ -226,7 +226,7 @@ async fn open_nonexistent() -> Result<(), Error> {
     fs::create_dir_all(&v1_dir).await?;
 
     let secret = Secret::blob("test");
-    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", secret).await?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "default", Some(secret)).await?;
 
     assert!(!v1_dir.join("default.keyring").exists());
 
@@ -263,7 +263,7 @@ async fn delete_broken_items() -> Result<(), Error> {
 
     // 1) Load with the correct password and add several valid items. This ensures
     //    valid_items > broken_items that we'll add later.
-    let keyring = UnlockedKeyring::load(&keyring_path, Secret::blob("test")).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(Secret::blob("test"))).await?;
     for i in 0..VALID_TO_ADD {
         keyring
             .create_item(
@@ -293,7 +293,7 @@ async fn delete_broken_items() -> Result<(), Error> {
     drop(keyring);
 
     // 3) Load with the correct password and run the deletion.
-    let keyring = UnlockedKeyring::load(&keyring_path, Secret::blob("test")).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(Secret::blob("test"))).await?;
     let removed = keyring.delete_broken_items().await?;
     assert!(
         removed >= BROKEN_TO_ADD,
@@ -322,7 +322,7 @@ async fn change_secret() -> Result<(), Error> {
     let keyring_path = v1_dir.join("default.keyring");
     fs::copy(&fixture_path, &keyring_path).await?;
 
-    let keyring = UnlockedKeyring::load(&keyring_path, Secret::blob("test")).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(Secret::blob("test"))).await?;
     let attributes = &[("attr", "value")];
     let item_before = keyring
         .create_item("test", attributes, "password", false)
@@ -332,7 +332,7 @@ async fn change_secret() -> Result<(), Error> {
     keyring.change_secret(secret).await?;
 
     let secret = Secret::blob("new_secret");
-    let keyring = UnlockedKeyring::load(&keyring_path, secret).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(secret)).await?;
     let item_now = keyring.lookup_item(attributes).await?.unwrap();
 
     assert_eq!(item_before.label(), item_now.label());
@@ -389,13 +389,13 @@ async fn wrong_password_error_type() -> Result<(), Error> {
     let wrong_secret = Secret::from("wrong-password-that-is-long-enough".as_bytes());
 
     // Create a keyring with the correct password
-    let keyring = UnlockedKeyring::load(&keyring_path, correct_secret).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(correct_secret)).await?;
     keyring
         .create_item("Test Item", &[("app", "test")], "my-secret", false)
         .await?;
 
     // Try to load with wrong password
-    let result = UnlockedKeyring::load(&keyring_path, wrong_secret).await;
+    let result = UnlockedKeyring::load(&keyring_path, Some(wrong_secret)).await;
 
     // Verify this returns IncorrectSecret, not ChecksumMismatch
     assert!(matches!(result, Err(Error::IncorrectSecret)));
@@ -407,7 +407,7 @@ async fn wrong_password_error_type() -> Result<(), Error> {
 async fn comprehensive_search_patterns() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("search_test.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     // Create diverse test data
     let test_items = [
@@ -485,7 +485,7 @@ async fn comprehensive_search_patterns() -> Result<(), Error> {
 async fn item_replacement_behavior() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("replace_test.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     let attrs = &[("app", "test"), ("user", "alice")];
 
@@ -553,7 +553,7 @@ async fn item_replacement_behavior() -> Result<(), Error> {
 async fn empty_keyring_operations() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("empty_test.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     // Test operations on empty keyring
     let items = keyring.items().await?;
@@ -579,7 +579,7 @@ async fn empty_keyring_operations() -> Result<(), Error> {
 async fn secret_types_handling() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("secret_types_test.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     // Test text secret
     keyring
@@ -654,7 +654,7 @@ async fn secret_types_handling() -> Result<(), Error> {
 async fn item_lifecycle_operations() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("lifecycle_test.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     // Test creating multiple items
     keyring
@@ -702,7 +702,7 @@ async fn item_lifecycle_operations() -> Result<(), Error> {
 async fn item_attribute_operations() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("attr_test.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     // Create item with initial attributes
     keyring
@@ -760,7 +760,7 @@ async fn item_attribute_operations() -> Result<(), Error> {
 async fn bulk_create_items() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("bulk_create_test.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     // Prepare multiple items to create at once
     let items_to_create = vec![
@@ -825,7 +825,7 @@ async fn partially_corrupted_keyring_error() -> Result<(), Error> {
 
     // Create keyring with correct password and add 2 valid items
     let correct_secret = Secret::from("correct-password-long-enough".as_bytes());
-    let keyring = UnlockedKeyring::load(&keyring_path, correct_secret.clone()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(correct_secret.clone())).await?;
     keyring
         .create_item("valid1", &[("attr", "value1")], "password1", false)
         .await?;
@@ -848,7 +848,7 @@ async fn partially_corrupted_keyring_error() -> Result<(), Error> {
         .await?;
     drop(keyring);
 
-    let result = UnlockedKeyring::load(&keyring_path, correct_secret).await;
+    let result = UnlockedKeyring::load(&keyring_path, Some(correct_secret)).await;
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::PartiallyCorruptedKeyring {
@@ -872,7 +872,7 @@ async fn invalid_item_error_on_decrypt_failure() -> Result<(), Error> {
 
     // 1) Create keyring with correct password and add 2 items
     let correct_secret = Secret::from("correct-password-long-enough".as_bytes());
-    let keyring = UnlockedKeyring::load(&keyring_path, correct_secret).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(correct_secret)).await?;
     keyring
         .create_item("item1", &[("app", "test1")], "password1", false)
         .await?;
@@ -904,7 +904,7 @@ async fn invalid_item_error_on_decrypt_failure() -> Result<(), Error> {
 async fn replace_item_index_invalid() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("replace_invalid_index.keyring");
-    let keyring = UnlockedKeyring::load(&keyring_path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     // Create one item
     keyring
@@ -928,7 +928,7 @@ async fn set_attributes() -> Result<(), Error> {
     fs::create_dir_all(&dir).await.unwrap();
     let path = dir.join("default.keyring");
 
-    let keyring = UnlockedKeyring::load(&path, strong_key()).await?;
+    let keyring = UnlockedKeyring::load(&path, Some(strong_key())).await?;
 
     let items = keyring.items().await?;
     assert_eq!(items.len(), 0);

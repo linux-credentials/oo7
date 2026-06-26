@@ -53,7 +53,7 @@ pub type PromptActionFuture =
 /// Represents the action to be taken when a prompt completes
 pub struct PromptAction {
     /// The async function to execute when the prompt is accepted
-    action: Box<dyn FnOnce(Secret) -> PromptActionFuture + Send>,
+    action: Box<dyn FnOnce(Option<Secret>) -> PromptActionFuture + Send>,
 }
 
 impl PromptAction {
@@ -61,7 +61,7 @@ impl PromptAction {
     /// and returns a future
     pub fn new<F, Fut>(f: F) -> Self
     where
-        F: FnOnce(Secret) -> Fut + Send + 'static,
+        F: FnOnce(Option<Secret>) -> Fut + Send + 'static,
         Fut: Future<Output = Result<OwnedValue, ServiceError>> + Send + 'static,
     {
         Self {
@@ -70,7 +70,7 @@ impl PromptAction {
     }
 
     /// Execute the action with the provided secret
-    pub async fn execute(self, secret: Secret) -> Result<OwnedValue, ServiceError> {
+    pub async fn execute(self, secret: Option<Secret>) -> Result<OwnedValue, ServiceError> {
         (self.action)(secret).await
     }
 }
@@ -200,26 +200,44 @@ impl Prompt {
         self.action.lock().await.take()
     }
 
-    pub async fn on_unlock_collection(&self, secret: Secret) -> Result<bool, ServiceError> {
+    pub async fn on_unlock_collection(&self, secret: Option<Secret>) -> Result<bool, ServiceError> {
         debug_assert_eq!(self.role, PromptRole::Unlock);
 
         // Get the collection to validate the secret
         let collection = self.collection().expect("Unlock requires a collection");
         let label = self.label();
 
-        // Validate the secret using the already-open keyring
-        let keyring_guard = collection.keyring.read().await;
-        let is_valid = keyring_guard
-            .as_ref()
-            .unwrap()
-            .validate_secret(&secret)
-            .await
-            .map_err(|err| {
-                custom_service_error(&format!(
-                    "Failed to validate secret for {label} keyring: {err}."
-                ))
-            })?;
-        drop(keyring_guard);
+        let is_valid = if let Some(ref secret) = secret {
+            // Validate the secret using the already-open keyring
+            let keyring_guard = collection.keyring.read().await;
+            let valid = keyring_guard
+                .as_ref()
+                .unwrap()
+                .validate_secret(secret)
+                .await
+                .map_err(|err| {
+                    custom_service_error(&format!(
+                        "Failed to validate secret for {label} keyring: {err}."
+                    ))
+                })?;
+            drop(keyring_guard);
+            valid
+        } else {
+            // No secret means unencrypted -> validate items are plaintext
+            let keyring_guard = collection.keyring.read().await;
+            let valid = keyring_guard
+                .as_ref()
+                .unwrap()
+                .validate_unencrypted()
+                .await
+                .map_err(|err| {
+                    custom_service_error(&format!(
+                        "Failed to validate unencrypted keyring {label}: {err}."
+                    ))
+                })?;
+            drop(keyring_guard);
+            valid
+        };
 
         if is_valid {
             tracing::debug!("Keyring secret matches for {label}.");
@@ -247,7 +265,7 @@ impl Prompt {
         }
     }
 
-    pub async fn on_create_collection(&self, secret: Secret) -> Result<(), ServiceError> {
+    pub async fn on_create_collection(&self, secret: Option<Secret>) -> Result<(), ServiceError> {
         debug_assert_eq!(self.role, PromptRole::CreateCollection);
 
         let Some(action) = self.take_action().await else {
@@ -275,7 +293,7 @@ impl Prompt {
         }
     }
 
-    pub async fn on_change_password(&self, secret: Secret) -> Result<(), ServiceError> {
+    pub async fn on_change_password(&self, secret: Option<Secret>) -> Result<(), ServiceError> {
         debug_assert_eq!(self.role, PromptRole::ChangePassword);
 
         let Some(action) = self.take_action().await else {
@@ -395,7 +413,11 @@ impl Prompt {
                 stream.read_to_string(&mut buffer).await.map_err(|e| {
                     custom_service_error(&format!("Failed to read secret from CLI prompter: {e}"))
                 })?;
-                let secret = Secret::from(buffer);
+                let secret = if buffer.is_empty() {
+                    None
+                } else {
+                    Some(Secret::from(buffer))
+                };
 
                 match self.role {
                     PromptRole::Unlock => {

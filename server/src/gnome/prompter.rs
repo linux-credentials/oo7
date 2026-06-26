@@ -381,10 +381,16 @@ impl GNOMEPrompterCallback {
             ))
         })?;
 
-        let Some(secret) = secret_exchange::retrieve(exchange, &aes_key) else {
+        let Some(raw_secret) = secret_exchange::retrieve(exchange, &aes_key) else {
             return Err(custom_service_error(
                 "Failed to retrieve keyring secret from SecretExchange.",
             ));
+        };
+
+        let secret = if raw_secret.as_bytes().is_empty() {
+            None
+        } else {
+            Some(raw_secret)
         };
 
         // Handle each role differently based on what validation/preparation is needed
