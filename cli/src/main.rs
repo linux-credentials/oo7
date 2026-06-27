@@ -424,8 +424,9 @@ impl Commands {
                 (None, keyring)
             }
 
-            (Some(_), None) => {
-                return Err(Error::new("A keyring requires a secret."));
+            (Some(path), None) => {
+                let keyring = Keyring::File(oo7::file::UnlockedKeyring::load(path, None).await?);
+                (None, keyring)
             }
             (None, Some(_)) => {
                 return Err(Error::new("A secret requires a keyring."));
