@@ -29,7 +29,7 @@ use crate::plasma::prompter::in_plasma_environment;
 use crate::{
     collection::Collection,
     error::{Error, custom_service_error},
-    migration::PendingMigration,
+    migration::{self, PendingMigration},
     prompt::{Prompt, PromptAction, PromptRole},
     session::Session,
 };
@@ -756,6 +756,10 @@ impl Service {
                         continue;
                     }
 
+                    if migration::stamp_path(&path).exists() {
+                        continue;
+                    }
+
                     if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
                         tracing::debug!("Found v0 keyring: {name}");
 
@@ -817,6 +821,10 @@ impl Service {
 
             // Only process .kwl files
             if path.extension().is_none_or(|ext| ext != "kwl") {
+                continue;
+            }
+
+            if migration::stamp_path(&path).exists() {
                 continue;
             }
 

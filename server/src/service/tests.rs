@@ -1299,10 +1299,14 @@ async fn unlock_pending_v0_migration_impl(
     let v1_migrated = v1_dir.join("legacy.keyring");
     assert!(v1_migrated.exists(), "V1 file should exist after migration");
 
-    // Verify v0 file was removed
+    // Verify v0 file still exists but stamp was created
     assert!(
-        !v0_path.exists(),
-        "V0 file should be removed after migration"
+        v0_path.exists(),
+        "V0 file should still exist after migration"
+    );
+    assert!(
+        crate::migration::stamp_path(&v0_path).exists(),
+        "Migration stamp file should exist"
     );
     Ok(())
 }
@@ -1372,6 +1376,7 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 3: Discover with wrong v0 secret,  marked for pending migration
     tokio::fs::remove_file(&v1_migrated).await?;
+    let _ = tokio::fs::remove_file(crate::migration::stamp_path(&v0_path)).await;
     service.pending_migrations.lock().await.clear();
 
     // Restore the v0 file for this test
@@ -1474,15 +1479,19 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let v1_migrated = temp_dir.path().join("keyrings/v1/kdewallet.keyring");
     assert!(v1_migrated.exists(), "V1 file should exist after migration");
 
-    // Verify old KWallet files were removed
+    // Verify old KWallet file still exists but stamp was created
     assert!(
-        !kwallet_path.exists(),
-        "Original .kwl file should be removed"
+        kwallet_path.exists(),
+        "Original .kwl file should still exist"
     );
-    assert!(!salt_path.exists(), "Original .salt file should be removed");
+    assert!(
+        crate::migration::stamp_path(&kwallet_path).exists(),
+        "Migration stamp file should exist"
+    );
 
     // Test 3: Discover with wrong KWallet secret, marked for pending migration
     tokio::fs::remove_file(&v1_migrated).await?;
+    let _ = tokio::fs::remove_file(crate::migration::stamp_path(&kwallet_path)).await;
     service.pending_migrations.lock().await.clear();
 
     // Restore the KWallet files for this test

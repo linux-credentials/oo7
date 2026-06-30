@@ -1,10 +1,17 @@
 //! Keyring migration support for legacy formats
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use oo7::{Secret, file::UnlockedKeyring};
 
 use crate::error::Error;
+
+/// Returns the stamp file path for a migrated keyring file.
+pub fn stamp_path(path: &Path) -> PathBuf {
+    let mut stamped = path.as_os_str().to_owned();
+    stamped.push(".migrated");
+    PathBuf::from(stamped)
+}
 
 /// Pending keyring migration
 #[derive(Clone)]
@@ -43,11 +50,8 @@ impl PendingMigration {
                 unlocked.write().await?;
                 tracing::info!("Wrote migrated keyring '{}' to disk", name);
 
-                // Cleanup old file
-                if let Err(e) = tokio::fs::remove_file(path).await {
-                    tracing::warn!("Failed to remove v0 keyring at {:?}: {}", path, e);
-                } else {
-                    tracing::info!("Removed v0 keyring file at {:?}", path);
+                if let Err(e) = tokio::fs::write(stamp_path(path), b"").await {
+                    tracing::warn!("Failed to write migration stamp for {:?}: {}", path, e);
                 }
 
                 tracing::info!("Successfully migrated v0 keyring '{}'", name);
@@ -106,25 +110,8 @@ impl PendingMigration {
 
                 tracing::info!("Migrated KWallet entries to oo7 format for '{}'", name);
 
-                // Cleanup old files
-                if let Err(e) = tokio::fs::remove_file(path).await {
-                    tracing::warn!("Failed to remove KWallet file at {:?}: {}", path, e);
-                } else {
-                    tracing::info!("Removed KWallet file at {:?}", path);
-                }
-
-                // Try to remove salt file if it exists
-                let salt_path = path.with_extension("salt");
-                if salt_path.exists() {
-                    if let Err(e) = tokio::fs::remove_file(&salt_path).await {
-                        tracing::warn!(
-                            "Failed to remove KWallet salt file at {:?}: {}",
-                            salt_path,
-                            e
-                        );
-                    } else {
-                        tracing::info!("Removed KWallet salt file at {:?}", salt_path);
-                    }
+                if let Err(e) = tokio::fs::write(stamp_path(path), b"").await {
+                    tracing::warn!("Failed to write migration stamp for {:?}: {}", path, e);
                 }
 
                 tracing::info!("Successfully migrated KWallet keyring '{}'", name);

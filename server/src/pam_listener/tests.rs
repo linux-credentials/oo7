@@ -122,8 +122,12 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     assert!(v1_migrated.exists(), "V1 file should exist after migration");
 
     assert!(
-        !v0_path.exists(),
-        "V0 file should be removed after migration"
+        v0_path.exists(),
+        "V0 file should still exist after migration"
+    );
+    assert!(
+        crate::migration::stamp_path(&v0_path).exists(),
+        "Migration stamp file should exist"
     );
 
     Ok(())
