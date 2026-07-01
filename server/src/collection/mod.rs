@@ -438,7 +438,9 @@ impl Collection {
 }
 
 pub(crate) fn collection_path(label: &str) -> Result<OwnedObjectPath, zvariant::Error> {
-    let sanitized_label = label.replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
+    let sanitized_label = label
+        .to_lowercase()
+        .replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
 
     OwnedObjectPath::try_from(format!(
         "/org/freedesktop/secrets/collection/{sanitized_label}"
