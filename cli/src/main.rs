@@ -195,37 +195,18 @@ impl ItemOutput {
     }
 
     async fn from_dbus_item(item: &oo7::dbus::Item, as_hex: bool) -> Result<Self, Error> {
-        use oo7::dbus::ServiceError;
-
         let is_locked = item.is_locked().await?;
-        let secret = match item.secret().await {
-            Ok(secret) => Ok(Some(secret)),
-            Err(oo7::dbus::Error::Service(ServiceError::IsLocked(_))) => Ok(None),
-            Err(e) => Err(e),
-        }?;
-        let attributes = match item.attributes().await {
-            Ok(attributes) => Ok(Some(attributes)),
-            Err(oo7::dbus::Error::Service(ServiceError::IsLocked(_))) => Ok(None),
-            Err(e) => Err(e),
-        }?;
-        let created = match item.created().await {
-            Ok(created) => Ok(Some(created)),
-            Err(oo7::dbus::Error::Service(ServiceError::IsLocked(_))) => Ok(None),
-            Err(e) => Err(e),
-        }?;
-        let modified = match item.modified().await {
-            Ok(modified) => Ok(Some(modified)),
-            Err(oo7::dbus::Error::Service(ServiceError::IsLocked(_))) => Ok(None),
-            Err(e) => Err(e),
-        }?;
+        if is_locked {
+            return Ok(Self::new(None, "(locked)", None, None, None, true, as_hex));
+        }
 
         Ok(Self::new(
-            secret.as_ref(),
+            Some(&item.secret().await?),
             &item.label().await?,
-            attributes,
-            created,
-            modified,
-            is_locked,
+            Some(item.attributes().await?),
+            Some(item.created().await?),
+            Some(item.modified().await?),
+            false,
             as_hex,
         ))
     }
