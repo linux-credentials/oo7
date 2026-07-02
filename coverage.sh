@@ -54,6 +54,7 @@ grcov coverage-raw/combined.info \
   --ignore-not-existing \
   --ignore "**/portal/*" \
   --ignore "**/python/*" \
+  --ignore "**/git-credential/*" \
   --ignore "**/cli/*" \
   --ignore "**/pam/*" \
   --ignore "**/tests/*" \
@@ -74,6 +75,7 @@ grcov coverage-raw/combined.info \
   --ignore-not-existing \
   --ignore "**/portal/*" \
   --ignore "**/python/*" \
+  --ignore "**/git-credential/*" \
   --ignore "**/cli/*" \
   --ignore "**/pam/*" \
   --ignore "**/tests/*" \

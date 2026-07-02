@@ -62,6 +62,10 @@ jobs:
         run: |
           cargo build --manifest-path ./portal/Cargo.toml
 
+      - name: Build git-credential-oo7
+        run: |
+          cargo build --manifest-path ./git-credential/Cargo.toml
+
       - name: Test (native)
         run: |
           cargo test --manifest-path ./client/Cargo.toml --no-default-features --features tokio --features native_crypto --features schema

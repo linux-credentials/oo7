@@ -731,6 +731,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "git-credential-oo7"
+version = "0.6.0-alpha"
+dependencies = [
+ "oo7",
+ "tokio",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -9,6 +9,7 @@ The repository consists of the following projects:
 - [cargo-credential](./cargo-credential/): a [cargo credential](https://doc.rust-lang.org/stable/cargo/reference/registry-authentication.html#registry-authentication) provider
 - [cli](./cli/): a secret-tool replacement
 - [client](./client/): the client side library
+- [git-credential](./git-credential/): a [git credential helper](https://git-scm.com/docs/gitcredentials), replacement for git-credential-libsecret
 - [pam](./pam/): PAM integration for the server implementation
 - [portal](./portal/): [org.freedesktop.impl.portal.Secret](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.Secret.html) implementation
 - [server](./server/): [org.freedesktop.secrets](https://specifications.freedesktop.org/secret-service-spec/latest/) server implementation
