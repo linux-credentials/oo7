@@ -1,0 +1,22 @@
+[package]
+name = "git-credential-oo7"
+description = "Git credential helper using oo7"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+rust-version.workspace = true
+exclude.workspace = true
+
+[dependencies]
+oo7 = { workspace = true, features = ["tokio", "schema"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[features]
+default = ["native_crypto"]
+native_crypto = ["oo7/native_crypto"]
+openssl_crypto = ["oo7/openssl_crypto"]
