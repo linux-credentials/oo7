@@ -14,8 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
 
 jobs:
   deploy:
@@ -60,54 +59,42 @@ jobs:
             });
             const coverageRun = coverageRuns.workflow_runs[0];
 
-            if (!docsRun && !coverageRun) {
-              core.setFailed('No successful runs found for either workflow');
+            if (!docsRun || !coverageRun) {
+              console.log('Waiting for both workflows to complete, skipping deploy for now');
+              core.setOutput('ready', 'false');
               return;
             }
 
-            if (docsRun) {
-              core.setOutput('docs-run-id', docsRun.id);
-              core.setOutput('has-docs', 'true');
-              console.log(`Found docs run: ${docsRun.id}`);
-            } else {
-              core.setOutput('has-docs', 'false');
-              console.log('No successful docs run found, skipping docs');
-            }
-
-            if (coverageRun) {
-              core.setOutput('coverage-run-id', coverageRun.id);
-              core.setOutput('has-coverage', 'true');
-              console.log(`Found coverage run: ${coverageRun.id}`);
-            } else {
-              core.setOutput('has-coverage', 'false');
-              console.log('No successful coverage run found, skipping coverage');
-            }
+            core.setOutput('ready', 'true');
+            core.setOutput('docs-run-id', docsRun.id);
+            core.setOutput('coverage-run-id', coverageRun.id);
+            console.log(`Found docs run: ${docsRun.id}, coverage run: ${coverageRun.id}`);
 
       - name: Download docs artifact
-        if: steps.find-runs.outputs.has-docs == 'true'
+        if: steps.find-runs.outputs.ready == 'true'
         uses: actions/download-artifact@v8
         with:
           name: docs-reports
           path: ./site/
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ steps.find-runs.outputs.docs-run-id }}
-        continue-on-error: true
 
       - name: Download coverage artifact
-        if: steps.find-runs.outputs.has-coverage == 'true'
+        if: steps.find-runs.outputs.ready == 'true'
         uses: actions/download-artifact@v8
         with:
           name: coverage-reports
           path: ./site/coverage/
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ steps.find-runs.outputs.coverage-run-id }}
-        continue-on-error: true
 
       - name: Upload combined site
+        if: steps.find-runs.outputs.ready == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./site/
 
       - name: Deploy to GitHub Pages
+        if: steps.find-runs.outputs.ready == 'true'
         id: deployment
         uses: actions/deploy-pages@v5
