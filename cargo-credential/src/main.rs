@@ -27,15 +27,15 @@ impl SecretServiceCredential {
                     return Err(Error::NotFound);
                 }
 
+                let secret = items[0]
+                    .secret()
+                    .await
+                    .map_err(|err| Error::Other(Box::new(err)))?;
                 let token = Secret::from(
-                    std::str::from_utf8(
-                        &items[0]
-                            .secret()
-                            .await
-                            .map_err(|err| Error::Other(Box::new(err)))?,
-                    )
-                    .unwrap()
-                    .to_owned(),
+                    secret
+                        .as_str()
+                        .ok_or_else(|| Error::Other("secret is not valid UTF-8".into()))?
+                        .to_owned(),
                 );
 
                 Ok(CredentialResponse::Get {

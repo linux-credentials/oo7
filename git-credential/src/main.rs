@@ -161,8 +161,8 @@ impl Credential {
     }
 }
 
-fn parse_secret(secret: &[u8]) -> (String, Option<String>, Option<String>) {
-    let text = std::str::from_utf8(secret).unwrap_or_default();
+fn parse_secret(secret: &oo7::Secret) -> (String, Option<String>, Option<String>) {
+    let text = secret.as_str().unwrap_or_default();
     let mut lines = text.split('\n');
     let password = lines.next().unwrap_or_default().to_owned();
     let mut password_expiry_utc = None;
@@ -186,7 +186,7 @@ async fn run(action: &str, credential: &Credential, collection: &Collection) -> 
             if let Some(item) = items.first() {
                 let attrs = item.attributes_as::<GitSchema>().await?;
                 let secret = item.secret().await?;
-                let (password, expiry, oauth) = parse_secret(secret.as_bytes());
+                let (password, expiry, oauth) = parse_secret(&secret);
 
                 if let Some(user) = &attrs.user {
                     println!("username={user}");
@@ -222,7 +222,7 @@ async fn run(action: &str, credential: &Credential, collection: &Collection) -> 
                 && let Some(item) = items.first()
             {
                 let secret = item.secret().await?;
-                let (stored_password, ..) = parse_secret(secret.as_bytes());
+                let (stored_password, ..) = parse_secret(&secret);
                 if stored_password != *password {
                     return Ok(());
                 }

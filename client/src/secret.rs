@@ -107,6 +107,15 @@ impl Secret {
         }
     }
 
+    /// Returns the secret as a string slice, or `None` if it is not valid
+    /// UTF-8.
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text.as_str()),
+            Self::Blob(bytes) => std::str::from_utf8(bytes).ok(),
+        }
+    }
+
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             Self::Text(text) => text.as_bytes(),

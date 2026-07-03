@@ -535,7 +535,7 @@ impl MockPrompterService {
                     let pwd = queue.remove(0);
                     tracing::debug!(
                         "MockPrompter: using password from queue (length: {}, queue remaining: {})",
-                        std::str::from_utf8(pwd.as_bytes()).unwrap_or("<binary>"),
+                        pwd.as_str().unwrap_or("<binary>"),
                         queue.len()
                     );
                     pwd
@@ -543,7 +543,7 @@ impl MockPrompterService {
                     let pwd = unlock_password.lock().await.clone().unwrap();
                     tracing::debug!(
                         "MockPrompter: using default password (length: {})",
-                        std::str::from_utf8(pwd.as_bytes()).unwrap_or("<binary>")
+                        pwd.as_str().unwrap_or("<binary>")
                     );
                     pwd
                 };
@@ -796,7 +796,7 @@ impl MockPrompterServicePlasma {
             let pwd = self.unlock_password.lock().await.clone().unwrap();
             tracing::debug!(
                 "MockPrompterServicePlasma: using default password (length: {})",
-                std::str::from_utf8(pwd.as_bytes()).unwrap_or("<binary>")
+                pwd.as_str().unwrap_or("<binary>")
             );
             MockPrompterServicePlasma::send_secret(&connection, &callback_path, &pwd).await?;
         };

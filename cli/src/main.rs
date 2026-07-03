@@ -147,13 +147,12 @@ impl ItemOutput {
         .unwrap();
 
         let secret_str = secret.map(|s| {
-            let bytes = s.as_bytes();
             if as_hex {
-                hex::encode(bytes)
+                hex::encode(s.as_bytes())
             } else {
-                match std::str::from_utf8(bytes) {
-                    Ok(s) => s.to_string(),
-                    Err(_) => hex::encode(bytes),
+                match s.as_str() {
+                    Some(s) => s.to_string(),
+                    None => hex::encode(s.as_bytes()),
                 }
             }
         });
