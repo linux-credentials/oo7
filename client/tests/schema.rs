@@ -101,6 +101,74 @@ async fn schema_content_type_and_attributes() {
 }
 
 #[derive(SecretSchema, Debug, Default)]
+#[schema(name = "org.example.DontMatch", dont_match_name)]
+struct DontMatchSchema {
+    username: String,
+    port: Option<u16>,
+}
+
+#[tokio::test]
+async fn dont_match_name_excludes_schema_from_search() {
+    use oo7::AsAttributes;
+
+    let schema = DontMatchSchema {
+        username: "alice".to_string(),
+        port: Some(8080),
+    };
+
+    let store_attrs = schema.as_attributes();
+    assert_eq!(
+        store_attrs.get("xdg:schema").map(String::as_str),
+        Some("org.example.DontMatch")
+    );
+    assert_eq!(
+        store_attrs.get("username").map(String::as_str),
+        Some("alice")
+    );
+
+    let search_attrs = schema.search_attributes();
+    assert!(!search_attrs.contains_key("xdg:schema"));
+    assert_eq!(
+        search_attrs.get("username").map(String::as_str),
+        Some("alice")
+    );
+    assert_eq!(search_attrs.get("port").map(String::as_str), Some("8080"));
+}
+
+#[tokio::test]
+async fn dont_match_name_search_finds_any_schema() {
+    let keyring = UnlockedKeyring::temporary(Secret::random().unwrap())
+        .await
+        .unwrap();
+
+    // Create item with the regular TestSchema
+    keyring
+        .create_item(
+            "Regular Item",
+            &TestSchema {
+                username: "alice".to_string(),
+                port: Some(8080),
+            },
+            Secret::text("password1"),
+            true,
+        )
+        .await
+        .unwrap();
+
+    // Search with DontMatchSchema
+    let items = keyring
+        .search_items(&DontMatchSchema {
+            username: "alice".to_string(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].secret(), Secret::text("password1"));
+}
+
+#[derive(SecretSchema, Debug, Default)]
 #[schema(name = "org.example.ErrorTest")]
 struct ErrorSchema {
     required_field: String,

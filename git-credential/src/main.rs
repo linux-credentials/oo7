@@ -31,7 +31,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[derive(SecretSchema, Debug, Default)]
-#[schema(name = "org.git.Password")]
+#[schema(name = "org.git.Password", dont_match_name)]
 struct GitSchema {
     user: Option<String>,
     object: Option<String>,

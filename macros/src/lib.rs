@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, Lit, Meta, MetaNameValue, Type, TypePath, parse_macro_input};
+use syn::{Data, DeriveInput, Fields, Lit, Meta, Type, TypePath, parse_macro_input};
 
 /// Derive macro for creating type-safe secret schemas.
 ///
@@ -18,13 +18,22 @@ use syn::{Data, DeriveInput, Fields, Lit, Meta, MetaNameValue, Type, TypePath, p
 ///     protocol: Option<String>,
 /// }
 /// ```
+///
+/// Use `dont_match_name` to exclude `xdg:schema` from search queries, matching
+/// libsecret's `SECRET_SCHEMA_DONT_MATCH_NAME` behavior:
+///
+/// ```ignore
+/// #[derive(SecretSchema, Debug)]
+/// #[schema(name = "org.example.Password", dont_match_name)]
+/// struct PasswordSchema { /* ... */ }
+/// ```
 #[proc_macro_derive(SecretSchema, attributes(schema))]
 pub fn derive_secret_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let name = &input.ident;
-    let schema_name = match extract_schema_name(&input.attrs) {
-        Some(name) => name,
+    let (schema_name, dont_match_name) = match extract_schema_config(&input.attrs) {
+        Some(config) => config,
         None => {
             return syn::Error::new_spanned(
                 &input,
@@ -114,6 +123,18 @@ pub fn derive_secret_schema(input: TokenStream) -> TokenStream {
         }
     };
 
+    let search_attributes_override = if dont_match_name {
+        quote! {
+            fn search_attributes(&self) -> ::std::collections::HashMap<String, String> {
+                let mut attrs = self.as_attributes();
+                attrs.remove(::oo7::XDG_SCHEMA_ATTRIBUTE);
+                attrs
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let as_attributes_impl = quote! {
         impl ::oo7::AsAttributes for #name {
             fn as_attributes(&self) -> ::std::collections::HashMap<String, String> {
@@ -122,6 +143,8 @@ pub fn derive_secret_schema(input: TokenStream) -> TokenStream {
                 #(#as_attributes_fields)*
                 owned
             }
+
+            #search_attributes_override
         }
     };
 
@@ -172,17 +195,39 @@ pub fn derive_secret_schema(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// Extract the schema name from #[schema(name = "...")] attribute
-fn extract_schema_name(attrs: &[syn::Attribute]) -> Option<String> {
+/// Extract the schema config from #[schema(name = "...", dont_match_name)]
+/// attribute
+fn extract_schema_config(attrs: &[syn::Attribute]) -> Option<(String, bool)> {
     for attr in attrs {
         if attr.path().is_ident("schema")
             && let Meta::List(meta_list) = &attr.meta
-            && let Ok(name_value) = meta_list.parse_args::<MetaNameValue>()
-            && name_value.path.is_ident("name")
-            && let syn::Expr::Lit(expr_lit) = &name_value.value
-            && let Lit::Str(lit_str) = &expr_lit.lit
         {
-            return Some(lit_str.value());
+            let nested = meta_list
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+                )
+                .ok()?;
+
+            let mut name = None;
+            let mut dont_match_name = false;
+
+            for meta in &nested {
+                match meta {
+                    Meta::NameValue(nv)
+                        if nv.path.is_ident("name")
+                            && let syn::Expr::Lit(expr_lit) = &nv.value
+                            && let Lit::Str(lit_str) = &expr_lit.lit =>
+                    {
+                        name = Some(lit_str.value());
+                    }
+                    Meta::Path(path) if path.is_ident("dont_match_name") => {
+                        dont_match_name = true;
+                    }
+                    _ => {}
+                }
+            }
+
+            return name.map(|n| (n, dont_match_name));
         }
     }
     None

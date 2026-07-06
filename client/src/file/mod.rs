@@ -86,7 +86,7 @@ impl Item {
         match self {
             Self::Unlocked(unlocked) => {
                 let item_attrs = unlocked.attributes();
-                attributes.as_attributes().iter().all(|(k, value)| {
+                attributes.search_attributes().iter().all(|(k, value)| {
                     item_attrs.get(k.as_str()).map(|v| v.as_ref()) == Some(value.as_str())
                 })
             }

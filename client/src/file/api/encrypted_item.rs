@@ -35,7 +35,7 @@ impl EncryptedItem {
                     .all(|(k, v)| v.as_ref().is_ok_and(|v| self.has_attribute(k.as_str(), v)))
             }
             None => attributes
-                .as_attributes()
+                .search_attributes()
                 .iter()
                 .all(|(k, v)| self.has_plaintext_attribute(k.as_str(), v.as_str())),
         }

@@ -144,7 +144,7 @@ impl Collection {
     pub async fn search_items(&self, attributes: &impl AsAttributes) -> Result<Vec<Item>, Error> {
         let msg = self
             .inner()
-            .call_method("SearchItems", &(attributes.as_attributes()))
+            .call_method("SearchItems", &(attributes.search_attributes()))
             .await
             .map_err::<ServiceError, _>(From::from)?;
 

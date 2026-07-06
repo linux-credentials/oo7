@@ -144,7 +144,7 @@ impl Service {
     ) -> Result<(Vec<Item>, Vec<Item>), Error> {
         let (unlocked_item_paths, locked_item_paths) = self
             .inner()
-            .call_method("SearchItems", &(attributes.as_attributes()))
+            .call_method("SearchItems", &(attributes.search_attributes()))
             .await
             .map_err::<ServiceError, _>(From::from)?
             .body()

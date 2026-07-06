@@ -68,8 +68,12 @@ pub const CONTENT_TYPE_ATTRIBUTE: &str = "xdg:content-type";
 pub trait AsAttributes {
     fn as_attributes(&self) -> HashMap<String, String>;
 
-    fn hash(&self, key: &Key) -> Vec<(String, std::result::Result<Mac, crate::crypto::Error>)> {
+    fn search_attributes(&self) -> HashMap<String, String> {
         self.as_attributes()
+    }
+
+    fn hash(&self, key: &Key) -> Vec<(String, std::result::Result<Mac, crate::crypto::Error>)> {
+        self.search_attributes()
             .into_iter()
             .map(|(k, v)| (k, crypto::compute_mac(v.as_bytes(), key)))
             .collect()
