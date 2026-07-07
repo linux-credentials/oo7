@@ -148,14 +148,18 @@ pub fn derive_secret_schema(input: TokenStream) -> TokenStream {
         }
     };
 
-    let verify_schema = quote! {
-        if let Some(schema) = attrs.get(::oo7::XDG_SCHEMA_ATTRIBUTE) {
-            let schema_str: &str = schema.as_ref();
-            if schema_str != Self::SCHEMA_NAME {
-                return Err(::oo7::SchemaError::SchemaMismatch {
-                    expected: Self::SCHEMA_NAME.to_string(),
-                    found: schema_str.to_string(),
-                });
+    let verify_schema = if dont_match_name {
+        quote! {}
+    } else {
+        quote! {
+            if let Some(schema) = attrs.get(::oo7::XDG_SCHEMA_ATTRIBUTE) {
+                let schema_str: &str = schema.as_ref();
+                if schema_str != Self::SCHEMA_NAME {
+                    return Err(::oo7::SchemaError::SchemaMismatch {
+                        expected: Self::SCHEMA_NAME.to_string(),
+                        found: schema_str.to_string(),
+                    });
+                }
             }
         }
     };
