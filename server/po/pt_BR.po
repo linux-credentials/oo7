@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-03-12 15:33+0000\n"
-"PO-Revision-Date: 2026-03-12 22:28-0300\n"
+"POT-Creation-Date: 2026-07-08 15:39+0000\n"
+"PO-Revision-Date: 2026-07-08 20:59-0300\n"
 "Last-Translator: Rafael Fontenelle <rafaelff@gnome.org>\n"
 "Language-Team: Brazilian Portuguese <https://br.gnome.org/traducao>\n"
 "Language: pt_BR\n"
@@ -16,65 +16,71 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"X-Generator: Gtranslator 49.0\n"
+"X-Generator: Gtranslator 50.0\n"
+"X-DL-VCS-Web: https://github.com/linux-credentials/oo7\n"
+"X-DL-Lang: pt_BR\n"
+"X-DL-Module: oo7\n"
+"X-DL-Branch: main\n"
+"X-DL-Domain: oo7-server\n"
+"X-DL-State: Translating\n"
 
-#: ../src/gnome/prompter.rs:132
+#: ../src/gnome/prompter.rs:151
 msgid "Change Keyring Password"
 msgstr "Alterar senha do chaveiro"
 
-#: ../src/gnome/prompter.rs:133
+#: ../src/gnome/prompter.rs:152
 #, rust-format
 msgid "Choose a new password for the “{}” keyring"
 msgstr "Escolha uma nova senha para o chaveiro “{}”"
 
-#: ../src/gnome/prompter.rs:136
+#: ../src/gnome/prompter.rs:155
 #, rust-format
 msgid ""
 "An application wants to change the password for the “{}” keyring. Choose the "
 "new password you want to use for it."
 msgstr ""
-"Um aplicativo deseja mudar a senha do chaveiro “{}”. Escolha uma senha "
-"para ele."
+"Um aplicativo deseja mudar a senha do chaveiro “{}”. Escolha uma senha para "
+"ele."
 
-#: ../src/gnome/prompter.rs:141
+#: ../src/gnome/prompter.rs:160
 msgid "This operation cannot be reverted"
 msgstr "Esta operação não pode ser revertida"
 
-#: ../src/gnome/prompter.rs:147
+#: ../src/gnome/prompter.rs:166
 msgid "Continue"
 msgstr "Continuar"
 
-#: ../src/gnome/prompter.rs:148 ../src/gnome/prompter.rs:174
-#: ../src/gnome/prompter.rs:196
+#: ../src/gnome/prompter.rs:167 ../src/gnome/prompter.rs:193
+#: ../src/gnome/prompter.rs:215
 msgid "Cancel"
 msgstr "Cancelar"
 
-#: ../src/gnome/prompter.rs:158
+#: ../src/gnome/prompter.rs:177
 msgid "Unlock Keyring"
 msgstr "Desbloquear chaveiro"
 
-#: ../src/gnome/prompter.rs:159
+#: ../src/gnome/prompter.rs:178
 msgid "Authentication required"
 msgstr "Autenticação exigida"
 
-#: ../src/gnome/prompter.rs:162
+#: ../src/gnome/prompter.rs:181 ../src/prompt/mod.rs:386
 #, rust-format
 msgid "An application wants access to the keyring '{}', but it is locked"
 msgstr "Um aplicativo deseja acesso ao chaveiro “{}”, mas ele está bloqueado"
 
-#: ../src/gnome/prompter.rs:173
+#: ../src/gnome/prompter.rs:192
 msgid "Unlock"
 msgstr "Desbloquear"
 
-#: ../src/gnome/prompter.rs:180
+#: ../src/gnome/prompter.rs:199
 msgid "New Keyring Password"
 msgstr "Nova senha do chaveiro"
 
-#: ../src/gnome/prompter.rs:181
+#: ../src/gnome/prompter.rs:200
 msgid "Choose password for new keyring"
 msgstr "Escolha uma senha para o novo chaveiro"
 
-#: ../src/gnome/prompter.rs:184
+#: ../src/gnome/prompter.rs:203
 #, rust-format
 msgid ""
 "An application wants to create a new keyring called “{}”. Choose the "
@@ -83,9 +89,27 @@ msgstr ""
 "Um aplicativo deseja criar um novo chaveiro chamado “{}”. Escolha uma senha "
 "para ele."
 
-#: ../src/gnome/prompter.rs:195
+#: ../src/gnome/prompter.rs:214
 msgid "Create"
 msgstr "Criar"
+
+#: ../src/prompt/mod.rs:391
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called '{}'. Choose the "
+"password you want to use for it."
+msgstr ""
+"Um aplicativo deseja criar um novo chaveiro chamado “{}”. Escolha a senha "
+"que você deseja usar para ele."
+
+#: ../src/prompt/mod.rs:396
+#, rust-format
+msgid ""
+"An application wants to change the password for the '{}' keyring. Choose the "
+"new password you want to use for it."
+msgstr ""
+"Um aplicativo deseja mudar a senha do chaveiro “{}”. Escolha a senha que "
+"você deseja usar para ele."
 
 #, rust-format
 #~ msgid "An application wants to change the keyring password '{}'"
