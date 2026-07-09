@@ -289,6 +289,15 @@ impl Keyring {
         )
     }
 
+    pub(crate) fn derive_key_unchecked(&self, secret: &Secret) -> Result<Key, crypto::Error> {
+        crypto::derive_key(
+            &**secret,
+            Ok(()),
+            &self.salt,
+            self.iteration_count.try_into().unwrap(),
+        )
+    }
+
     /// Validate that a secret can decrypt the items in this keyring.
     ///
     /// This is useful for checking if a password is correct without having to

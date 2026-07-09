@@ -165,7 +165,10 @@ impl UnlockedKeyring {
                 let legacy_keyring = api::LegacyKeyring::try_from(content.as_slice())?;
                 let mut keyring = api::Keyring::new()?;
 
-                let key = secret.as_ref().map(|s| keyring.derive_key(s)).transpose()?;
+                let key = secret
+                    .as_ref()
+                    .map(|s| keyring.derive_key_unchecked(s))
+                    .transpose()?;
                 let decrypted_items = legacy_keyring
                     .decrypt_items(&secret.clone().unwrap_or_else(|| Secret::from(vec![])))?;
 
