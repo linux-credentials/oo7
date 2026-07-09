@@ -807,11 +807,27 @@ struct Arguments {
         help = "Specify a sandboxed application ID. The default collection will be used if not specified"
     )]
     app_id: Option<oo7::ashpd::AppID>,
+    #[arg(
+        short = 'v',
+        long = "verbose",
+        global = true,
+        help = "Print debug information during command processing."
+    )]
+    is_verbose: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Error> {
     let cli = Cli::parse();
+
+    if cli.args.is_verbose {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing_subscriber::filter::LevelFilter::DEBUG)
+            .init();
+    } else {
+        tracing_subscriber::fmt::init();
+    }
+
     cli.command.execute(cli.args).await
 }
 
