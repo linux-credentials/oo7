@@ -78,10 +78,12 @@ impl Keyring {
         let mut items = Vec::with_capacity(self.item_count);
         for _ in 0..self.item_count {
             let display_name = Self::read_string(&mut cursor)?.unwrap_or_else(|| {
+                #[cfg(feature = "tracing")]
                 tracing::warn!("Item has no label, defaulting to empty");
                 ""
             });
             let secret = Self::read_byte_array(&mut cursor)?.unwrap_or_else(|| {
+                #[cfg(feature = "tracing")]
                 tracing::warn!("Item '{display_name}' has no secret, defaulting to empty");
                 &[]
             });
