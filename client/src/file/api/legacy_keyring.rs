@@ -77,10 +77,14 @@ impl Keyring {
         let mut cursor = Cursor::new(decrypted);
         let mut items = Vec::with_capacity(self.item_count);
         for _ in 0..self.item_count {
-            let display_name = Self::read_string(&mut cursor)?
-                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty item label"))?;
-            let secret = Self::read_byte_array(&mut cursor)?
-                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty item secret"))?;
+            let display_name = Self::read_string(&mut cursor)?.unwrap_or_else(|| {
+                tracing::warn!("Item has no label, defaulting to empty");
+                ""
+            });
+            let secret = Self::read_byte_array(&mut cursor)?.unwrap_or_else(|| {
+                tracing::warn!("Item '{display_name}' has no secret, defaulting to empty");
+                &[]
+            });
             let _created_time = Self::read_time(&mut cursor)?;
             let _modified_time = Self::read_time(&mut cursor)?;
             let _reserved = Self::read_string(&mut cursor)?;
