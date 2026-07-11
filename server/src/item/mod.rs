@@ -37,7 +37,7 @@ impl Item {
         else {
             return Err(ServiceError::NoSuchObject(format!(
                 "Collection `{}` does not exist.",
-                &self.collection_path
+                self.collection_path
             )));
         };
 

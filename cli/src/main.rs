@@ -866,14 +866,14 @@ fn print_secret_only(secret: &oo7::Secret, as_hex: bool) -> Result<(), Error> {
 // Copy from /client/src/file/api/mod.rs
 fn data_dir() -> Option<PathBuf> {
     std::env::var_os("XDG_DATA_HOME")
-        .and_then(|h| if h.is_empty() { None } else { Some(h) })
+        .filter(|h| !h.is_empty())
         .map(PathBuf::from)
-        .and_then(|p| if p.is_absolute() { Some(p) } else { None })
+        .filter(|p| p.is_absolute())
         .or_else(|| home().map(|p| p.join(".local/share")))
 }
 
 fn home() -> Option<PathBuf> {
     std::env::var_os("HOME")
-        .and_then(|h| if h.is_empty() { None } else { Some(h) })
+        .filter(|h| !h.is_empty())
         .map(PathBuf::from)
 }

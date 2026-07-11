@@ -53,12 +53,12 @@ use crate::{
 
 pub(crate) fn data_dir() -> Option<PathBuf> {
     std::env::var_os("XDG_DATA_HOME")
-        .and_then(|h| if h.is_empty() { None } else { Some(h) })
+        .filter(|h| !h.is_empty())
         .map(PathBuf::from)
-        .and_then(|p| if p.is_absolute() { Some(p) } else { None })
+        .filter(|p| p.is_absolute())
         .or_else(|| {
             std::env::var_os("HOME")
-                .and_then(|h| if h.is_empty() { None } else { Some(h) })
+                .filter(|h| !h.is_empty())
                 .map(PathBuf::from)
                 .map(|p| p.join(".local/share"))
         })

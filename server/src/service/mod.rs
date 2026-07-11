@@ -224,7 +224,7 @@ impl Service {
         let mut locked = Vec::new();
         let collections = self.collections.lock().await;
 
-        for (_path, collection) in collections.iter() {
+        for collection in collections.values() {
             let items = collection.search_inner_items(&attributes).await?;
             for item in items {
                 if item.is_locked().await {
@@ -334,7 +334,7 @@ impl Service {
                         // Try to find as item within collections
                         let collections = service.collections.lock().await;
                         let mut found_collection = None;
-                        for (_path, collection) in collections.iter() {
+                        for collection in collections.values() {
                             if let Some(item) = collection.item_from_path(object).await {
                                 found_collection = Some((
                                     collection.clone(),
@@ -410,7 +410,7 @@ impl Service {
         let mut secrets = HashMap::new();
         let collections = self.collections.lock().await;
 
-        'outer: for (_path, collection) in collections.iter() {
+        'outer: for collection in collections.values() {
             for item in &items {
                 if let Some(item) = collection.item_from_path(item).await {
                     match item.get_secret(session.clone()).await {
@@ -566,12 +566,12 @@ impl Service {
     pub async fn run(secret: Option<Secret>, request_replacement: bool) -> Result<(), Error> {
         // Compute data directory from environment variables
         let data_dir = std::env::var_os("XDG_DATA_HOME")
-            .and_then(|h| if h.is_empty() { None } else { Some(h) })
+            .filter(|h| !h.is_empty())
             .map(std::path::PathBuf::from)
-            .and_then(|p| if p.is_absolute() { Some(p) } else { None })
+            .filter(|p| p.is_absolute())
             .or_else(|| {
                 std::env::var_os("HOME")
-                    .and_then(|h| if h.is_empty() { None } else { Some(h) })
+                    .filter(|h| !h.is_empty())
                     .map(std::path::PathBuf::from)
                     .map(|p| p.join(".local/share"))
             })

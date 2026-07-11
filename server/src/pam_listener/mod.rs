@@ -301,7 +301,7 @@ impl PamListener {
 
         let collections = self.service.collections.lock().await;
 
-        for (_path, collection) in collections.iter() {
+        for collection in collections.values() {
             if collection.is_locked().await {
                 tracing::debug!("Attempting to unlock collection: {}", collection.path());
 
