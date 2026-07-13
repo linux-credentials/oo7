@@ -34,10 +34,18 @@ impl FromStr for ContentType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "text/plain" => Ok(Self::Text),
-            "application/octet-stream" => Ok(Self::Blob),
-            e => Err(format!("Invalid content type: {e}")),
+        // MIME types may include parameters, which are irrelevant to ContentType.
+        let media_type = s
+            .split_once(';')
+            .map_or(s, |(media_type, _)| media_type)
+            .trim();
+
+        if media_type.eq_ignore_ascii_case("text/plain") {
+            Ok(Self::Text)
+        } else if media_type.eq_ignore_ascii_case("application/octet-stream") {
+            Ok(Self::Blob)
+        } else {
+            Err(format!("Invalid content type: {s}"))
         }
     }
 }
@@ -232,6 +240,11 @@ mod tests {
         let content_type: ContentType = encoded.deserialize().unwrap().0;
         assert_eq!(content_type, ContentType::Text);
 
+        // Test Text deserialization with MIME parameters
+        let encoded = to_bytes(ctxt, &"text/plain; charset=utf8").unwrap();
+        let content_type: ContentType = encoded.deserialize().unwrap().0;
+        assert_eq!(content_type, ContentType::Text);
+
         // Test Blob deserialization
         let encoded = to_bytes(ctxt, &"application/octet-stream").unwrap();
         let content_type: ContentType = encoded.deserialize().unwrap().0;
@@ -251,19 +264,33 @@ mod tests {
 
     #[test]
     fn content_type_from_str() {
-        assert_eq!(
-            ContentType::from_str("text/plain").unwrap(),
-            ContentType::Text
-        );
-        assert_eq!(
-            ContentType::from_str("application/octet-stream").unwrap(),
-            ContentType::Blob
-        );
+        for content_type in [
+            "text/plain",
+            "text/plain; charset=utf8",
+            "TEXT/PLAIN; CHARSET=UTF-8",
+        ] {
+            assert_eq!(
+                ContentType::from_str(content_type).unwrap(),
+                ContentType::Text
+            );
+        }
+
+        for content_type in [
+            "application/octet-stream",
+            "application/octet-stream; version=1",
+        ] {
+            assert_eq!(
+                ContentType::from_str(content_type).unwrap(),
+                ContentType::Blob
+            );
+        }
 
         // Test error case
-        let result = ContentType::from_str("invalid");
+        let result = ContentType::from_str("text/html; charset=utf8");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid content type"));
+        let error = result.unwrap_err();
+        assert!(error.contains("Invalid content type"));
+        assert!(error.contains("text/html; charset=utf8"));
     }
 
     #[test]
