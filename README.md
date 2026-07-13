@@ -73,7 +73,7 @@ the `portals.conf(5)` man page.
 This can be achieved by creating a file at
 `~/.config/xdg-desktop-portal/gnome-portals.conf` with contents:
 
-``` toml
+```desktop
 [preferred]
 default=gnome;gtk;
 org.freedesktop.impl.portal.Secret=oo7-portal;gnome-keyring;
