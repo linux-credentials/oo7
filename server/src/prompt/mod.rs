@@ -383,17 +383,17 @@ impl Prompt {
         let label = &self.label;
         let description = match self.role {
             PromptRole::Unlock => formatx!(
-                gettext("An application wants access to the keyring '{}', but it is locked"),
+                gettext("An application wants access to the keyring “{}”, but it is locked"),
                 label,
             )
             .expect("Wrong format in translatable string"),
             PromptRole::CreateCollection => formatx!(
-                gettext("An application wants to create a new keyring called '{}'. Choose the password you want to use for it."),
+                gettext("An application wants to create a new keyring called “{}”. Choose the password you want to use for it."),
                 label,
             )
             .expect("Wrong format in translatable string"),
             PromptRole::ChangePassword => formatx!(
-                gettext("An application wants to change the password for the '{}' keyring. Choose the new password you want to use for it."),
+                gettext("An application wants to change the password for the “{}” keyring. Choose the new password you want to use for it."),
                 label,
             )
             .expect("Wrong format in translatable string"),
