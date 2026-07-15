@@ -178,7 +178,7 @@ impl Properties {
             message: Some(gettext("Authentication required")),
             description: Some(
                 formatx!(
-                    gettext("An application wants access to the keyring '{}', but it is locked",),
+                    gettext("An application wants access to the keyring “{}”, but it is locked",),
                     keyring,
                 )
                 .expect("Wrong format in translatable string"),
