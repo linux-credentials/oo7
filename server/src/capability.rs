@@ -88,36 +88,30 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
 
     match capability_state {
         CapabilityState::Full => {
-            set_capabilities(
-                None,
-                CapabilitySets {
-                    effective: CapabilitySet::IPC_LOCK,
-                    permitted: CapabilitySet::IPC_LOCK,
-                    inheritable: CapabilitySet::empty(),
-                },
-            )?;
+            let uid = getuid();
+            let gid = getgid();
 
             // Needed so permitted caps survive uid 0 → non-zero transition
             if unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 1, 0, 0, 0) } != 0 {
                 tracing::warn!("Failed to set PR_SET_KEEPCAPS");
             }
 
+            // Requires CAP_SETPCAP -> must run before reducing the bounding set drops it
             if let Err(err) = set_bounding_set(CapabilitySet::IPC_LOCK) {
                 tracing::debug!("Could not set bounding set (may not be supported): {}", err);
             }
 
-            let uid = getuid();
-            let gid = getgid();
-
-            setresgid(gid, gid, gid)?;
+            // Requires CAP_SETGID -> must run before reducing effective caps
             setgroups(&[])?;
-            setresuid(uid, uid, uid)?; // Clears effective caps despite keepcaps
+            setresgid(gid, gid, gid)?;
+            // Requires CAP_SETUID -> clears effective caps despite KEEPCAPS
+            setresuid(uid, uid, uid)?;
 
             if unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 0, 0, 0, 0) } != 0 {
                 tracing::warn!("Failed to clear PR_SET_KEEPCAPS");
             }
 
-            // Re-raise from permitted → effective
+            // Final reduction -> all group/uid/bounding operations are done
             set_capabilities(
                 None,
                 CapabilitySets {
