@@ -19,6 +19,7 @@ endif
 summary({
   'prefix': prefix,
   'libdir': libdir,
+  'libexecdir': get_option('libexecdir'),
   'pam_moduledir': pam_moduledir,
 })
 

@@ -12,6 +12,7 @@ else
 endif
 
 pam_module_name = 'pam_oo7.so'
+helper_path = get_option('prefix') / get_option('libexecdir') / 'oo7-daemon-login'
 
 cargo_build = custom_target(
   'cargo-build',
@@ -21,6 +22,7 @@ cargo_build = custom_target(
   console: true,
   install: true,
   install_dir: pam_moduledir,
+  env: {'OO7_DAEMON_LOGIN_PATH': helper_path},
   command: [
     cargo, 'build',
     cargo_options,

@@ -227,9 +227,12 @@ fn start_login_helper(secret: &[u8]) -> Result<(), SocketError> {
                 libc::close(pipe_read);
             }
 
-            let helper_path = c"/usr/libexec/oo7-daemon-login".as_ptr();
-            let args = [helper_path, std::ptr::null()];
-            libc::execv(helper_path, args.as_ptr());
+            let path = std::ffi::CString::new(
+                option_env!("OO7_DAEMON_LOGIN_PATH").unwrap_or("/usr/libexec/oo7-daemon-login"),
+            )
+            .unwrap();
+            let args = [path.as_ptr(), std::ptr::null()];
+            libc::execv(path.as_ptr(), args.as_ptr());
 
             libc::_exit(1);
         },
