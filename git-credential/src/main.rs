@@ -203,12 +203,17 @@ async fn run(action: &str, credential: &Credential, collection: &Collection) -> 
         "store" => {
             credential.validate_store()?;
 
+            let existing = collection.search_items(&credential.schema).await?;
+            for item in &existing {
+                item.delete(None).await?;
+            }
+
             collection
                 .create_item(
                     &credential.make_label(),
                     &credential.schema,
                     credential.make_secret(),
-                    true,
+                    false,
                     None,
                 )
                 .await?;
