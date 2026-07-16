@@ -122,12 +122,14 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
             )?;
         }
         CapabilityState::None => {
-            tracing::warn!("No process capabilities, insecure memory might get used");
+            tracing::warn!("No process capabilities, secrets in memory might be swapped to disk");
             return Ok(());
         }
         CapabilityState::Partial => {
             if !caps.effective.contains(CapabilitySet::IPC_LOCK) {
-                tracing::warn!("Insufficient process capabilities, insecure memory might get used");
+                tracing::warn!(
+                    "Missing IPC_LOCK capability, secrets in memory might be swapped to disk"
+                );
             }
 
             // Clear bounding set if we have CAP_SETPCAP (do this before dropping caps)
