@@ -122,6 +122,9 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
             )?;
         }
         CapabilityState::None => {
+            // NOTE: For users that landed here. The binary is probably missing
+            // the CAP_IPC_LOCK capability which should have been set as part of
+            // packaging. See capabilities(7) and setcap(8) for more details.
             tracing::warn!("No process capabilities, secrets in memory might be swapped to disk");
             return Ok(());
         }
