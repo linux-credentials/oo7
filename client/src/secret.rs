@@ -40,7 +40,9 @@ impl FromStr for ContentType {
             .map_or(s, |(media_type, _)| media_type)
             .trim();
 
-        if media_type.eq_ignore_ascii_case("text/plain") {
+        if media_type.eq_ignore_ascii_case("text/plain")
+            || media_type.eq_ignore_ascii_case("text/utf8")
+        {
             Ok(Self::Text)
         } else if media_type.eq_ignore_ascii_case("application/octet-stream") {
             Ok(Self::Blob)
