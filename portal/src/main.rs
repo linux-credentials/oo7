@@ -1,4 +1,4 @@
-use std::{collections::HashMap, future::pending, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 mod error;
 
 use ashpd::{
@@ -146,22 +146,27 @@ async fn main() -> Result<()> {
         flags |= zbus::fdo::RequestNameFlags::ReplaceExisting;
     }
 
-    ashpd::backend::Builder::new(PORTAL_NAME)?
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+
+    let backend = ashpd::backend::Builder::new(PORTAL_NAME)?
         .secret(Secret::default())
         .with_flags(flags)
-        .build()
-        .await
-        .inspect_err(|err| {
-            if let PortalError::ZBus(zbus::Error::NameTaken) = err {
-                tracing::error!(
-                    "There is an instance already running. Run with --replace to replace it."
-                );
-            }
-        })?;
+        .build();
 
-    tracing::debug!("Starting loop");
-
-    loop {
-        pending::<()>().await;
+    tokio::select! {
+        result = backend => {
+            result.inspect_err(|err| {
+                if let PortalError::ZBus(zbus::Error::NameTaken) = err {
+                    tracing::error!(
+                        "There is an instance already running. Run with --replace to replace it."
+                    );
+                }
+            })?;
+            tracing::info!("D-Bus connection lost, shutting down");
+        }
+        _ = tokio::signal::ctrl_c() => tracing::info!("Received SIGINT, shutting down"),
+        _ = sigterm.recv() => tracing::info!("Received SIGTERM, shutting down"),
     }
+
+    Ok(())
 }

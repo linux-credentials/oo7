@@ -16,7 +16,7 @@ description = "Secret portal implementation using oo7"
 ashpd = {workspace = true, features = ["backend", "secret", "tracing"]}
 clap.workspace = true
 oo7 = { workspace = true, features = ["tokio"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 zeroize.workspace = true

@@ -566,7 +566,10 @@ impl Service {
         }
     }
 
-    pub async fn run(secret: Option<Secret>, request_replacement: bool) -> Result<(), Error> {
+    pub async fn run(
+        secret: Option<Secret>,
+        request_replacement: bool,
+    ) -> Result<zbus::Connection, Error> {
         // Compute data directory from environment variables
         let data_dir = std::env::var_os("XDG_DATA_HOME")
             .filter(|h| !h.is_empty())
@@ -624,6 +627,7 @@ impl Service {
         // Discover existing keyrings
         let discovered_keyrings = service.discover_keyrings(secret.clone()).await?;
 
+        let connection_clone = connection.clone();
         service
             .initialize(connection, discovered_keyrings, secret, true)
             .await?;
@@ -631,7 +635,7 @@ impl Service {
         // Replay any secrets that the PAM listener buffered during startup
         pam_listener_replay.replay_buffered_secrets().await;
 
-        Ok(())
+        Ok(connection_clone)
     }
 
     #[cfg(any(test, feature = "test-util"))]

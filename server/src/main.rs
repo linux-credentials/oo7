@@ -151,24 +151,28 @@ async fn inner_main(args: Args) -> Result<(), Error> {
 
     tracing::info!("Starting {BINARY_NAME}");
 
-    let res = Service::run(secret, args.replace).await;
-    match res {
-        Ok(()) => (),
+    let connection = match Service::run(secret, args.replace).await {
+        Ok(connection) => connection,
         Err(Error::File(oo7::file::Error::IncorrectSecret)) if !args.login => {
             tracing::warn!("Failed to unlock session keyring: credential contains wrong password");
+            return Ok(());
         }
         Err(Error::Zbus(zbus::Error::NameTaken)) if !args.replace => {
             tracing::error!(
                 "There is an instance already running. Run with --replace to replace it."
             );
-            Err(Error::Zbus(zbus::Error::NameTaken))?
+            return Err(Error::Zbus(zbus::Error::NameTaken));
         }
-        Err(err) => Err(err)?,
+        Err(err) => return Err(err),
+    };
+
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+
+    tokio::select! {
+        _ = connection.closed() => tracing::info!("D-Bus connection lost, shutting down"),
+        _ = tokio::signal::ctrl_c() => tracing::info!("Received SIGINT, shutting down"),
+        _ = sigterm.recv() => tracing::info!("Received SIGTERM, shutting down"),
     }
-
-    tracing::debug!("Starting loop");
-
-    std::future::pending::<()>().await;
 
     Ok(())
 }
