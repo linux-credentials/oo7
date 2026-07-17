@@ -2,7 +2,10 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, OnceLock},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicU32, Ordering},
+    },
 };
 
 use oo7::{
@@ -13,7 +16,7 @@ use oo7::{
     },
     file::{Keyring, LockedKeyring, UnlockedKeyring},
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
 use zbus::{
     names::UniqueName,
@@ -54,10 +57,10 @@ pub struct Service {
     connection: Arc<OnceLock<zbus::Connection>>,
     // sessions mapped to their corresponding object path on the bus
     sessions: Arc<Mutex<HashMap<OwnedObjectPath, Session>>>,
-    session_index: Arc<RwLock<u32>>,
+    session_index: Arc<AtomicU32>,
     // prompts mapped to their corresponding object path on the bus
     prompts: Arc<Mutex<HashMap<OwnedObjectPath, Prompt>>>,
-    prompt_index: Arc<RwLock<u32>>,
+    prompt_index: Arc<AtomicU32>,
     // pending collection creations: prompt_path -> (label, alias)
     pending_collections: Arc<Mutex<HashMap<OwnedObjectPath, (String, String)>>>,
     // pending keyring migrations: name -> migration
@@ -552,9 +555,9 @@ impl Service {
             collections: Arc::new(Mutex::new(HashMap::new())),
             connection: Arc::new(OnceLock::new()),
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            session_index: Arc::new(RwLock::new(0)),
+            session_index: Arc::new(AtomicU32::new(0)),
             prompts: Arc::new(Mutex::new(HashMap::new())),
-            prompt_index: Arc::new(RwLock::new(0)),
+            prompt_index: Arc::new(AtomicU32::new(0)),
             pending_collections: Arc::new(Mutex::new(HashMap::new())),
             pending_migrations: Arc::new(Mutex::new(HashMap::new())),
             data_dir,
@@ -1297,10 +1300,8 @@ impl Service {
         collections.get(&resolved).cloned()
     }
 
-    pub async fn session_index(&self) -> u32 {
-        let mut guard = self.session_index.write().await;
-        *guard += 1;
-        *guard
+    pub fn session_index(&self) -> u32 {
+        self.session_index.fetch_add(1, Ordering::Relaxed)
     }
 
     async fn session_from_sender(&self, sender: &UniqueName<'_>) -> Option<Session> {
@@ -1339,10 +1340,8 @@ impl Service {
         }
     }
 
-    pub async fn prompt_index(&self) -> u32 {
-        let mut guard = self.prompt_index.write().await;
-        *guard += 1;
-        *guard
+    pub fn prompt_index(&self) -> u32 {
+        self.prompt_index.fetch_add(1, Ordering::Relaxed)
     }
 
     pub async fn prompt(&self, path: &ObjectPath<'_>) -> Option<Prompt> {

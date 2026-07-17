@@ -158,7 +158,7 @@ impl Prompt {
         label: String,
         collection: Option<crate::collection::Collection>,
     ) -> Self {
-        let index = service.prompt_index().await;
+        let index = service.prompt_index();
         Self {
             path: OwnedObjectPath::try_from(format!("/org/freedesktop/secrets/prompt/p{index}"))
                 .unwrap(),

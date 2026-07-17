@@ -154,7 +154,7 @@ impl PlasmaPrompterCallback {
 
 impl PlasmaPrompterCallback {
     pub async fn new(service: Service, prompt_path: OwnedObjectPath) -> Self {
-        let index = service.prompt_index().await;
+        let index = service.prompt_index();
         Self {
             path: OwnedObjectPath::try_from(format!("/org/plasma/keyring/Prompt/p{index}"))
                 .unwrap(),

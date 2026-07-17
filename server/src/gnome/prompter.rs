@@ -342,7 +342,7 @@ impl GNOMEPrompterCallback {
         service: Service,
         prompt_path: OwnedObjectPath,
     ) -> Result<Self, oo7::crypto::Error> {
-        let index = service.prompt_index().await;
+        let index = service.prompt_index();
         let private_key = Arc::new(Key::generate_private_key()?);
         let public_key = Arc::new(crate::gnome::crypto::generate_public_key(&private_key)?);
         Ok(Self {
