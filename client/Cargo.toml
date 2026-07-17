@@ -28,7 +28,7 @@ hkdf = { workspace = true, optional = true }
 md-5 = { workspace = true, optional = true }
 num.workspace = true
 num-bigint-dig.workspace = true
-oo7-macros = { path = "../macros", version = "0.6.0-alpha", optional = true }
+oo7-macros = { path = "../macros", version = "0.7.0-alpha", optional = true }
 openssl = { workspace = true, optional = true }
 pbkdf2 = { workspace = true, optional = true, features = ["hmac"] }
 serde.workspace = true
@@ -47,7 +47,7 @@ zvariant.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-oo7-daemon = { path = "../server", features = ["test-util"], default-features = false, version = "0.6.0-alpha" }
+oo7-daemon = { path = "../server", features = ["test-util"], default-features = false, version = "0.7.0-alpha" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }

@@ -16,7 +16,7 @@ version.workspace = true
 anstyle = "1.0"
 clap.workspace = true
 hex = "0.4"
-kwallet-parser = { version = "0.6.0-alpha", path = "../kwallet/parser", optional = true }
+kwallet-parser = { version = "0.7.0-alpha", path = "../kwallet/parser", optional = true }
 oo7 = { workspace = true, features = ["tokio"] }
 rpassword.workspace = true
 serde.workspace = true

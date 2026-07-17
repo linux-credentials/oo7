@@ -81,9 +81,9 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "ashpd"
-version = "0.13.12"
+version = "0.13.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "281e6645758940dee594495e28807a7672ce40f11ebf4df6c22c4fcd59e2689f"
+checksum = "fb8421aaa9644a5faf26735f258b669b15f063313ef8f8e2bdb28912a1a6f111"
 dependencies = [
  "async-trait",
  "enumflags2",
@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-credential-oo7"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "cargo-credential",
  "oo7",
@@ -732,7 +732,7 @@ dependencies = [
 
 [[package]]
 name = "git-credential-oo7"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "oo7",
  "tokio",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "kwallet-cli"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "clap",
  "kwallet-parser",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "kwallet-parser"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "base64",
  "blowfish",
@@ -1127,7 +1127,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "oo7"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "aes",
  "ashpd",
@@ -1164,7 +1164,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-cli"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "anstyle",
  "clap",
@@ -1183,7 +1183,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-daemon"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "ashpd",
  "base64",
@@ -1214,7 +1214,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-macros"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1223,7 +1223,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-pam"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "libc",
  "serde",
@@ -1239,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-portal"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "ashpd",
  "clap",
@@ -1252,7 +1252,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-python"
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 dependencies = [
  "oo7",
  "pyo3",
