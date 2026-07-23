@@ -42,6 +42,7 @@ impl FromStr for ContentType {
 
         if media_type.eq_ignore_ascii_case("text/plain")
             || media_type.eq_ignore_ascii_case("text/utf8")
+            || media_type.eq_ignore_ascii_case("application/json")
         {
             Ok(Self::Text)
         } else if media_type.eq_ignore_ascii_case("application/octet-stream") {
@@ -252,6 +253,11 @@ mod tests {
         let content_type: ContentType = encoded.deserialize().unwrap().0;
         assert_eq!(content_type, ContentType::Blob);
 
+        // application/json deserializes as Text
+        let encoded = to_bytes(ctxt, &"application/json").unwrap();
+        let content_type: ContentType = encoded.deserialize().unwrap().0;
+        assert_eq!(content_type, ContentType::Text);
+
         // Test invalid content type deserialization
         let encoded = to_bytes(ctxt, &"invalid/type").unwrap();
         let result: Result<(ContentType, _), _> = encoded.deserialize();
@@ -270,6 +276,8 @@ mod tests {
             "text/plain",
             "text/plain; charset=utf8",
             "TEXT/PLAIN; CHARSET=UTF-8",
+            "application/json",
+            "application/json; charset=utf8",
         ] {
             assert_eq!(
                 ContentType::from_str(content_type).unwrap(),
