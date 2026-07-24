@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-03-30 15:32+0000\n"
-"PO-Revision-Date: 2026-03-30 19:52+0300\n"
+"POT-Creation-Date: 2026-07-15 08:28+0000\n"
+"PO-Revision-Date: 2026-07-17 17:00+0300\n"
 "Last-Translator: Artur S0 <arturios2005@mail.ru>\n"
 "Language-Team: Русский <gnome-cyr@gnome.org>\n"
 "Language: ru\n"
@@ -19,16 +19,16 @@ msgstr ""
 "n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
 "X-Generator: Poedit 3.9\n"
 
-#: ../src/gnome/prompter.rs:132
+#: ../src/gnome/prompter.rs:151
 msgid "Change Keyring Password"
 msgstr "Изменить пароль для связки ключей"
 
-#: ../src/gnome/prompter.rs:133
+#: ../src/gnome/prompter.rs:152
 #, rust-format
 msgid "Choose a new password for the “{}” keyring"
 msgstr "Выберите новый пароль для связки ключей «{}»"
 
-#: ../src/gnome/prompter.rs:136
+#: ../src/gnome/prompter.rs:155 ../src/prompt/mod.rs:396
 #, rust-format
 msgid ""
 "An application wants to change the password for the “{}” keyring. Choose the "
@@ -37,53 +37,70 @@ msgstr ""
 "Приложение хочет изменить пароль для связки ключей «{}». Выберите новый "
 "пароль, который вы хотите использовать для этого приложения."
 
-#: ../src/gnome/prompter.rs:141
+#: ../src/gnome/prompter.rs:160
 msgid "This operation cannot be reverted"
 msgstr "Эта операция не может быть отменена"
 
-#: ../src/gnome/prompter.rs:147
+#: ../src/gnome/prompter.rs:166
 msgid "Continue"
 msgstr "Продолжить"
 
-#: ../src/gnome/prompter.rs:148 ../src/gnome/prompter.rs:174
-#: ../src/gnome/prompter.rs:196
+#: ../src/gnome/prompter.rs:167 ../src/gnome/prompter.rs:193
+#: ../src/gnome/prompter.rs:215
 msgid "Cancel"
 msgstr "Отменить"
 
-#: ../src/gnome/prompter.rs:158
+#: ../src/gnome/prompter.rs:177
 msgid "Unlock Keyring"
 msgstr "Разблокировать связку ключей"
 
-#: ../src/gnome/prompter.rs:159
+#: ../src/gnome/prompter.rs:178
 msgid "Authentication required"
 msgstr "Требуется аутентификация"
 
-#: ../src/gnome/prompter.rs:162
+#: ../src/gnome/prompter.rs:181 ../src/prompt/mod.rs:386
 #, rust-format
-msgid "An application wants access to the keyring '{}', but it is locked"
-msgstr "Приложение хочет получить доступ к связке ключей «{}», но она заблокирована"
+msgid "An application wants access to the keyring “{}”, but it is locked"
+msgstr ""
+"Приложение хочет получить доступ к связке ключей «{}», но она заблокирована"
 
-#: ../src/gnome/prompter.rs:173
+#: ../src/gnome/prompter.rs:192
 msgid "Unlock"
 msgstr "Разблокировать"
 
-#: ../src/gnome/prompter.rs:180
+#: ../src/gnome/prompter.rs:199
 msgid "New Keyring Password"
 msgstr "Новый пароль для связки ключей"
 
-#: ../src/gnome/prompter.rs:181
+#: ../src/gnome/prompter.rs:200
 msgid "Choose password for new keyring"
 msgstr "Выберите пароль для новой связки ключей"
 
-#: ../src/gnome/prompter.rs:184
+#: ../src/gnome/prompter.rs:203 ../src/prompt/mod.rs:391
 #, rust-format
 msgid ""
 "An application wants to create a new keyring called “{}”. Choose the "
 "password you want to use for it."
 msgstr ""
-"Приложение хочет создать новую связку ключей с именем «{}». Выберите "
-"пароль, который вы хотите использовать для нее."
+"Приложение хочет создать новую связку ключей с именем «{}». Выберите пароль, "
+"который вы хотите использовать для нее."
 
-#: ../src/gnome/prompter.rs:195
+#: ../src/gnome/prompter.rs:214
 msgid "Create"
 msgstr "Создать"
+
+#, rust-format
+#~ msgid ""
+#~ "An application wants to create a new keyring called '{}'. Choose the "
+#~ "password you want to use for it."
+#~ msgstr ""
+#~ "Приложение хочет создать новую связку ключей с именем «{}». Выберите "
+#~ "пароль, который вы хотите использовать для нее."
+
+#, rust-format
+#~ msgid ""
+#~ "An application wants to change the password for the '{}' keyring. Choose "
+#~ "the new password you want to use for it."
+#~ msgstr ""
+#~ "Приложение хочет изменить пароль для связки ключей «{}». Выберите новый "
+#~ "пароль, который вы хотите использовать для этого приложения."
