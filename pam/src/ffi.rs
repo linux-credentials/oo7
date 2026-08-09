@@ -30,6 +30,7 @@ pub struct pam_handle_t {
     _private: [u8; 0],
 }
 
+#[link(name = "pam")]
 unsafe extern "C" {
     /// Get the username
     pub fn pam_get_user(
