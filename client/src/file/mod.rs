@@ -93,6 +93,18 @@ impl Item {
             Self::Locked(locked) => locked.inner.matches(attributes, key),
         }
     }
+
+    /// Check if this item has exactly the given attributes.
+    pub fn matches_attributes_exact(
+        &self,
+        attributes: &impl AsAttributes,
+        key: Option<&Key>,
+    ) -> bool {
+        match self {
+            Self::Unlocked(unlocked) => unlocked.attributes() == &attributes.as_attributes(),
+            Self::Locked(locked) => locked.inner.matches_exact(attributes, key),
+        }
+    }
 }
 
 #[derive(Debug)]

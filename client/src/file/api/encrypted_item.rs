@@ -41,6 +41,11 @@ impl EncryptedItem {
         }
     }
 
+    pub fn matches_exact(&self, attributes: &impl AsAttributes, key: Option<&Key>) -> bool {
+        let attributes = attributes.as_attributes();
+        self.hashed_attributes.len() == attributes.len() && self.matches(&attributes, key)
+    }
+
     fn try_decrypt_inner(&self, key: Option<&Key>) -> Result<UnlockedItem, Error> {
         match key {
             Some(key) => self.try_decrypt_encrypted(key),
