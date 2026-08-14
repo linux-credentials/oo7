@@ -241,13 +241,13 @@ impl Keyring {
         key: Option<&Key>,
     ) -> Result<(), Error> {
         for item in &self.items {
-            if item.matches_attributes_exact(attributes, key) && !item.is_valid(key) {
+            if item.matches_exact(attributes, key) && !item.is_valid(key) {
                 return Err(Error::MacError);
             }
         }
 
         self.items
-            .retain(|item| !item.matches_attributes_exact(attributes, key));
+            .retain(|item| !item.matches_exact(attributes, key));
 
         Ok(())
     }

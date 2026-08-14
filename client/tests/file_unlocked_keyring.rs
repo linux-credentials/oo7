@@ -897,10 +897,7 @@ async fn bulk_create_items() -> Result<(), Error> {
             true,
         )])
         .await?;
-    assert_eq!(
-        keyring.search_items(&[("app", "bulk-app")]).await?.len(),
-        4
-    );
+    assert_eq!(keyring.search_items(&[("app", "bulk-app")]).await?.len(), 4);
 
     // Repeating that exact coarse attribute set replaces only the coarse item.
     keyring
@@ -911,10 +908,7 @@ async fn bulk_create_items() -> Result<(), Error> {
             true,
         )])
         .await?;
-    assert_eq!(
-        keyring.search_items(&[("app", "bulk-app")]).await?.len(),
-        4
-    );
+    assert_eq!(keyring.search_items(&[("app", "bulk-app")]).await?.len(), 4);
     Ok(())
 }
 
