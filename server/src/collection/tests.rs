@@ -227,8 +227,7 @@ async fn create_item_with_replace() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-async fn create_item_with_replace_matches_attributes_exactly()
--> Result<(), Box<dyn std::error::Error>> {
+async fn create_item_with_replace_matches_attributes() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
     setup
@@ -248,8 +247,7 @@ async fn create_item_with_replace_matches_attributes_exactly()
         )
         .await?;
 
-    // A coarser attribute set is not the same attribute set, so it must not
-    // replace either of the more specific items.
+    // A coarser attribute set must not replace either item.
     setup
         .create_item(
             "Coarse",
@@ -276,8 +274,7 @@ async fn create_item_with_replace_matches_attributes_exactly()
         1
     );
 
-    // Repeating the exact coarse attribute set still replaces its previous
-    // item rather than adding a duplicate.
+    // Replacing the coarse item must not add a duplicate.
     setup
         .create_item(
             "Updated Coarse",

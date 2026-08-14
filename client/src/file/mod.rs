@@ -101,7 +101,7 @@ impl Item {
         key: Option<&Key>,
     ) -> bool {
         match self {
-            Self::Unlocked(unlocked) => unlocked.attributes() == &attributes.as_attributes(),
+            Self::Unlocked(unlocked) => unlocked.matches_exact(attributes),
             Self::Locked(locked) => locked.inner.matches_exact(attributes, key),
         }
     }

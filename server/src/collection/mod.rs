@@ -541,7 +541,9 @@ impl Collection {
 
         for item_wrapper in items.iter() {
             let inner = item_wrapper.inner.lock().await;
-            let file_item = inner.as_ref().unwrap();
+            let Some(file_item) = inner.as_ref() else {
+                continue;
+            };
 
             if file_item.matches_attributes_exact(attributes, key) {
                 matching_items.push(item_wrapper.clone());

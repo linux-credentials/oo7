@@ -62,6 +62,11 @@ impl UnlockedItem {
         &self.attributes
     }
 
+    /// Check whether the attribute maps match.
+    pub fn matches_exact(&self, attributes: &impl AsAttributes) -> bool {
+        self.attributes == attributes.as_attributes()
+    }
+
     /// Retrieve the item attributes as a typed schema.
     ///
     /// # Example

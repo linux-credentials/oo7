@@ -550,9 +550,9 @@ async fn item_replacement_behavior() -> Result<(), Error> {
 }
 
 #[tokio::test]
-async fn item_replacement_matches_attributes_exactly() -> Result<(), Error> {
+async fn item_replacement_matches_attributes() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
-    let keyring_path = temp_dir.path().join("replace_exact_test.keyring");
+    let keyring_path = temp_dir.path().join("replace_attributes_test.keyring");
     let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
 
     keyring
@@ -572,8 +572,7 @@ async fn item_replacement_matches_attributes_exactly() -> Result<(), Error> {
         )
         .await?;
 
-    // A coarser attribute set is not the same attribute set, so it must not
-    // replace either of the more specific items.
+    // A coarser attribute set must not replace either item.
     keyring
         .create_item("Coarse", &[("app", "test")], "coarse-secret", true)
         .await?;
@@ -595,8 +594,7 @@ async fn item_replacement_matches_attributes_exactly() -> Result<(), Error> {
         1
     );
 
-    // Repeating the exact coarse attribute set still replaces its previous
-    // item rather than adding a duplicate.
+    // Replacing the coarse item must not add a duplicate.
     keyring
         .create_item(
             "Updated Coarse",
@@ -887,8 +885,7 @@ async fn bulk_create_items() -> Result<(), Error> {
     let all_items_after = keyring.search_items(&[("app", "bulk-app")]).await?;
     assert_eq!(all_items_after.len(), 3);
 
-    // A bulk replacement follows the same exact-attribute rule as
-    // create_item: this coarser item must not remove the three specific ones.
+    // A coarse replacement must preserve the three specific items.
     keyring
         .create_items(vec![(
             "Coarse Item".to_string(),
@@ -899,7 +896,7 @@ async fn bulk_create_items() -> Result<(), Error> {
         .await?;
     assert_eq!(keyring.search_items(&[("app", "bulk-app")]).await?.len(), 4);
 
-    // Repeating that exact coarse attribute set replaces only the coarse item.
+    // Replacing the coarse item removes only its predecessor.
     keyring
         .create_items(vec![(
             "Updated Coarse Item".to_string(),
