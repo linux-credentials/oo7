@@ -557,36 +557,36 @@ async fn file_locked_keyring_operations_fail() {
         keyring
             .create_item("test", &[("app", "test")], "secret", false)
             .await,
-        Err(oo7::Error::File(file::Error::Locked))
+        Err(oo7::Error::File(err)) if matches!(*err, file::Error::Locked)
     ));
     assert!(matches!(
         keyring.items().await,
-        Err(oo7::Error::File(file::Error::Locked))
+        Err(oo7::Error::File(err)) if matches!(*err, file::Error::Locked)
     ));
     assert!(matches!(
         keyring.search_items(&[("app", "test")]).await,
-        Err(oo7::Error::File(file::Error::Locked))
+        Err(oo7::Error::File(err)) if matches!(*err, file::Error::Locked)
     ));
     assert!(matches!(
         keyring.delete(&[("app", "test")]).await,
-        Err(oo7::Error::File(file::Error::Locked))
+        Err(oo7::Error::File(err)) if matches!(*err, file::Error::Locked)
     ));
 
     assert!(matches!(
         item.set_label("new label").await,
-        Err(oo7::Error::File(file::Error::Locked))
+        Err(oo7::Error::File(err)) if matches!(*err, file::Error::Locked)
     ));
     assert!(matches!(
         item.set_attributes(&[("app", "new")]).await,
-        Err(oo7::Error::File(file::Error::Locked))
+        Err(oo7::Error::File(err)) if matches!(*err, file::Error::Locked)
     ));
     assert!(matches!(
         item.set_secret("new secret").await,
-        Err(oo7::Error::File(file::Error::Locked))
+        Err(oo7::Error::File(err)) if matches!(*err, file::Error::Locked)
     ));
     assert!(matches!(
         item.delete().await,
-        Err(oo7::Error::File(file::Error::Locked))
+        Err(oo7::Error::File(err)) if matches!(*err, file::Error::Locked)
     ));
 }
 

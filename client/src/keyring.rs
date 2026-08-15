@@ -36,7 +36,9 @@ impl Keyring {
             match Self::sandboxed().await {
                 Ok(keyring) => Ok(keyring),
                 // Fallback to host keyring if portal is not available
-                Err(crate::Error::File(file::Error::Portal(ashpd::Error::PortalNotFound(_)))) => {
+                Err(crate::Error::File(err))
+                    if matches!(*err, file::Error::Portal(ashpd::Error::PortalNotFound(_))) =>
+                {
                     #[cfg(feature = "tracing")]
                     tracing::debug!(
                         "org.freedesktop.portal.Secrets is not available, falling back to the Secret Service backend"
@@ -89,7 +91,9 @@ impl Keyring {
         if ashpd::is_sandboxed() {
             match Self::sandboxed_unchecked().await {
                 Ok(keyring) => Ok(keyring),
-                Err(crate::Error::File(file::Error::Portal(ashpd::Error::PortalNotFound(_)))) => {
+                Err(crate::Error::File(err))
+                    if matches!(*err, file::Error::Portal(ashpd::Error::PortalNotFound(_))) =>
+                {
                     #[cfg(feature = "tracing")]
                     tracing::debug!(
                         "org.freedesktop.portal.Secrets is not available, falling back to the Secret Service backend"
@@ -176,7 +180,7 @@ impl Keyring {
                     let unlocked = locked
                         .unlock(secret.clone())
                         .await
-                        .map_err(crate::Error::File)?;
+                        .map_err(|e| crate::Error::File(Box::new(e)))?;
                     *kg = Some(file::Keyring::Unlocked(unlocked));
                 } else {
                     *kg = kg_value;
@@ -237,7 +241,7 @@ impl Keyring {
                         backend
                             .delete(attributes)
                             .await
-                            .map_err(crate::Error::File)?;
+                            .map_err(|e| crate::Error::File(Box::new(e)))?;
                     }
                     Some(file::Keyring::Locked(_)) => {
                         return Err(crate::file::Error::Locked.into());
@@ -260,7 +264,10 @@ impl Keyring {
                 let kg = keyring.read().await;
                 match kg.as_ref() {
                     Some(file::Keyring::Unlocked(backend)) => {
-                        let items = backend.items().await.map_err(crate::Error::File)?;
+                        let items = backend
+                            .items()
+                            .await
+                            .map_err(|e| crate::Error::File(Box::new(e)))?;
                         items
                             .into_iter()
                             .map(|i| Item::for_file(i.into(), Arc::clone(keyring)))
@@ -297,7 +304,7 @@ impl Keyring {
                         backend
                             .create_item(label, attributes, secret, replace)
                             .await
-                            .map_err(crate::Error::File)?;
+                            .map_err(|e| crate::Error::File(Box::new(e)))?;
                     }
                     Some(file::Keyring::Locked(_)) => {
                         return Err(crate::file::Error::Locked.into());
@@ -323,7 +330,7 @@ impl Keyring {
                         let items = backend
                             .search_items(attributes)
                             .await
-                            .map_err(crate::Error::File)?;
+                            .map_err(|e| crate::Error::File(Box::new(e)))?;
                         items
                             .into_iter()
                             .map(|i| Item::for_file(i.into(), Arc::clone(keyring)))
@@ -399,7 +406,7 @@ impl Item {
                                         true,
                                     )
                                     .await
-                                    .map_err(crate::Error::File)?;
+                                    .map_err(|e| crate::Error::File(Box::new(e)))?;
                             }
                             Some(file::Keyring::Locked(_)) => {
                                 return Err(crate::file::Error::Locked.into());
@@ -487,7 +494,7 @@ impl Item {
                                 let index = backend
                                     .lookup_item_index(&unlocked.attributes())
                                     .await
-                                    .map_err(crate::Error::File)?;
+                                    .map_err(|e| crate::Error::File(Box::new(e)))?;
 
                                 unlocked.set_attributes(attributes);
 
@@ -495,7 +502,7 @@ impl Item {
                                     backend
                                         .replace_item_index(index, unlocked)
                                         .await
-                                        .map_err(crate::Error::File)?;
+                                        .map_err(|e| crate::Error::File(Box::new(e)))?;
                                 } else {
                                     backend
                                         .create_item(
@@ -505,7 +512,7 @@ impl Item {
                                             true,
                                         )
                                         .await
-                                        .map_err(crate::Error::File)?;
+                                        .map_err(|e| crate::Error::File(Box::new(e)))?;
                                 }
                             }
                             file::Item::Locked(_) => {
@@ -546,7 +553,7 @@ impl Item {
                                         true,
                                     )
                                     .await
-                                    .map_err(crate::Error::File)?;
+                                    .map_err(|e| crate::Error::File(Box::new(e)))?;
                             }
                             Some(file::Keyring::Locked(_)) => {
                                 return Err(crate::file::Error::Locked.into());
@@ -606,7 +613,7 @@ impl Item {
                             let locked = backend
                                 .lock_item(unlocked)
                                 .await
-                                .map_err(crate::Error::File)?;
+                                .map_err(|e| crate::Error::File(Box::new(e)))?;
                             *item_guard = Some(file::Item::Locked(locked));
                         }
                         Some(file::Keyring::Locked(_)) => {
@@ -637,7 +644,7 @@ impl Item {
                             let unlocked = backend
                                 .unlock_item(locked)
                                 .await
-                                .map_err(crate::Error::File)?;
+                                .map_err(|e| crate::Error::File(Box::new(e)))?;
                             *item_guard = Some(file::Item::Unlocked(unlocked));
                         }
                         Some(file::Keyring::Locked(_)) => {
@@ -669,7 +676,7 @@ impl Item {
                                 backend
                                     .delete(&unlocked.attributes())
                                     .await
-                                    .map_err(crate::Error::File)?;
+                                    .map_err(|e| crate::Error::File(Box::new(e)))?;
                             }
                             Some(file::Keyring::Locked(_)) => {
                                 return Err(crate::file::Error::Locked.into());

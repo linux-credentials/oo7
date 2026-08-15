@@ -7,14 +7,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug)]
 pub enum Error {
     /// File backend error.
-    File(crate::file::Error),
+    File(Box<crate::file::Error>),
     /// Secret Service error.
     DBus(crate::dbus::Error),
 }
 
 impl From<crate::file::Error> for Error {
     fn from(e: crate::file::Error) -> Self {
-        Self::File(e)
+        Self::File(Box::new(e))
     }
 }
 
