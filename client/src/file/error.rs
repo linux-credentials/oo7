@@ -146,14 +146,14 @@ impl std::fmt::Display for Error {
 /// All information that is available about an invalid (not decryptable)
 /// [`Item`](super::Item)
 pub struct InvalidItemError {
-    error: Error,
+    error: Box<Error>,
     attribute_names: Vec<String>,
 }
 
 impl InvalidItemError {
     pub(super) fn new(error: Error, attribute_names: Vec<String>) -> Self {
         Self {
-            error,
+            error: Box::new(error),
             attribute_names,
         }
     }
