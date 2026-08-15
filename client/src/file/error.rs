@@ -195,7 +195,7 @@ impl std::fmt::Display for WeakKeyError {
             Self::IterationCountTooLow(count) => write!(f, "Iteration count too low: {count}"),
             Self::SaltTooShort(length) => write!(f, "Salt too short: {length}"),
             Self::PasswordTooShort(length) => {
-                write!(f, "Password (secret from portal) too short: {length}")
+                write!(f, "Password too short: {length}")
             }
             Self::StrengthUnknown => write!(f, "Strength unknown"),
         }
