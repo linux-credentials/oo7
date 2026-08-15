@@ -49,6 +49,21 @@ impl CliPrompter {
     }
 }
 
+// TODO: replace with https://github.com/linux-credentials/oo7/issues/94
+#[zbus::proxy(
+    interface = "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface",
+    default_service = "org.freedesktop.secrets",
+    default_path = "/org/freedesktop/secrets",
+    gen_blocking = false
+)]
+trait InternalInterface {
+    #[zbus(name = "ChangeWithPrompt")]
+    fn change_with_prompt(
+        &self,
+        collection: &zbus::zvariant::ObjectPath<'_>,
+    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+}
+
 enum Error {
     Owned(String),
     Borrowed(&'static str),
@@ -83,6 +98,12 @@ impl From<oo7::dbus::Error> for Error {
 
 impl From<zbus::Error> for Error {
     fn from(err: zbus::Error) -> Error {
+        Self::Owned(err.to_string())
+    }
+}
+
+impl From<zbus::fdo::Error> for Error {
+    fn from(err: zbus::fdo::Error) -> Error {
         Self::Owned(err.to_string())
     }
 }
@@ -347,6 +368,12 @@ enum Commands {
     #[command(name = "repair", about = "Repair the keyring")]
     Repair,
 
+    #[command(name = "change-secret", about = "Change the keyring secret")]
+    ChangeSecret {
+        #[arg(help = "The new secret. If not provided, it will be read from the terminal")]
+        new_secret: Option<oo7::Secret>,
+    },
+
     #[command(
         name = "migrate",
         about = "Migrate a legacy keyring to the current format",
@@ -385,6 +412,11 @@ impl Commands {
         }
 
         let service = Service::new().await?;
+        if matches!(self, Commands::ChangeSecret { .. }) && args.app_id.is_some() {
+            return Err(Error::new(
+                "Changing the secret is not supported for application keyrings.",
+            ));
+        }
         if args.app_id.is_some() && args.keyring.is_some() {
             return Err(Error::new(
                 "Only one of application ID or keyring can be specified at a time.",
@@ -429,7 +461,7 @@ impl Commands {
             (None, None)
         };
 
-        let (_prompter_conn, keyring) = match (path, secret) {
+        let (prompter_conn, keyring) = match (path, secret) {
             (Some(path), Some(secret)) => {
                 #[allow(unsafe_code)]
                 let keyring = unsafe {
@@ -652,6 +684,50 @@ impl Commands {
                     }
                     Keyring::Collection(_) => {
                         return Err(Error::new("Only a keyring file can be repaired."));
+                    }
+                }
+                Output::None
+            }
+            Commands::ChangeSecret { new_secret } => {
+                match keyring {
+                    Keyring::File(keyring) => {
+                        let secret = match new_secret {
+                            Some(s) => s,
+                            None => {
+                                let s = rpassword::prompt_password("Type the new secret: ")
+                                    .map_err(|_| Error::new("Can't read secret"))?;
+                                oo7::Secret::from(s)
+                            }
+                        };
+                        keyring.change_secret(secret).await?;
+                    }
+                    Keyring::Collection(collection) => {
+                        let conn = prompter_conn
+                            .as_ref()
+                            .expect("D-Bus connection available in collection mode");
+
+                        let introspectable = zbus::fdo::IntrospectableProxy::builder(conn)
+                            .destination("org.freedesktop.secrets")?
+                            .path("/org/freedesktop/secrets")?
+                            .build()
+                            .await?;
+                        let xml = introspectable.introspect().await?;
+                        if !xml
+                            .contains("org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface")
+                        {
+                            return Err(Error::new(
+                                "The Secret Service server does not support changing the keyring secret.",
+                            ));
+                        }
+
+                        let internal_proxy = InternalInterfaceProxy::new(conn).await?;
+                        let prompt_path =
+                            internal_proxy.change_with_prompt(collection.path()).await?;
+
+                        if let Some(prompt) = oo7::dbus::api::Prompt::new(conn, prompt_path).await?
+                        {
+                            prompt.receive_completed(None).await?;
+                        }
                     }
                 }
                 Output::None
