@@ -25,8 +25,9 @@ allow-git = [
 [bans]
 multiple-versions = "deny"
 wildcards = "deny"
+# oo7 <-> oo7-daemon have a circular dev-dependency that can't carry a version
+allow-wildcard-paths = true
 highlight = "all"
 skip = [
-    { name = "rand_core" },
-    { name = "winnow" },
+    { name = "syn" },
 ]
