@@ -1,6 +1,7 @@
 // org.freedesktop.Secret.Session
 
 use std::{
+    fmt,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -17,13 +18,93 @@ use crate::Service;
 
 const SESSION_STALE_TIMEOUT: Duration = Duration::from_secs(60);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionType {
+    X11,
+    Wayland,
+    Tty,
+    Unspecified,
+}
+
+impl SessionType {
+    pub fn is_graphical(self) -> bool {
+        matches!(self, Self::X11 | Self::Wayland)
+    }
+
+    pub async fn from_logind(pid: u32) -> Option<Self> {
+        let connection = zbus::Connection::system().await.ok()?;
+        let manager = LoginManagerProxy::new(&connection).await.ok()?;
+        let session_path = manager.get_session_by_pid(pid).await.ok()?;
+        let session = LoginSessionProxy::builder(&connection)
+            .path(session_path)
+            .ok()?
+            .build()
+            .await
+            .ok()?;
+        let type_str = session.type_().await.ok()?;
+        Some(match type_str.as_str() {
+            "x11" => Self::X11,
+            "wayland" => Self::Wayland,
+            "tty" => Self::Tty,
+            _ => Self::Unspecified,
+        })
+    }
+}
+
+#[zbus::proxy(
+    default_service = "org.freedesktop.login1",
+    interface = "org.freedesktop.login1.Manager",
+    default_path = "/org/freedesktop/login1",
+    gen_blocking = false
+)]
+trait LoginManager {
+    fn get_session_by_pid(&self, pid: u32) -> zbus::Result<OwnedObjectPath>;
+}
+
+#[zbus::proxy(
+    default_service = "org.freedesktop.login1",
+    interface = "org.freedesktop.login1.Session",
+    gen_blocking = false
+)]
+trait LoginSession {
+    #[zbus(property)]
+    fn type_(&self) -> zbus::Result<String>;
+}
+
+#[derive(Debug, Clone)]
+pub struct PeerInfo {
+    pid: u32,
+    name: String,
+    session_type: SessionType,
+}
+
+impl PeerInfo {
+    pub fn new(pid: u32, name: String, session_type: SessionType) -> Self {
+        Self {
+            pid,
+            name,
+            session_type,
+        }
+    }
+
+    pub fn session_type(&self) -> SessionType {
+        self.session_type
+    }
+}
+
+impl fmt::Display for PeerInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}[{}]", self.name, self.pid)
+    }
+}
+
 #[derive(Clone)]
 pub struct Session {
     aes_key: Option<Arc<Key>>,
     service: Service,
     path: OwnedObjectPath,
     sender: UniqueName<'static>,
-    peer_name: Option<String>,
+    peer_info: Option<PeerInfo>,
     disconnected_at: Arc<Mutex<Option<Instant>>>,
 }
 
@@ -46,7 +127,7 @@ impl Session {
         aes_key: Option<Arc<Key>>,
         service: Service,
         sender: UniqueName<'static>,
-        peer_name: Option<String>,
+        peer_info: Option<PeerInfo>,
     ) -> Self {
         let index = service.session_index();
         Self {
@@ -55,7 +136,7 @@ impl Session {
             aes_key,
             service,
             sender,
-            peer_name,
+            peer_info,
             disconnected_at: Arc::new(Mutex::new(None)),
         }
     }
@@ -64,8 +145,8 @@ impl Session {
         &self.sender
     }
 
-    pub fn peer_name(&self) -> Option<&str> {
-        self.peer_name.as_deref()
+    pub fn peer_info(&self) -> Option<&PeerInfo> {
+        self.peer_info.as_ref()
     }
 
     pub fn path(&self) -> &ObjectPath<'_> {

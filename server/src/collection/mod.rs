@@ -334,9 +334,9 @@ impl Collection {
         Self::item_created(&signal_emitter, &item_path).await?;
         self.items_changed(&signal_emitter).await?;
 
-        match session.peer_name() {
-            Some(name) => tracing::info!(
-                "Item `{item_path}` created by {} ({name}).",
+        match session.peer_info() {
+            Some(info) => tracing::info!(
+                "Item `{item_path}` created by {} ({info}).",
                 session.sender()
             ),
             None => tracing::info!("Item `{item_path}` created by {}.", session.sender()),

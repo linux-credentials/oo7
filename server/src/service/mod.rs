@@ -34,7 +34,7 @@ use crate::{
     error::{Error, custom_service_error},
     migration::{self, PendingMigration},
     prompt::{Prompt, PromptAction, PromptRole},
-    session::Session,
+    session::{PeerInfo, Session, SessionType},
 };
 
 const DEFAULT_COLLECTION_ALIAS_PATH: ObjectPath<'static> =
@@ -122,7 +122,7 @@ impl Service {
             }
         };
 
-        let peer_name = async {
+        let peer_info = async {
             let proxy = zbus::fdo::DBusProxy::new(self.connection()).await.ok()?;
             let pid = proxy
                 .get_connection_unix_process_id(sender.as_ref().into())
@@ -132,22 +132,26 @@ impl Service {
             let name = cmdline.split(|&b| b == 0).next()?;
             let name = std::path::Path::new(std::str::from_utf8(name).ok()?)
                 .file_name()?
-                .to_str()?;
-            Some(format!("{name}[{pid}]"))
+                .to_str()?
+                .to_owned();
+            let session_type = SessionType::from_logind(pid)
+                .await
+                .unwrap_or(SessionType::Unspecified);
+            Some(PeerInfo::new(pid, name, session_type))
         }
         .await;
         let session = Session::new(
             aes_key.map(Arc::new),
             self.clone(),
             sender.clone(),
-            peer_name,
+            peer_info,
         )
         .await;
         let path = OwnedObjectPath::from(session.path().clone());
 
-        match session.peer_name() {
-            Some(name) => {
-                tracing::info!("Client {} ({}) connected, session: {}", sender, name, path)
+        match session.peer_info() {
+            Some(info) => {
+                tracing::info!("Client {} ({}) connected, session: {}", sender, info, path)
             }
             None => tracing::info!("Client {} connected, session: {}", sender, path),
         }
@@ -524,16 +528,17 @@ impl Service {
         *self.prompter_type_override.lock().await = Some(prompter_type);
     }
 
-    /// Get the prompter type to use
-    pub(crate) async fn prompter_type(&self) -> PrompterType {
+    /// Get the prompter type to use based on the caller's session type
+    pub(crate) async fn prompter_type(&self, peer_info: Option<&PeerInfo>) -> PrompterType {
         if let Some(override_type) = self.prompter_type_override.lock().await.as_ref() {
             return *override_type;
         }
 
-        let has_display = std::env::var_os("DISPLAY").is_some_and(|v| !v.is_empty())
-            || std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty());
+        let is_graphical = peer_info
+            .map(|p| p.session_type().is_graphical())
+            .unwrap_or_default();
 
-        if has_display {
+        if is_graphical {
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             {
                 if in_plasma_environment(self.connection()).await {
@@ -1142,8 +1147,8 @@ impl Service {
                 .as_ref()
                 .expect("A disconnected client requires an old_owner");
             if let Some(session) = self.session_from_sender(old_owner).await {
-                let client_name = match session.peer_name() {
-                    Some(name) => format!("{old_owner} ({name})"),
+                let client_name = match session.peer_info() {
+                    Some(info) => format!("{old_owner} ({info})"),
                     None => old_owner.to_string(),
                 };
                 session.mark_stale().await;
@@ -1308,7 +1313,7 @@ impl Service {
         self.session_index.fetch_add(1, Ordering::Relaxed)
     }
 
-    async fn session_from_sender(&self, sender: &UniqueName<'_>) -> Option<Session> {
+    pub(crate) async fn session_from_sender(&self, sender: &UniqueName<'_>) -> Option<Session> {
         let sessions = self.sessions.lock().await;
 
         sessions.values().find(|s| s.sender() == sender).cloned()
@@ -1316,8 +1321,8 @@ impl Service {
 
     pub async fn peer_display_name(&self, sender: &UniqueName<'_>) -> String {
         match self.session_from_sender(sender).await {
-            Some(session) => match session.peer_name() {
-                Some(name) => format!("{sender} ({name})"),
+            Some(session) => match session.peer_info() {
+                Some(info) => format!("{sender} ({info})"),
                 None => sender.to_string(),
             },
             None => sender.to_string(),

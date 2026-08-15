@@ -102,10 +102,22 @@ pub struct Prompt {
 ))] // User has to enable at least one prompt backend
 #[interface(name = "org.freedesktop.Secret.Prompt")]
 impl Prompt {
-    pub async fn prompt(&self, window_id: Optional<&str>) -> Result<(), ServiceError> {
+    pub async fn prompt(
+        &self,
+        window_id: Optional<&str>,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> Result<(), ServiceError> {
         let window_id = (*window_id).and_then(|w| ashpd::WindowIdentifierType::from_str(w).ok());
+        let peer_info = match header.sender() {
+            Some(sender) => self
+                .service
+                .session_from_sender(sender)
+                .await
+                .and_then(|s| s.peer_info().cloned()),
+            None => None,
+        };
 
-        match self.service.prompter_type().await {
+        match self.service.prompter_type(peer_info.as_ref()).await {
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             PrompterType::Plasma => self.prompt_plasma(window_id).await,
             #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
