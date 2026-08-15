@@ -54,6 +54,11 @@ jobs:
         run: |
           cargo build --manifest-path ./server/Cargo.toml --no-default-features --features openssl_crypto
 
+      - name: Install PAM headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpam0g-dev
+
       - name: Build PAM
         run: |
           cargo build --manifest-path ./pam/Cargo.toml
@@ -124,7 +129,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
-        run: dnf install -y git meson gcc systemd
+        run: dnf install -y git meson gcc systemd pam-devel
       - name: Build (portal)
         working-directory: ./portal
         run: meson setup ./ _build --prefix /usr && ninja -C _build
