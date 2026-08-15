@@ -30,7 +30,7 @@ fn kwallet_sha1_le(data: &[u8]) -> [u8; 20] {
     }
     padded.extend_from_slice(&bit_len.to_be_bytes());
 
-    for chunk in padded.chunks_exact(64) {
+    for chunk in padded.as_chunks::<64>().0 {
         let mut w = [0u32; 16];
 
         for i in 0..16 {
@@ -161,7 +161,7 @@ pub fn switch_endianness(data: &[u8]) -> Result<Vec<u8>> {
     }
 
     Ok(data
-        .chunks_exact(4)
+        .as_chunks::<4>().0.iter()
         .flat_map(|chunk| chunk.iter().rev().copied())
         .collect())
 }
