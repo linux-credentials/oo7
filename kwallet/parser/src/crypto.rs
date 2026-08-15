@@ -161,7 +161,9 @@ pub fn switch_endianness(data: &[u8]) -> Result<Vec<u8>> {
     }
 
     Ok(data
-        .as_chunks::<4>().0.iter()
+        .as_chunks::<4>()
+        .0
+        .iter()
         .flat_map(|chunk| chunk.iter().rev().copied())
         .collect())
 }
