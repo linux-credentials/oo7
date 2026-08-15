@@ -465,10 +465,10 @@ impl UnlockedKeyring {
         let item = {
             let key = self.derive_key().await?;
             let mut keyring = self.keyring.write().await;
-            if replace {
-                keyring.remove_items(attributes, key.as_deref())?;
-            }
             let item = UnlockedItem::new(label, attributes, secret);
+            if replace {
+                keyring.remove_items_exact(item.attributes(), key.as_deref())?;
+            }
             let encrypted_item = item.encrypt(key.as_deref())?;
             keyring.items.push(encrypted_item);
             item
@@ -540,10 +540,10 @@ impl UnlockedKeyring {
         let _span = tracing::debug_span!("bulk_create", items_to_create = items.len());
 
         for (label, attributes, secret, replace) in items {
-            if replace {
-                keyring.remove_items(&attributes, key.as_deref())?;
-            }
             let item = UnlockedItem::new(label, &attributes, secret);
+            if replace {
+                keyring.remove_items_exact(item.attributes(), key.as_deref())?;
+            }
             let encrypted_item = item.encrypt(key.as_deref())?;
             keyring.items.push(encrypted_item);
         }

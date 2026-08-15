@@ -235,6 +235,23 @@ impl Keyring {
         Ok(())
     }
 
+    pub(crate) fn remove_items_exact(
+        &mut self,
+        attributes: &impl AsAttributes,
+        key: Option<&Key>,
+    ) -> Result<(), Error> {
+        for item in &self.items {
+            if item.matches_exact(attributes, key) && !item.is_valid(key) {
+                return Err(Error::MacError);
+            }
+        }
+
+        self.items
+            .retain(|item| !item.matches_exact(attributes, key));
+
+        Ok(())
+    }
+
     fn as_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut blob = FILE_HEADER.to_vec();
 

@@ -308,7 +308,7 @@ impl Collection {
         // Remove any existing items with the same attributes
         if replace {
             let existing_items = self
-                .search_items_with_key(&attributes, key.as_deref())
+                .search_items_exact_with_key(&attributes, key.as_deref())
                 .await?;
             if !existing_items.is_empty() {
                 let mut items = self.items.lock().await;
@@ -524,6 +524,28 @@ impl Collection {
 
             // Use the oo7::file::Item's matches_attributes method
             if file_item.matches_attributes(attributes, key) {
+                matching_items.push(item_wrapper.clone());
+            }
+        }
+
+        Ok(matching_items)
+    }
+
+    async fn search_items_exact_with_key(
+        &self,
+        attributes: &HashMap<String, String>,
+        key: Option<&oo7::Key>,
+    ) -> Result<Vec<item::Item>, ServiceError> {
+        let mut matching_items = Vec::new();
+        let items = self.items.lock().await;
+
+        for item_wrapper in items.iter() {
+            let inner = item_wrapper.inner.lock().await;
+            let Some(file_item) = inner.as_ref() else {
+                continue;
+            };
+
+            if file_item.matches_attributes_exact(attributes, key) {
                 matching_items.push(item_wrapper.clone());
             }
         }

@@ -550,6 +550,75 @@ async fn item_replacement_behavior() -> Result<(), Error> {
 }
 
 #[tokio::test]
+async fn item_replacement_matches_attributes() -> Result<(), Error> {
+    let temp_dir = tempdir().unwrap();
+    let keyring_path = temp_dir.path().join("replace_attributes_test.keyring");
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
+
+    keyring
+        .create_item(
+            "Alice",
+            &[("app", "test"), ("user", "alice")],
+            "alice-secret",
+            false,
+        )
+        .await?;
+    keyring
+        .create_item(
+            "Bob",
+            &[("app", "test"), ("user", "bob")],
+            "bob-secret",
+            false,
+        )
+        .await?;
+
+    // A coarser attribute set must not replace either item.
+    keyring
+        .create_item("Coarse", &[("app", "test")], "coarse-secret", true)
+        .await?;
+
+    let items = keyring.search_items(&[("app", "test")]).await?;
+    assert_eq!(items.len(), 3);
+    assert_eq!(
+        keyring
+            .search_items(&[("app", "test"), ("user", "alice")])
+            .await?
+            .len(),
+        1
+    );
+    assert_eq!(
+        keyring
+            .search_items(&[("app", "test"), ("user", "bob")])
+            .await?
+            .len(),
+        1
+    );
+
+    // Replacing the coarse item must not add a duplicate.
+    keyring
+        .create_item(
+            "Updated Coarse",
+            &[("app", "test")],
+            "updated-coarse-secret",
+            true,
+        )
+        .await?;
+
+    let items = keyring.search_items(&[("app", "test")]).await?;
+    assert_eq!(items.len(), 3);
+    assert_eq!(
+        items
+            .iter()
+            .filter(|item| item.attributes().get("user").is_none())
+            .map(|item| item.label())
+            .collect::<Vec<_>>(),
+        vec!["Updated Coarse"]
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn empty_keyring_operations() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("empty_test.keyring");
@@ -815,6 +884,28 @@ async fn bulk_create_items() -> Result<(), Error> {
     // Verify the item was replaced - should still have 3 items total
     let all_items_after = keyring.search_items(&[("app", "bulk-app")]).await?;
     assert_eq!(all_items_after.len(), 3);
+
+    // A coarse replacement must preserve the three specific items.
+    keyring
+        .create_items(vec![(
+            "Coarse Item".to_string(),
+            HashMap::from([("app".to_string(), "bulk-app".to_string())]),
+            Secret::text("coarse-secret"),
+            true,
+        )])
+        .await?;
+    assert_eq!(keyring.search_items(&[("app", "bulk-app")]).await?.len(), 4);
+
+    // Replacing the coarse item removes only its predecessor.
+    keyring
+        .create_items(vec![(
+            "Updated Coarse Item".to_string(),
+            HashMap::from([("app".to_string(), "bulk-app".to_string())]),
+            Secret::text("updated-coarse-secret"),
+            true,
+        )])
+        .await?;
+    assert_eq!(keyring.search_items(&[("app", "bulk-app")]).await?.len(), 4);
     Ok(())
 }
 

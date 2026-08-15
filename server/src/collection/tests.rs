@@ -227,6 +227,70 @@ async fn create_item_with_replace() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
+async fn create_item_with_replace_matches_attributes() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+
+    setup
+        .create_item(
+            "Alice",
+            &[("application", "myapp"), ("username", "alice")],
+            "alice-password",
+            false,
+        )
+        .await?;
+    setup
+        .create_item(
+            "Bob",
+            &[("application", "myapp"), ("username", "bob")],
+            "bob-password",
+            false,
+        )
+        .await?;
+
+    // A coarser attribute set must not replace either item.
+    setup
+        .create_item(
+            "Coarse",
+            &[("application", "myapp")],
+            "coarse-password",
+            true,
+        )
+        .await?;
+
+    let items = setup.collections[0].items().await?;
+    assert_eq!(items.len(), 3);
+    assert_eq!(
+        setup.collections[0]
+            .search_items(&[("application", "myapp"), ("username", "alice")])
+            .await?
+            .len(),
+        1
+    );
+    assert_eq!(
+        setup.collections[0]
+            .search_items(&[("application", "myapp"), ("username", "bob")])
+            .await?
+            .len(),
+        1
+    );
+
+    // Replacing the coarse item must not add a duplicate.
+    setup
+        .create_item(
+            "Updated Coarse",
+            &[("application", "myapp")],
+            "updated-coarse-password",
+            true,
+        )
+        .await?;
+
+    let items = setup.collections[0].items().await?;
+    assert_eq!(items.len(), 3);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn label_property() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
