@@ -11,7 +11,7 @@ use crate::{AsAttributes, CONTENT_TYPE_ATTRIBUTE, Key, Mac, Secret, crypto, secr
 
 /// An item stored in the file backend.
 #[derive(
-    Deserialize, Serialize, zvariant::Type, Clone, Debug, Zeroize, ZeroizeOnDrop, PartialEq,
+    Deserialize, Serialize, zgvariant::Type, Clone, Debug, Zeroize, ZeroizeOnDrop, PartialEq,
 )]
 pub struct UnlockedItem {
     #[zeroize(skip)]
@@ -182,7 +182,7 @@ impl UnlockedItem {
     }
 
     fn encrypt_plaintext(&self) -> Result<EncryptedItem, Error> {
-        let blob = zvariant::to_bytes(*GVARIANT_ENCODING, &self)?.to_vec();
+        let blob = zgvariant::to_bytes(*GVARIANT_ENCODING, &self)?.to_vec();
         Ok(EncryptedItem {
             hashed_attributes: self
                 .attributes
@@ -194,7 +194,7 @@ impl UnlockedItem {
     }
 
     fn encrypt_encrypted(&self, key: &Key, iv: &[u8]) -> Result<EncryptedItem, Error> {
-        let decrypted = Zeroizing::new(zvariant::to_bytes(*GVARIANT_ENCODING, &self)?.to_vec());
+        let decrypted = Zeroizing::new(zgvariant::to_bytes(*GVARIANT_ENCODING, &self)?.to_vec());
 
         let mut blob = crypto::encrypt(&*decrypted, key, iv)?;
 
@@ -219,7 +219,7 @@ impl TryFrom<&[u8]> for UnlockedItem {
     type Error = Error;
 
     fn try_from(value: &[u8]) -> Result<Self, Error> {
-        let mut item: UnlockedItem = zvariant::serialized::Data::new(value, *GVARIANT_ENCODING)
+        let mut item: UnlockedItem = zgvariant::serialized::Data::new(value, *GVARIANT_ENCODING)
             .deserialize()?
             .0;
 

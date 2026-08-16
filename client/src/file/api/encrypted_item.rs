@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use zbus::zvariant::Type;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+use zgvariant::Type;
 
 use super::{Error, UnlockedItem};
 use crate::{AsAttributes, Key, Mac, crypto};

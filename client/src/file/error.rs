@@ -10,7 +10,7 @@ pub enum Error {
     /// No Parent directory.
     NoParentDir(String),
     /// Bytes don't have the expected GVariant format.
-    GVariantDeserialization(zvariant::Error),
+    GVariantDeserialization(zgvariant::Error),
     /// Mismatch between array length and length explicitly stored in keyring
     SaltSizeMismatch(usize, u32),
     /// Key for some reason too weak to trust it for writing
@@ -51,8 +51,8 @@ pub enum Error {
     Schema(crate::SchemaError),
 }
 
-impl From<zvariant::Error> for Error {
-    fn from(value: zvariant::Error) -> Self {
+impl From<zgvariant::Error> for Error {
+    fn from(value: zgvariant::Error) -> Self {
         Self::GVariantDeserialization(value)
     }
 }
