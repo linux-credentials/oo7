@@ -10,11 +10,11 @@ use tokio::{
     net::{UnixListener, UnixStream},
     sync::RwLock,
 };
-use zbus::zvariant::{
+use zeroize::{Zeroize, ZeroizeOnDrop};
+use zgvariant::{
     self, Type,
     serialized::{Context, Data},
 };
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{Service, error::Error};
 
@@ -41,8 +41,8 @@ struct PamResponse {
 }
 
 impl PamMessage {
-    fn from_bytes(bytes: &[u8]) -> Result<Self, zvariant::Error> {
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
+    fn from_bytes(bytes: &[u8]) -> Result<Self, zgvariant::Error> {
+        let ctxt = Context::new(zgvariant::LE, 0);
         let data = Data::new(bytes, ctxt);
         data.deserialize().map(|(msg, _)| msg)
     }
@@ -64,15 +64,15 @@ impl PamResponse {
     }
 
     #[cfg(test)]
-    fn from_bytes(bytes: &[u8]) -> Result<Self, zvariant::Error> {
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
+    fn from_bytes(bytes: &[u8]) -> Result<Self, zgvariant::Error> {
+        let ctxt = Context::new(zgvariant::LE, 0);
         let data = Data::new(bytes, ctxt);
         data.deserialize().map(|(msg, _)| msg)
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, zvariant::Error> {
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
-        let encoded = zvariant::to_bytes(ctxt, self)?;
+    fn to_bytes(&self) -> Result<Vec<u8>, zgvariant::Error> {
+        let ctxt = Context::new(zgvariant::LE, 0);
+        let encoded = zgvariant::to_bytes(ctxt, self)?;
         let message_bytes = encoded.to_vec();
 
         // Prepend length prefix (4 bytes, little-endian)

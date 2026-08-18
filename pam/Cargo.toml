@@ -22,7 +22,7 @@ tracing.workspace = true
 tracing-journald = "0.3"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 zeroize.workspace = true
-zvariant.workspace = true
+zgvariant.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

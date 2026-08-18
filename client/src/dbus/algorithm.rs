@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use zbus::zvariant;
 
 #[derive(Debug, zvariant::Type, PartialEq, Eq, Copy, Clone)]
 #[zvariant(signature = "s")]
@@ -43,7 +44,7 @@ impl<'de> Deserialize<'de> for Algorithm {
 
 #[cfg(test)]
 mod tests {
-    use zvariant::{Endian, serialized::Context, to_bytes};
+    use zbus::zvariant::{Endian, serialized::Context, to_bytes};
 
     use super::*;
 

@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt};
 
 use ashpd::WindowIdentifier;
 use futures_util::{Stream, StreamExt};
-use zbus::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Type, Value};
+use zbus::zvariant::{self, ObjectPath, OwnedObjectPath, OwnedValue, Type, Value};
 
 use super::{
     Collection, DBusSecret, DESTINATION, Item, PATH, Prompt, Properties, Session, Unlockable,

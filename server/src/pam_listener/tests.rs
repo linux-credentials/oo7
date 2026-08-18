@@ -1,5 +1,5 @@
 use oo7::file::UnlockedKeyring;
-use zbus::zvariant::serialized::Context;
+use zgvariant::serialized::Context;
 
 use super::*;
 
@@ -16,8 +16,8 @@ fn create_pam_message(
         new_secret: new_secret.to_vec(),
     };
 
-    let ctxt = Context::new_dbus(zvariant::LE, 0);
-    let encoded = zvariant::to_bytes(ctxt, &message).unwrap();
+    let ctxt = Context::new(zgvariant::LE, 0);
+    let encoded = zgvariant::to_bytes(ctxt, &message).unwrap();
     let message_bytes = encoded.to_vec();
 
     // Prepend length prefix (4 bytes, little-endian)
@@ -307,8 +307,8 @@ async fn message_serialization() -> Result<(), Box<dyn std::error::Error>> {
         new_secret: b"my-password".to_vec(),
     };
 
-    let ctxt = Context::new_dbus(zvariant::LE, 0);
-    let encoded = zvariant::to_bytes(ctxt, &message)?;
+    let ctxt = Context::new(zgvariant::LE, 0);
+    let encoded = zgvariant::to_bytes(ctxt, &message)?;
     let decoded = PamMessage::from_bytes(&encoded)?;
 
     assert_eq!(decoded.operation, PamOperation::Unlock);
@@ -322,8 +322,8 @@ async fn message_serialization() -> Result<(), Box<dyn std::error::Error>> {
         new_secret: b"new-pass".to_vec(),
     };
 
-    let ctxt = Context::new_dbus(zvariant::LE, 0);
-    let encoded = zvariant::to_bytes(ctxt, &message)?;
+    let ctxt = Context::new(zgvariant::LE, 0);
+    let encoded = zgvariant::to_bytes(ctxt, &message)?;
     let decoded = PamMessage::from_bytes(&encoded)?;
 
     assert_eq!(decoded.operation, PamOperation::ChangePassword);
