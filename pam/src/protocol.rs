@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use zeroize::{Zeroize, ZeroizeOnDrop};
-use zvariant::{Type, serialized::Context, to_bytes};
+use zgvariant::{Type, serialized::Context, to_bytes};
 
 #[derive(Debug, Clone, Copy, Serialize_repr, Deserialize_repr, Type, PartialEq, Eq)]
 #[repr(u8)]
@@ -40,15 +40,15 @@ impl PamMessage {
         }
     }
 
-    pub fn to_bytes(&self) -> Result<Vec<u8>, zvariant::Error> {
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
+    pub fn to_bytes(&self) -> Result<Vec<u8>, zgvariant::Error> {
+        let ctxt = Context::new(zgvariant::LE, 0);
         to_bytes(ctxt, self).map(|data| data.to_vec())
     }
 
     #[cfg(test)]
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, zvariant::Error> {
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
-        let data = zvariant::serialized::Data::new(bytes, ctxt);
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, zgvariant::Error> {
+        let ctxt = Context::new(zgvariant::LE, 0);
+        let data = zgvariant::serialized::Data::new(bytes, ctxt);
         data.deserialize().map(|(msg, _)| msg)
     }
 }
@@ -60,9 +60,9 @@ pub struct PamResponse {
 }
 
 impl PamResponse {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, zvariant::Error> {
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
-        let data = zvariant::serialized::Data::new(bytes, ctxt);
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, zgvariant::Error> {
+        let ctxt = Context::new(zgvariant::LE, 0);
+        let data = zgvariant::serialized::Data::new(bytes, ctxt);
         data.deserialize().map(|(msg, _)| msg)
     }
 }

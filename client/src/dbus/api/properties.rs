@@ -4,7 +4,7 @@ use serde::{
     Deserialize,
     ser::{Serialize, SerializeMap},
 };
-use zbus::zvariant::{Type, Value};
+use zbus::zvariant::{self, Type, Value};
 
 use crate::AsAttributes;
 
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn deserialize_item_properties() {
-        use zvariant::Dict;
+        use zbus::zvariant::Dict;
 
         // Create serialized data that represents item properties
         let mut attrs_dict = Dict::new(String::SIGNATURE, String::SIGNATURE);

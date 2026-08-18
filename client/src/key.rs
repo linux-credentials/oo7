@@ -1,3 +1,4 @@
+use zbus::zvariant;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{crypto, file};

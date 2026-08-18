@@ -53,7 +53,6 @@ tempfile = "3.26"
 tokio = { version = "1.52", default-features = false }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-zbus = { version = "5.14.0", default-features = false }
-zbus_macros = { version = "5.11", features = ["gvariant"] }
+zbus = { version = "5.19", default-features = false }
+zgvariant = { version = "1.0", features = ["serde_bytes"] }
 zeroize = { version = "1", features = ["zeroize_derive"] }
-zvariant = { version = "5.8", default-features = false, features = ["gvariant", "serde_bytes"] }

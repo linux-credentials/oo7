@@ -56,7 +56,7 @@ impl Drop for SavedSignals {
 pub enum SocketError {
     Connect(io::Error),
     Send(io::Error),
-    Serialize(zvariant::Error),
+    Serialize(zgvariant::Error),
     Timeout,
     InvalidSocket(String),
 }

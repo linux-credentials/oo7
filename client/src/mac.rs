@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "native_crypto")]
 use subtle::ConstantTimeEq;
-use zbus::zvariant::Type;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+use zgvariant::Type;
 
 // There is no constructor to avoid performing sanity checks, e.g. length.
 /// A message authentication code. It provides constant-time comparison when

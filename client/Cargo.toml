@@ -41,9 +41,8 @@ tokio = { workspace = true, features = [
     "io-util",
 ], optional = true, default-features = false }
 tracing = { workspace = true, optional = true }
+zgvariant.workspace = true
 zbus.workspace = true
-zbus_macros.workspace = true
-zvariant.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]

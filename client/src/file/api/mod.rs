@@ -21,7 +21,7 @@ use futures_lite::AsyncWriteExt;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "tokio")]
 use tokio::{fs, io, io::AsyncWriteExt};
-use zbus::zvariant::{Endian, Type, serialized::Context};
+use zgvariant::{Type, serialized::Context};
 
 /// Used for newly created [`Keyring`]s
 const DEFAULT_ITERATION_COUNT: u32 = 100000;
@@ -65,7 +65,7 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
 }
 
 pub(crate) static GVARIANT_ENCODING: LazyLock<Context> =
-    LazyLock::new(|| Context::new_gvariant(Endian::Little, 0));
+    LazyLock::new(|| Context::new(zgvariant::LE, 0));
 
 /// Logical contents of a keyring file
 #[derive(Deserialize, Serialize, Type, Debug, Zeroize, ZeroizeOnDrop)]
@@ -257,7 +257,7 @@ impl Keyring {
 
         blob.push(MAJOR_VERSION);
         blob.push(MINOR_VERSION);
-        blob.append(&mut zvariant::to_bytes(*GVARIANT_ENCODING, &self)?.to_vec());
+        blob.append(&mut zgvariant::to_bytes(*GVARIANT_ENCODING, &self)?.to_vec());
 
         Ok(blob)
     }
@@ -373,7 +373,7 @@ impl TryFrom<&[u8]> for Keyring {
         }
 
         if let Some(data) = value.get((FILE_HEADER_LEN + 2)..) {
-            let keyring: Self = zvariant::serialized::Data::new(data, *GVARIANT_ENCODING)
+            let keyring: Self = zgvariant::serialized::Data::new(data, *GVARIANT_ENCODING)
                 .deserialize()?
                 .0;
 
