@@ -46,7 +46,9 @@ impl FromStr for ContentType {
             || media_type.eq_ignore_ascii_case("application/json")
         {
             Ok(Self::Text)
-        } else if media_type.eq_ignore_ascii_case("application/octet-stream") {
+        } else if media_type.eq_ignore_ascii_case("application/octet-stream")
+            || media_type.eq_ignore_ascii_case("application/binary")
+        {
             Ok(Self::Blob)
         } else {
             Err(format!("Invalid content type: {s}"))
