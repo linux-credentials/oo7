@@ -1,3 +1,5 @@
+#![cfg(target_endian = "little")]
+
 use std::path::Path;
 
 use kwallet_parser::{CipherType, EntryType, HashType, KWalletFile};

@@ -1399,6 +1399,7 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(feature = "kwallet_migration")]
+#[cfg(target_endian = "little")]
 #[tokio::test]
 async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
