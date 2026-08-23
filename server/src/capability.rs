@@ -65,6 +65,10 @@ enum CapabilityState {
     None,
 }
 
+fn ipc_lock_capability(permitted: CapabilitySet) -> CapabilitySet {
+    permitted & CapabilitySet::IPC_LOCK
+}
+
 pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
     // Abort if we can't read capabilities (libcap-ng CAPNG_FAIL behavior)
     let caps = capabilities(None).unwrap_or_else(|e| {
@@ -122,16 +126,16 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
             )?;
         }
         CapabilityState::None => {
-            // NOTE: For users that landed here. The binary is probably missing
-            // the CAP_IPC_LOCK capability which should have been set as part of
-            // packaging. See capabilities(7) and setcap(8) for more details.
-            tracing::warn!("No process capabilities, secrets in memory might be swapped to disk");
-            return Ok(());
+            // CAP_IPC_LOCK bypasses RLIMIT_MEMLOCK, but is not required when the
+            // process has a sufficient limit. Always try mlockall below.
+            tracing::warn!("No process capabilities; relying on RLIMIT_MEMLOCK to lock memory");
         }
         CapabilityState::Partial => {
-            if !caps.effective.contains(CapabilitySet::IPC_LOCK) {
+            let retained_capability = ipc_lock_capability(caps.permitted);
+
+            if retained_capability.is_empty() {
                 tracing::warn!(
-                    "Missing IPC_LOCK capability, secrets in memory might be swapped to disk"
+                    "Missing permitted IPC_LOCK capability; relying on RLIMIT_MEMLOCK to lock memory"
                 );
             }
 
@@ -145,8 +149,8 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
             set_capabilities(
                 None,
                 CapabilitySets {
-                    effective: CapabilitySet::IPC_LOCK,
-                    permitted: CapabilitySet::IPC_LOCK,
+                    effective: retained_capability,
+                    permitted: retained_capability,
                     inheritable: CapabilitySet::empty(),
                 },
             )?;
@@ -168,4 +172,22 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retains_permitted_ipc_lock_capability() {
+        let permitted = CapabilitySet::IPC_LOCK | CapabilitySet::SETPCAP;
+
+        assert_eq!(ipc_lock_capability(permitted), CapabilitySet::IPC_LOCK);
+    }
+
+    #[test]
+    fn does_not_add_unpermitted_ipc_lock_capability() {
+        assert!(ipc_lock_capability(CapabilitySet::SETPCAP).is_empty());
+        assert!(ipc_lock_capability(CapabilitySet::empty()).is_empty());
+    }
 }
