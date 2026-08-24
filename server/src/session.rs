@@ -55,22 +55,9 @@ impl SessionType {
     /// place in a session at all. Often blocked by Yama's `ptrace_scope`,
     /// since the daemon isn't an ancestor of its peers; see
     /// [`Self::from_systemd_user_environment`] for the last resort.
-    pub async fn from_environ(pid: u32) -> Option<Self> {
+    async fn from_environ(pid: u32) -> Option<Self> {
         let environ = tokio::fs::read(format!("/proc/{pid}/environ")).await.ok()?;
-        let has_non_empty_var = |name: &str| {
-            let prefix = format!("{name}=");
-            environ
-                .split(|&b| b == 0)
-                .any(|entry| entry.len() > prefix.len() && entry.starts_with(prefix.as_bytes()))
-        };
-
-        if has_non_empty_var("WAYLAND_DISPLAY") {
-            Some(Self::Wayland)
-        } else if has_non_empty_var("DISPLAY") {
-            Some(Self::X11)
-        } else {
-            None
-        }
+        Self::from_display_vars(environ.split(|&b| b == 0))
     }
 
     /// Last resort: the systemd `--user` manager's own exported
@@ -80,21 +67,31 @@ impl SessionType {
     /// D-Bus with no `ptrace_scope` restriction. Coarser than the other
     /// checks since it's session-wide rather than peer-specific, so it's
     /// only consulted once `logind` can't place the peer anywhere.
-    pub async fn from_systemd_user_environment() -> Option<Self> {
+    async fn from_systemd_user_environment() -> Option<Self> {
         let connection = zbus::Connection::session().await.ok()?;
         let manager = SystemdManagerProxy::new(&connection).await.ok()?;
         let environment = manager.environment().await.ok()?;
 
-        let has_non_empty_var = |name: &str| {
-            let prefix = format!("{name}=");
-            environment
-                .iter()
-                .any(|entry| entry.len() > prefix.len() && entry.starts_with(&prefix))
-        };
+        Self::from_display_vars(environment.iter().map(String::as_bytes))
+    }
 
-        if has_non_empty_var("WAYLAND_DISPLAY") {
+    /// Shared `WAYLAND_DISPLAY`/`DISPLAY` lookup over a set of `NAME=value`
+    /// entries, as found in both `/proc/<pid>/environ` and the systemd
+    /// `--user` manager's exported environment.
+    fn from_display_vars<'a>(vars: impl Iterator<Item = &'a [u8]>) -> Option<Self> {
+        let mut wayland = false;
+        let mut x11 = false;
+        for entry in vars {
+            if let Some(value) = entry.strip_prefix(b"WAYLAND_DISPLAY=") {
+                wayland |= !value.is_empty();
+            } else if let Some(value) = entry.strip_prefix(b"DISPLAY=") {
+                x11 |= !value.is_empty();
+            }
+        }
+
+        if wayland {
             Some(Self::Wayland)
-        } else if has_non_empty_var("DISPLAY") {
+        } else if x11 {
             Some(Self::X11)
         } else {
             None
@@ -304,6 +301,50 @@ mod tests {
         let _ = child.wait();
 
         assert_eq!(session_type, None);
+    }
+
+    #[test]
+    fn from_display_vars_detects_wayland() {
+        let vars = [b"WAYLAND_DISPLAY=wayland-test".as_slice(), b"FOO=bar"];
+
+        assert_eq!(
+            SessionType::from_display_vars(vars.into_iter()),
+            Some(SessionType::Wayland)
+        );
+    }
+
+    #[test]
+    fn from_display_vars_detects_x11() {
+        let vars = [b"DISPLAY=:0".as_slice(), b"FOO=bar"];
+
+        assert_eq!(
+            SessionType::from_display_vars(vars.into_iter()),
+            Some(SessionType::X11)
+        );
+    }
+
+    #[test]
+    fn from_display_vars_prefers_wayland_over_x11() {
+        let vars = [b"DISPLAY=:0".as_slice(), b"WAYLAND_DISPLAY=wayland-test"];
+
+        assert_eq!(
+            SessionType::from_display_vars(vars.into_iter()),
+            Some(SessionType::Wayland)
+        );
+    }
+
+    #[test]
+    fn from_display_vars_ignores_empty_values() {
+        let vars = [b"WAYLAND_DISPLAY=".as_slice(), b"DISPLAY="];
+
+        assert_eq!(SessionType::from_display_vars(vars.into_iter()), None);
+    }
+
+    #[test]
+    fn from_display_vars_none_without_display() {
+        let vars = [b"FOO=bar".as_slice()];
+
+        assert_eq!(SessionType::from_display_vars(vars.into_iter()), None);
     }
 
     #[tokio::test]
