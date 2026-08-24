@@ -1163,6 +1163,8 @@ async fn partially_corrupted_keyring_error() -> Result<(), Error> {
     keyring
         .create_item("valid2", &[("attr", "value2")], "password2", false)
         .await?;
+    let key = keyring.key().await?.unwrap();
+    let key = key.as_ref().as_ref().to_vec();
     drop(keyring);
 
     // Load_unchecked with wrong password and add 3 broken items (more than valid)
@@ -1178,6 +1180,16 @@ async fn partially_corrupted_keyring_error() -> Result<(), Error> {
         .create_item("broken3", &[("bad", "value3")], "bad_password3", false)
         .await?;
     drop(keyring);
+
+    let locked = LockedKeyring::load(&keyring_path).await?;
+    assert!(locked.validate_key(&Key::new(key.clone())).await?);
+    assert!(matches!(
+        locked.unlock_with_key(Key::new(key)).await,
+        Err(Error::PartiallyCorruptedKeyring {
+            valid_items: 2,
+            broken_items: 3,
+        })
+    ));
 
     let result = UnlockedKeyring::load(&keyring_path, Some(correct_secret)).await;
     assert!(result.is_err());
