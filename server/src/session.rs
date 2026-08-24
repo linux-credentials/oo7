@@ -49,6 +49,75 @@ impl SessionType {
             _ => Self::Unspecified,
         })
     }
+
+    /// Fall back to the peer's own environment, for compositors run as a
+    /// systemd `--user` service (e.g. niri, sway), which `logind` can't
+    /// place in a session at all. Often blocked by Yama's `ptrace_scope`,
+    /// since the daemon isn't an ancestor of its peers; see
+    /// [`Self::from_systemd_user_environment`] for the last resort.
+    pub async fn from_environ(pid: u32) -> Option<Self> {
+        let environ = tokio::fs::read(format!("/proc/{pid}/environ")).await.ok()?;
+        let has_non_empty_var = |name: &str| {
+            let prefix = format!("{name}=");
+            environ
+                .split(|&b| b == 0)
+                .any(|entry| entry.len() > prefix.len() && entry.starts_with(prefix.as_bytes()))
+        };
+
+        if has_non_empty_var("WAYLAND_DISPLAY") {
+            Some(Self::Wayland)
+        } else if has_non_empty_var("DISPLAY") {
+            Some(Self::X11)
+        } else {
+            None
+        }
+    }
+
+    /// Last resort: the systemd `--user` manager's own exported
+    /// environment. Systemd-integrated compositors import
+    /// `WAYLAND_DISPLAY`/`DISPLAY` into it on startup (e.g. via
+    /// `dbus-update-activation-environment`), and it's readable over
+    /// D-Bus with no `ptrace_scope` restriction. Coarser than the other
+    /// checks since it's session-wide rather than peer-specific, so it's
+    /// only consulted once `logind` can't place the peer anywhere.
+    pub async fn from_systemd_user_environment() -> Option<Self> {
+        let connection = zbus::Connection::session().await.ok()?;
+        let manager = SystemdManagerProxy::new(&connection).await.ok()?;
+        let environment = manager.environment().await.ok()?;
+
+        let has_non_empty_var = |name: &str| {
+            let prefix = format!("{name}=");
+            environment
+                .iter()
+                .any(|entry| entry.len() > prefix.len() && entry.starts_with(&prefix))
+        };
+
+        if has_non_empty_var("WAYLAND_DISPLAY") {
+            Some(Self::Wayland)
+        } else if has_non_empty_var("DISPLAY") {
+            Some(Self::X11)
+        } else {
+            None
+        }
+    }
+
+    /// Best-effort session type detection, cascading `logind` ->
+    /// [`Self::from_environ`] -> [`Self::from_systemd_user_environment`].
+    /// Stops at the first check that places the peer in a session at
+    /// all, even a non-graphical one.
+    pub async fn detect(pid: u32) -> Self {
+        if let Some(session_type) = Self::from_logind(pid).await {
+            return session_type;
+        }
+
+        if let Some(session_type) = Self::from_environ(pid).await {
+            return session_type;
+        }
+
+        Self::from_systemd_user_environment()
+            .await
+            .unwrap_or(Self::Unspecified)
+    }
 }
 
 #[zbus::proxy(
@@ -69,6 +138,17 @@ trait LoginManager {
 trait LoginSession {
     #[zbus(property)]
     fn type_(&self) -> zbus::Result<String>;
+}
+
+#[zbus::proxy(
+    default_service = "org.freedesktop.systemd1",
+    interface = "org.freedesktop.systemd1.Manager",
+    default_path = "/org/freedesktop/systemd1",
+    gen_blocking = false
+)]
+trait SystemdManager {
+    #[zbus(property)]
+    fn environment(&self) -> zbus::Result<Vec<String>>;
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +256,55 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use crate::tests::TestServiceSetup;
+
+    use super::SessionType;
+
+    /// Spawn a short-lived child process with a controlled environment, to
+    /// exercise `SessionType::from_environ` against a real `/proc/<pid>/environ`.
+    fn spawn_with_env(vars: &[(&str, &str)]) -> std::process::Child {
+        let mut command = std::process::Command::new("sleep");
+        command.arg("5").env_clear();
+        for (key, value) in vars {
+            command.env(key, value);
+        }
+        command.spawn().expect("failed to spawn test child process")
+    }
+
+    #[tokio::test]
+    async fn from_environ_detects_wayland() {
+        let mut child = spawn_with_env(&[("WAYLAND_DISPLAY", "wayland-test")]);
+
+        let session_type = SessionType::from_environ(child.id()).await;
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert_eq!(session_type, Some(SessionType::Wayland));
+    }
+
+    #[tokio::test]
+    async fn from_environ_detects_x11() {
+        let mut child = spawn_with_env(&[("DISPLAY", ":0")]);
+
+        let session_type = SessionType::from_environ(child.id()).await;
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert_eq!(session_type, Some(SessionType::X11));
+    }
+
+    #[tokio::test]
+    async fn from_environ_none_without_display() {
+        let mut child = spawn_with_env(&[]);
+
+        let session_type = SessionType::from_environ(child.id()).await;
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert_eq!(session_type, None);
+    }
 
     #[tokio::test]
     async fn close() -> Result<(), Box<dyn std::error::Error>> {
