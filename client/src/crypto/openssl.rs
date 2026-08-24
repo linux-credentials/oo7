@@ -81,6 +81,10 @@ pub(crate) fn iv_len() -> usize {
     cipher.iv_len().unwrap()
 }
 
+pub(crate) fn key_len() -> usize {
+    Cipher::from_nid(ENC_ALG).unwrap().key_len()
+}
+
 pub(crate) fn generate_private_key() -> Result<Zeroizing<Vec<u8>>, super::Error> {
     let cipher = Cipher::from_nid(ENC_ALG).unwrap();
     let mut buf = Zeroizing::new(vec![0; cipher.key_len()]);

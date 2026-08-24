@@ -19,7 +19,7 @@ use tokio::{
 };
 
 use super::{Error, LockedItem, UnlockedKeyring, api};
-use crate::Secret;
+use crate::{Key, Secret};
 
 /// A locked keyring that requires a secret to unlock.
 #[derive(Debug)]
@@ -42,6 +42,17 @@ impl LockedKeyring {
     pub async fn validate_secret(&self, secret: &Secret) -> Result<bool, Error> {
         let keyring = self.keyring.read().await;
         Ok(keyring.validate_secret(secret)?)
+    }
+
+    /// Validate that an already-derived key can decrypt this keyring.
+    ///
+    /// Empty keyrings return `true` because they contain no item with which to
+    /// authenticate the key. Callers that persist keys for empty keyrings must
+    /// bind them to the exact keyring file separately.
+    pub async fn validate_key(&self, key: &Key) -> Result<bool, Error> {
+        key.validate_file_key()?;
+        let keyring = self.keyring.read().await;
+        Ok(keyring.items.is_empty() || keyring.items.iter().any(|item| item.is_valid(Some(key))))
     }
 
     pub async fn validate_unencrypted(&self) -> Result<bool, Error> {
@@ -78,6 +89,24 @@ impl LockedKeyring {
         self.unlock_inner(secret, true).await
     }
 
+    /// Unlocks a keyring with an already-derived key and validates it.
+    ///
+    /// An exact-length [`Key::new`] value is treated as direct key material and
+    /// may be used for subsequent writes. The caller is responsible for
+    /// supplying a key with sufficient entropy.
+    ///
+    /// Empty keyrings cannot authenticate the key and therefore accept any key
+    /// of the required length, matching [`Self::validate_key`].
+    pub async fn unlock_with_key(self, key: Key) -> Result<UnlockedKeyring, Error> {
+        let key = key.into_file_key()?;
+        {
+            let inner_keyring = self.keyring.read().await;
+            Self::validate_items(&inner_keyring, &key)?;
+        }
+
+        Ok(self.into_unlocked(Some(Arc::new(key)), None))
+    }
+
     /// Unlocks a keyring without validating it
     ///
     /// # Safety
@@ -100,52 +129,52 @@ impl LockedKeyring {
             let inner_keyring = self.keyring.read().await;
 
             let key = inner_keyring.derive_key(&secret)?;
-
-            let mut n_broken_items = 0;
-            let mut n_valid_items = 0;
-            for encrypted_item in &inner_keyring.items {
-                if encrypted_item.is_valid(Some(&key)) {
-                    n_valid_items += 1;
-                } else {
-                    n_broken_items += 1;
-                }
-            }
-
-            drop(inner_keyring);
-
-            if n_valid_items == 0 && n_broken_items != 0 {
-                #[cfg(feature = "tracing")]
-                tracing::error!("Keyring cannot be decrypted. Invalid secret.");
-                return Err(Error::IncorrectSecret);
-            } else if n_broken_items > n_valid_items {
-                #[cfg(feature = "tracing")]
-                {
-                    tracing::warn!(
-                        "The file contains {n_broken_items} broken items and {n_valid_items} valid ones."
-                    );
-                    tracing::info!(
-                        "Please switch to `UnlockedKeyring::load_unchecked` to load the keyring without the secret validation.
-                        `Keyring::delete_broken_items` can be used to remove them or alternatively with `oo7-cli --repair`."
-                    );
-                }
-                return Err(Error::PartiallyCorruptedKeyring {
-                    valid_items: n_valid_items,
-                    broken_items: n_broken_items,
-                });
-            }
+            Self::validate_items(&inner_keyring, &key)?;
 
             Some(Arc::new(key))
         } else {
             None
         };
 
-        Ok(UnlockedKeyring {
+        Ok(self.into_unlocked(key, Some(Arc::new(secret))))
+    }
+
+    fn validate_items(keyring: &api::Keyring, key: &Key) -> Result<(), Error> {
+        let (n_valid_items, n_broken_items) =
+            keyring.items.iter().fold((0, 0), |(valid, broken), item| {
+                if item.is_valid(Some(key)) {
+                    (valid + 1, broken)
+                } else {
+                    (valid, broken + 1)
+                }
+            });
+
+        if n_valid_items == 0 && n_broken_items != 0 {
+            #[cfg(feature = "tracing")]
+            tracing::error!("Keyring cannot be decrypted. Invalid key material.");
+            Err(Error::IncorrectSecret)
+        } else if n_broken_items > n_valid_items {
+            #[cfg(feature = "tracing")]
+            tracing::warn!(
+                "The file contains {n_broken_items} broken items and {n_valid_items} valid ones."
+            );
+            Err(Error::PartiallyCorruptedKeyring {
+                valid_items: n_valid_items,
+                broken_items: n_broken_items,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn into_unlocked(self, key: Option<Arc<Key>>, secret: Option<Arc<Secret>>) -> UnlockedKeyring {
+        UnlockedKeyring {
             keyring: self.keyring,
             path: self.path,
             mtime: self.mtime,
             key: Mutex::new(key),
-            secret: Mutex::new(Some(Arc::new(secret))),
-        })
+            secret: Mutex::new(secret),
+        }
     }
 
     /// Unlocks a keyring without a secret, for unencrypted keyrings.
@@ -162,13 +191,7 @@ impl LockedKeyring {
         }
         drop(inner_keyring);
 
-        Ok(UnlockedKeyring {
-            keyring: self.keyring,
-            path: self.path,
-            mtime: self.mtime,
-            key: Mutex::new(None),
-            secret: Mutex::new(None),
-        })
+        Ok(self.into_unlocked(None, None))
     }
 
     /// Load a keyring from a file path.

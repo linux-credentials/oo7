@@ -73,6 +73,10 @@ pub(crate) fn iv_len() -> usize {
     DecAlg::iv_size()
 }
 
+pub(crate) fn key_len() -> usize {
+    DecAlg::key_size()
+}
+
 pub(crate) fn generate_private_key() -> Result<Zeroizing<Vec<u8>>, super::Error> {
     let mut key = vec![0u8; EncAlg::key_size()];
     getrandom::fill(&mut key)?;
