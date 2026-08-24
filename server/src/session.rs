@@ -252,12 +252,12 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    use super::SessionType;
     use crate::tests::TestServiceSetup;
 
-    use super::SessionType;
-
     /// Spawn a short-lived child process with a controlled environment, to
-    /// exercise `SessionType::from_environ` against a real `/proc/<pid>/environ`.
+    /// exercise `SessionType::from_environ` against a real
+    /// `/proc/<pid>/environ`.
     fn spawn_with_env(vars: &[(&str, &str)]) -> std::process::Child {
         let mut command = std::process::Command::new("sleep");
         command.arg("5").env_clear();
