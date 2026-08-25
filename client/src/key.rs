@@ -3,7 +3,11 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{crypto, file};
 
-/// A key.
+/// Cryptographic key material.
+///
+/// File-keyring APIs accept already-derived values constructed with
+/// [`Self::new`]. The same type also exposes the low-level key-exchange helpers
+/// and zvariant conversions used by the D-Bus backend.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Key {
     key: Vec<u8>,
