@@ -134,9 +134,7 @@ impl Service {
                 .file_name()?
                 .to_str()?
                 .to_owned();
-            let session_type = SessionType::from_logind(pid)
-                .await
-                .unwrap_or(SessionType::Unspecified);
+            let session_type = SessionType::detect(pid).await;
             Some(PeerInfo::new(pid, name, session_type))
         }
         .await;
