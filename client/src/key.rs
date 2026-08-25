@@ -3,7 +3,11 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{crypto, file};
 
-/// A key.
+/// Cryptographic key material.
+///
+/// File-keyring APIs accept already-derived values constructed with
+/// [`Self::new`]. Key bytes are redacted from [`Debug`](std::fmt::Debug)
+/// output.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Key {
     key: Vec<u8>,
@@ -34,6 +38,11 @@ impl AsMut<[u8]> for Key {
 }
 
 impl Key {
+    /// Construct a key from bytes.
+    ///
+    /// The key's source strength is unknown. File-keyring APIs accept an
+    /// exact-length value as direct key material, so callers are responsible
+    /// for supplying sufficient entropy.
     pub const fn new(key: Vec<u8>) -> Self {
         Self::new_with_strength(key, Err(file::WeakKeyError::StrengthUnknown))
     }
@@ -47,6 +56,26 @@ impl Key {
         strength: Result<(), file::WeakKeyError>,
     ) -> Self {
         Self { key, strength }
+    }
+
+    pub(crate) fn validate_file_key(&self) -> Result<(), file::Error> {
+        let expected = crypto::key_len();
+        if self.key.len() == expected {
+            Ok(())
+        } else {
+            Err(file::Error::InvalidKeyLength {
+                expected,
+                actual: self.key.len(),
+            })
+        }
+    }
+
+    pub(crate) fn into_file_key(mut self) -> Result<Self, file::Error> {
+        self.validate_file_key()?;
+        if matches!(self.strength, Err(file::WeakKeyError::StrengthUnknown)) {
+            self.strength = Ok(());
+        }
+        Ok(self)
     }
 
     pub fn generate_private_key() -> Result<Self, crypto::Error> {

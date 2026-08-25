@@ -22,11 +22,7 @@ mod key;
 mod mac;
 mod migration;
 
-#[cfg(feature = "unstable")]
-#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 pub use key::Key;
-#[cfg(not(feature = "unstable"))]
-pub(crate) use key::Key;
 pub use mac::Mac;
 
 #[cfg(not(feature = "unstable"))]

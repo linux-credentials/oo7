@@ -50,6 +50,12 @@ impl UnlockedKeyring {
         Self::load_inner(path, secret, true).await
     }
 
+    /// Load and unlock a keyring with an already-derived key.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(key), fields(path = ?path.as_ref())))]
+    pub async fn load_with_key(path: impl AsRef<Path>, key: Key) -> Result<Self, Error> {
+        LockedKeyring::load(path).await?.unlock_with_key(key).await
+    }
+
     /// Load from a keyring file without validating the secret.
     ///
     /// # Arguments
@@ -243,6 +249,13 @@ impl UnlockedKeyring {
         Self::open_with_paths(v1_path, v0_path, secret).await
     }
 
+    /// Open a named current-format keyring with an already-derived key.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(key)))]
+    pub async fn open_with_key(name: &str, key: Key) -> Result<Self, Error> {
+        let v1_path = api::Keyring::path(name, api::MAJOR_VERSION)?;
+        Self::load_with_key(v1_path, key).await
+    }
+
     /// Open or create a keyring at a specific data directory.
     ///
     /// This is useful for tests and cases where you want explicit control over
@@ -287,6 +300,18 @@ impl UnlockedKeyring {
         let v1_path = api::Keyring::path_at(&data_dir, name, api::MAJOR_VERSION);
         let v0_path = api::Keyring::path_at(&data_dir, name, api::LEGACY_MAJOR_VERSION);
         Self::open_with_paths(v1_path, v0_path, secret).await
+    }
+
+    /// Open a named current-format keyring at a specific data directory with
+    /// an already-derived key.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(key), fields(data_dir = ?data_dir.as_ref())))]
+    pub async fn open_at_with_key(
+        data_dir: impl AsRef<Path>,
+        name: &str,
+        key: Key,
+    ) -> Result<Self, Error> {
+        let v1_path = api::Keyring::path_at(&data_dir, name, api::MAJOR_VERSION);
+        Self::load_with_key(v1_path, key).await
     }
 
     /// Lock the keyring.
@@ -586,6 +611,13 @@ impl UnlockedKeyring {
     /// Returns `None` when no secret is set (unencrypted keyring).
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     async fn derive_key(&self) -> Result<Option<Arc<Key>>, crate::crypto::Error> {
+        {
+            let key_lock = self.key.lock().await;
+            if key_lock.is_some() {
+                return Ok(key_lock.clone());
+            }
+        }
+
         let keyring = Arc::clone(&self.keyring);
         let secret_lock = self.secret.lock().await;
         let secret = match secret_lock.as_ref() {

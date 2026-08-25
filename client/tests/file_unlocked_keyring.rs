@@ -2,13 +2,287 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(feature = "async-std")]
 use async_std::fs;
-use oo7::{Secret, XDG_SCHEMA_ATTRIBUTE, file::*};
+use oo7::{Key, Secret, XDG_SCHEMA_ATTRIBUTE, file::*};
 use tempfile::tempdir;
 #[cfg(feature = "tokio")]
 use tokio::fs;
 
 fn strong_key() -> Secret {
     Secret::from([1, 2].into_iter().cycle().take(64).collect::<Vec<_>>())
+}
+
+#[tokio::test]
+async fn validate_and_unlock_with_key() -> Result<(), Error> {
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("key-unlock.keyring");
+    let keyring = UnlockedKeyring::load(&path, Some(strong_key())).await?;
+    keyring
+        .create_item("Item", &[("account", "alice")], "secret", false)
+        .await?;
+    let key = keyring.key().await?.unwrap();
+    let key = key.as_ref().as_ref().to_vec();
+    drop(keyring);
+
+    let locked = LockedKeyring::load(&path).await?;
+    assert!(!locked.validate_key(&Key::new(vec![9; 16])).await?);
+    assert!(locked.validate_key(&Key::new(key.clone())).await?);
+
+    let locked_with_wrong_key = LockedKeyring::load(&path).await?;
+    assert!(matches!(
+        locked_with_wrong_key
+            .unlock_with_key(Key::new(vec![9; 16]))
+            .await,
+        Err(Error::IncorrectSecret)
+    ));
+
+    let keyring = locked.unlock_with_key(Key::new(key.clone())).await?;
+    let cached_key = keyring.key().await?.unwrap();
+    assert_eq!(cached_key.as_ref().as_ref(), key);
+    let item = keyring.lookup_item(&[("account", "alice")]).await?.unwrap();
+    assert_eq!(item.secret(), Secret::text("secret"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn malformed_file_keys_are_rejected() -> Result<(), Error> {
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("invalid-key-length.keyring");
+    let keyring = UnlockedKeyring::load(&path, Some(strong_key())).await?;
+    keyring
+        .create_item("Item", &[("account", "alice")], "secret", false)
+        .await?;
+    drop(keyring);
+
+    for actual in [0, 15, 17, 32] {
+        let locked = LockedKeyring::load(&path).await?;
+        assert!(matches!(
+            locked.validate_key(&Key::new(vec![0; actual])).await,
+            Err(Error::InvalidKeyLength {
+                expected: 16,
+                actual: error_actual,
+            }) if error_actual == actual
+        ));
+
+        let locked = LockedKeyring::load(&path).await?;
+        assert!(matches!(
+            locked.unlock_with_key(Key::new(vec![0; actual])).await,
+            Err(Error::InvalidKeyLength {
+                expected: 16,
+                actual: error_actual,
+            }) if error_actual == actual
+        ));
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn key_only_lifecycle_and_password_change() -> Result<(), Error> {
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("key-lifecycle.keyring");
+    let original_secret = strong_key();
+    let keyring = UnlockedKeyring::load(&path, Some(original_secret.clone())).await?;
+    keyring
+        .create_item("Original", &[("id", "original")], "before", false)
+        .await?;
+    let key = keyring.key().await?.unwrap();
+    let key = key.as_ref().as_ref().to_vec();
+    drop(keyring);
+
+    let keyring = UnlockedKeyring::load_with_key(&path, Key::new(key.clone())).await?;
+    let cached_key = keyring.key().await?.unwrap();
+    assert_eq!(cached_key.as_ref().as_ref(), key);
+    let mut original = keyring.lookup_item(&[("id", "original")]).await?.unwrap();
+    original.set_secret("after");
+    keyring.replace_item_index(0, &original).await?;
+    keyring
+        .create_item("Added", &[("id", "added")], "created", false)
+        .await?;
+    drop(keyring);
+
+    let locked = LockedKeyring::load(&path).await?;
+    assert!(locked.validate_key(&Key::new(key.clone())).await?);
+    let keyring = UnlockedKeyring::load_with_key(&path, Key::new(key)).await?;
+    assert_eq!(
+        keyring
+            .lookup_item(&[("id", "original")])
+            .await?
+            .unwrap()
+            .secret(),
+        Secret::text("after")
+    );
+    assert_eq!(
+        keyring
+            .lookup_item(&[("id", "added")])
+            .await?
+            .unwrap()
+            .secret(),
+        Secret::text("created")
+    );
+
+    let replacement_secret = Secret::blob(vec![3; 64]);
+    keyring.change_secret(replacement_secret.clone()).await?;
+    drop(keyring);
+
+    assert!(
+        UnlockedKeyring::load(&path, Some(original_secret))
+            .await
+            .is_err()
+    );
+    let keyring = UnlockedKeyring::load(&path, Some(replacement_secret)).await?;
+    assert_eq!(keyring.n_items().await, 2);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn empty_keyring_cannot_authenticate_key() -> Result<(), Error> {
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("empty-key.keyring");
+    let keyring = UnlockedKeyring::load(&path, Some(strong_key())).await?;
+    assert!(keyring.key().await?.is_some());
+    keyring.write().await?;
+    drop(keyring);
+
+    let locked = LockedKeyring::load(&path).await?;
+    assert!(locked.validate_key(&Key::new(vec![9; 16])).await?);
+    let keyring = locked.unlock_with_key(Key::new(vec![9; 16])).await?;
+    keyring
+        .create_item("Rebound", &[("id", "rebound")], "secret", false)
+        .await?;
+    drop(keyring);
+
+    assert!(
+        UnlockedKeyring::load(&path, Some(strong_key()))
+            .await
+            .is_err()
+    );
+    let keyring = UnlockedKeyring::load_with_key(&path, Key::new(vec![9; 16])).await?;
+    assert_eq!(keyring.n_items().await, 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn unencrypted_keyring_requires_no_key() -> Result<(), Error> {
+    let temp_dir = tempdir()?;
+    let path = temp_dir.path().join("unencrypted-key.keyring");
+    let keyring = UnlockedKeyring::load(&path, None).await?;
+    keyring
+        .create_item("Plain", &[("id", "plain")], "secret", false)
+        .await?;
+    drop(keyring);
+
+    let locked = LockedKeyring::load(&path).await?;
+    assert!(!locked.validate_key(&Key::new(vec![1; 16])).await?);
+    assert!(matches!(
+        locked.unlock_with_key(Key::new(vec![1; 16])).await,
+        Err(Error::IncorrectSecret)
+    ));
+
+    let keyring = LockedKeyring::load(&path)
+        .await?
+        .unlock_unencrypted()
+        .await?;
+    assert!(keyring.key().await?.is_none());
+    assert_eq!(keyring.n_items().await, 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn open_at_with_key_uses_named_current_keyring() -> Result<(), Error> {
+    let data_dir = tempdir()?;
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "named", Some(strong_key())).await?;
+    keyring
+        .create_item("Named", &[("id", "named")], "secret", false)
+        .await?;
+    let key = keyring.key().await?.unwrap();
+    let key = key.as_ref().as_ref().to_vec();
+    drop(keyring);
+
+    let keyring =
+        UnlockedKeyring::open_at_with_key(data_dir.path(), "named", Key::new(key)).await?;
+    assert_eq!(
+        keyring
+            .lookup_item(&[("id", "named")])
+            .await?
+            .unwrap()
+            .secret(),
+        Secret::text("secret")
+    );
+
+    let direct_key = vec![4; 16];
+    let direct = UnlockedKeyring::open_at_with_key(
+        data_dir.path(),
+        "new-with-key",
+        Key::new(direct_key.clone()),
+    )
+    .await?;
+    direct
+        .create_item("Direct", &[("id", "direct")], "secret", false)
+        .await?;
+    drop(direct);
+    let direct =
+        UnlockedKeyring::open_at_with_key(data_dir.path(), "new-with-key", Key::new(direct_key))
+            .await?;
+    assert_eq!(direct.n_items().await, 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn open_at_with_key_ignores_legacy_keyring() -> Result<(), Error> {
+    let data_dir = tempdir()?;
+    let keyrings_dir = data_dir.path().join("keyrings");
+    fs::create_dir_all(&keyrings_dir).await?;
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures")
+        .join("default.keyring");
+    let v0_path = keyrings_dir.join("named.keyring");
+    let v1_path = keyrings_dir.join("v1").join("named.keyring");
+    fs::copy(fixture, &v0_path).await?;
+    let v0_bytes = fs::read(&v0_path).await?;
+    let v0_metadata = fs::metadata(&v0_path).await?;
+    assert!(!v1_path.exists());
+
+    let key = vec![1; 16];
+    let keyring =
+        UnlockedKeyring::open_at_with_key(data_dir.path(), "named", Key::new(key.clone())).await?;
+    assert_eq!(keyring.n_items().await, 0);
+    assert!(!v1_path.exists());
+    assert_eq!(fs::read(&v0_path).await?, v0_bytes);
+    assert_eq!(fs::metadata(&v0_path).await?.len(), v0_metadata.len());
+    assert_eq!(
+        fs::metadata(&v0_path).await?.modified()?,
+        v0_metadata.modified()?
+    );
+
+    keyring
+        .create_item("Direct", &[("id", "direct")], "secret", false)
+        .await?;
+    drop(keyring);
+    assert!(v1_path.exists());
+    assert_eq!(fs::read(&v0_path).await?, v0_bytes);
+
+    let keyring =
+        UnlockedKeyring::open_at_with_key(data_dir.path(), "named", Key::new(key)).await?;
+    assert_eq!(
+        keyring
+            .lookup_item(&[("id", "direct")])
+            .await?
+            .unwrap()
+            .secret(),
+        Secret::text("secret")
+    );
+    drop(keyring);
+    assert!(matches!(
+        UnlockedKeyring::open_at_with_key(data_dir.path(), "named", Key::new(vec![2; 16])).await,
+        Err(Error::IncorrectSecret)
+    ));
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -923,6 +1197,8 @@ async fn partially_corrupted_keyring_error() -> Result<(), Error> {
     keyring
         .create_item("valid2", &[("attr", "value2")], "password2", false)
         .await?;
+    let key = keyring.key().await?.unwrap();
+    let key = key.as_ref().as_ref().to_vec();
     drop(keyring);
 
     // Load_unchecked with wrong password and add 3 broken items (more than valid)
@@ -938,6 +1214,16 @@ async fn partially_corrupted_keyring_error() -> Result<(), Error> {
         .create_item("broken3", &[("bad", "value3")], "bad_password3", false)
         .await?;
     drop(keyring);
+
+    let locked = LockedKeyring::load(&keyring_path).await?;
+    assert!(locked.validate_key(&Key::new(key.clone())).await?);
+    assert!(matches!(
+        locked.unlock_with_key(Key::new(key)).await,
+        Err(Error::PartiallyCorruptedKeyring {
+            valid_items: 2,
+            broken_items: 3,
+        })
+    ));
 
     let result = UnlockedKeyring::load(&keyring_path, Some(correct_secret)).await;
     assert!(result.is_err());
