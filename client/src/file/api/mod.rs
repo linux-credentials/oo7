@@ -333,6 +333,32 @@ impl Keyring {
         Ok(self.items.iter().any(|item| item.is_valid(Some(&key))))
     }
 
+    pub(super) fn validate_key(&self, key: &Key) -> bool {
+        self.items.is_empty() || self.items.iter().any(|item| item.is_valid(Some(key)))
+    }
+
+    pub(super) fn validate_items(&self, key: &Key) -> Result<(), Error> {
+        let (valid_items, broken_items) =
+            self.items.iter().fold((0, 0), |(valid, broken), item| {
+                if item.is_valid(Some(key)) {
+                    (valid + 1, broken)
+                } else {
+                    (valid, broken + 1)
+                }
+            });
+
+        if valid_items == 0 && broken_items != 0 {
+            Err(Error::IncorrectSecret)
+        } else if broken_items > valid_items {
+            Err(Error::PartiallyCorruptedKeyring {
+                valid_items,
+                broken_items,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn validate_unencrypted(&self) -> bool {
         self.items.iter().all(|item| item.is_valid(None))
     }

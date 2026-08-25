@@ -56,7 +56,7 @@ impl LockedKeyring {
     pub async fn validate_key(&self, key: &Key) -> Result<bool, Error> {
         key.validate_file_key()?;
         let keyring = self.keyring.read().await;
-        Ok(keyring.items.is_empty() || keyring.items.iter().any(|item| item.is_valid(Some(key))))
+        Ok(keyring.validate_key(key))
     }
 
     pub async fn validate_unencrypted(&self) -> Result<bool, Error> {
@@ -105,7 +105,7 @@ impl LockedKeyring {
         let key = key.into_file_key()?;
         let validation = {
             let inner_keyring = self.keyring.read().await;
-            Self::validate_items(&inner_keyring, &key)
+            inner_keyring.validate_items(&key)
         };
         #[cfg(feature = "tracing")]
         Self::log_validation_error(&validation, false);
@@ -136,7 +136,7 @@ impl LockedKeyring {
             let inner_keyring = self.keyring.read().await;
 
             let key = inner_keyring.derive_key(&secret)?;
-            let validation = Self::validate_items(&inner_keyring, &key);
+            let validation = inner_keyring.validate_items(&key);
             #[cfg(feature = "tracing")]
             Self::log_validation_error(&validation, true);
             validation?;
@@ -147,28 +147,6 @@ impl LockedKeyring {
         };
 
         Ok(self.into_unlocked(key, Some(Arc::new(secret))))
-    }
-
-    fn validate_items(keyring: &api::Keyring, key: &Key) -> Result<(), Error> {
-        let (n_valid_items, n_broken_items) =
-            keyring.items.iter().fold((0, 0), |(valid, broken), item| {
-                if item.is_valid(Some(key)) {
-                    (valid + 1, broken)
-                } else {
-                    (valid, broken + 1)
-                }
-            });
-
-        if n_valid_items == 0 && n_broken_items != 0 {
-            Err(Error::IncorrectSecret)
-        } else if n_broken_items > n_valid_items {
-            Err(Error::PartiallyCorruptedKeyring {
-                valid_items: n_valid_items,
-                broken_items: n_broken_items,
-            })
-        } else {
-            Ok(())
-        }
     }
 
     #[cfg(feature = "tracing")]

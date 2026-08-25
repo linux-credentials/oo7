@@ -17,8 +17,6 @@ pub enum Error {
     WeakKey(WeakKeyError),
     /// A file encryption key has an unexpected length.
     InvalidKeyLength { expected: usize, actual: usize },
-    /// A legacy keyring cannot be migrated without its source secret.
-    LegacyMigrationRequiresSecret,
     /// Input/Output.
     Io(std::io::Error),
     /// Unexpected MAC digest value.
@@ -122,9 +120,6 @@ impl std::fmt::Display for Error {
                 f,
                 "Invalid file key length: expected {expected} bytes, got {actual}",
             ),
-            Self::LegacyMigrationRequiresSecret => {
-                write!(f, "Migrating a legacy keyring requires its source secret")
-            }
             Self::Io(e) => write!(f, "IO error {e}"),
             Self::MacError => write!(f, "Mac digest is not equal to the expected value"),
             Self::ChecksumMismatch => write!(f, "Incorrect secret or corrupted keyring data"),

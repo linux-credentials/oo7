@@ -233,20 +233,54 @@ async fn open_at_with_key_uses_named_current_keyring() -> Result<(), Error> {
 }
 
 #[tokio::test]
-async fn open_at_with_key_does_not_shadow_legacy_keyring() -> Result<(), Error> {
+async fn open_at_with_key_ignores_legacy_keyring() -> Result<(), Error> {
     let data_dir = tempdir()?;
     let keyrings_dir = data_dir.path().join("keyrings");
     fs::create_dir_all(&keyrings_dir).await?;
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures")
         .join("default.keyring");
-    fs::copy(fixture, keyrings_dir.join("named.keyring")).await?;
+    let v0_path = keyrings_dir.join("named.keyring");
+    let v1_path = keyrings_dir.join("v1").join("named.keyring");
+    fs::copy(fixture, &v0_path).await?;
+    let v0_bytes = fs::read(&v0_path).await?;
+    let v0_metadata = fs::metadata(&v0_path).await?;
+    assert!(!v1_path.exists());
 
+    let key = vec![1; 16];
+    let keyring =
+        UnlockedKeyring::open_at_with_key(data_dir.path(), "named", Key::new(key.clone())).await?;
+    assert_eq!(keyring.n_items().await, 0);
+    assert!(!v1_path.exists());
+    assert_eq!(fs::read(&v0_path).await?, v0_bytes);
+    assert_eq!(fs::metadata(&v0_path).await?.len(), v0_metadata.len());
+    assert_eq!(
+        fs::metadata(&v0_path).await?.modified()?,
+        v0_metadata.modified()?
+    );
+
+    keyring
+        .create_item("Direct", &[("id", "direct")], "secret", false)
+        .await?;
+    drop(keyring);
+    assert!(v1_path.exists());
+    assert_eq!(fs::read(&v0_path).await?, v0_bytes);
+
+    let keyring =
+        UnlockedKeyring::open_at_with_key(data_dir.path(), "named", Key::new(key)).await?;
+    assert_eq!(
+        keyring
+            .lookup_item(&[("id", "direct")])
+            .await?
+            .unwrap()
+            .secret(),
+        Secret::text("secret")
+    );
+    drop(keyring);
     assert!(matches!(
-        UnlockedKeyring::open_at_with_key(data_dir.path(), "named", Key::new(vec![1; 16])).await,
-        Err(Error::LegacyMigrationRequiresSecret)
+        UnlockedKeyring::open_at_with_key(data_dir.path(), "named", Key::new(vec![2; 16])).await,
+        Err(Error::IncorrectSecret)
     ));
-    assert!(!keyrings_dir.join("v1").join("named.keyring").exists());
 
     Ok(())
 }

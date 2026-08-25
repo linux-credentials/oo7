@@ -6,8 +6,8 @@ use crate::{crypto, file};
 /// Cryptographic key material.
 ///
 /// File-keyring APIs accept already-derived values constructed with
-/// [`Self::new`]. The same type also exposes the low-level key-exchange helpers
-/// and zvariant conversions used by the D-Bus backend.
+/// [`Self::new`]. Key bytes are redacted from [`Debug`](std::fmt::Debug)
+/// output.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Key {
     key: Vec<u8>,

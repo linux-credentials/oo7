@@ -233,17 +233,6 @@ impl UnlockedKeyring {
         }
     }
 
-    async fn open_with_key_paths(
-        v1_path: PathBuf,
-        v0_path: PathBuf,
-        key: Key,
-    ) -> Result<Self, Error> {
-        if !v1_path.exists() && v0_path.exists() {
-            return Err(Error::LegacyMigrationRequiresSecret);
-        }
-        Self::load_with_key(v1_path, key).await
-    }
-
     /// Open a keyring with given name from the default directory.
     ///
     /// This function will automatically migrate the keyring to the
@@ -261,15 +250,10 @@ impl UnlockedKeyring {
     }
 
     /// Open a named current-format keyring with an already-derived key.
-    ///
-    /// Unlike [`Self::open`], this cannot migrate a legacy keyring because the
-    /// source secret required by the legacy key derivation is unavailable. It
-    /// returns [`Error::LegacyMigrationRequiresSecret`] instead.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(key)))]
     pub async fn open_with_key(name: &str, key: Key) -> Result<Self, Error> {
         let v1_path = api::Keyring::path(name, api::MAJOR_VERSION)?;
-        let v0_path = api::Keyring::path(name, api::LEGACY_MAJOR_VERSION)?;
-        Self::open_with_key_paths(v1_path, v0_path, key).await
+        Self::load_with_key(v1_path, key).await
     }
 
     /// Open or create a keyring at a specific data directory.
@@ -320,8 +304,6 @@ impl UnlockedKeyring {
 
     /// Open a named current-format keyring at a specific data directory with
     /// an already-derived key.
-    ///
-    /// This does not migrate legacy keyrings; see [`Self::open_with_key`].
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(key), fields(data_dir = ?data_dir.as_ref())))]
     pub async fn open_at_with_key(
         data_dir: impl AsRef<Path>,
@@ -329,8 +311,7 @@ impl UnlockedKeyring {
         key: Key,
     ) -> Result<Self, Error> {
         let v1_path = api::Keyring::path_at(&data_dir, name, api::MAJOR_VERSION);
-        let v0_path = api::Keyring::path_at(&data_dir, name, api::LEGACY_MAJOR_VERSION);
-        Self::open_with_key_paths(v1_path, v0_path, key).await
+        Self::load_with_key(v1_path, key).await
     }
 
     /// Lock the keyring.
