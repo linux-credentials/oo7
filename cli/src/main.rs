@@ -422,8 +422,8 @@ impl Commands {
                 "Only one of application ID or keyring can be specified at a time.",
             ));
         }
-        // We get the secret first from the app-id, then if the --keyring is set, we try
-        // to use the --secret variable.
+        // We get the secret first from the app-id, then if the --keyring is
+        // set, we try to use the --secret variable.
         let (secret, path) = if let Some(app_id) = &args.app_id {
             let default_collection = service.default_collection().await?;
             let secret = if let Some(item) = default_collection
@@ -438,8 +438,8 @@ impl Commands {
                 ));
             };
 
-            // That is the path used by libsecret/oo7, how does it work with kwallet for
-            // example?
+            // That is the path used by libsecret/oo7, how does it work with
+            // kwallet for example?
             let path = home().map(|mut path| {
                 path.push(".var/app");
                 path.push(app_id.to_string());

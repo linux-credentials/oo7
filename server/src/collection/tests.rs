@@ -48,7 +48,8 @@ async fn create_item_plain() -> Result<(), Box<dyn std::error::Error>> {
 async fn create_item_encrypted() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::encrypted_session(true).await?;
 
-    // Create an encrypted item using the helper (automatically handles encryption)
+    // Create an encrypted item using the helper (automatically handles
+    // encryption)
     let item = setup
         .create_item(
             "Test Encrypted Item",

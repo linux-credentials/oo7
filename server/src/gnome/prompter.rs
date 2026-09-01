@@ -412,7 +412,8 @@ impl GNOMEPrompterCallback {
             Some(raw_secret)
         };
 
-        // Handle each role differently based on what validation/preparation is needed
+        // Handle each role differently based on what validation/preparation is
+        // needed
         match prompt.role() {
             PromptRole::Unlock => {
                 if prompt.on_unlock_collection(secret).await? {

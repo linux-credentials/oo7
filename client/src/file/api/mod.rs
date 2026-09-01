@@ -322,8 +322,8 @@ impl Keyring {
     pub fn validate_secret(&self, secret: &Secret) -> Result<bool, crypto::Error> {
         let key = self.derive_key(secret)?;
 
-        // If there are no items, we can't validate (empty keyrings are valid with any
-        // password)
+        // If there are no items, we can't validate (empty keyrings are valid
+        // with any password)
         if self.items.is_empty() {
             return Ok(true);
         }

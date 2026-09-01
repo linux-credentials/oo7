@@ -368,7 +368,8 @@ mod tests {
             )
             .await?;
 
-        // Verify the password was changed by locking and unlocking with new password
+        // Verify the password was changed by locking and unlocking with new
+        // password
         setup
             .service_api
             .lock(std::slice::from_ref(&collection_path), None)
@@ -428,7 +429,8 @@ mod tests {
         // Wait for prompt to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-        // Verify the password was changed by locking and unlocking with new password
+        // Verify the password was changed by locking and unlocking with new
+        // password
         setup
             .service_api
             .lock(std::slice::from_ref(&collection_path), None)
@@ -463,7 +465,8 @@ mod tests {
         let collection_path: zbus::zvariant::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
-        // Create an item first so that the unlock validation has something to validate
+        // Create an item first so that the unlock validation has something to
+        // validate
         let dbus_secret = setup.create_dbus_secret("item-secret")?;
 
         let mut attributes = std::collections::HashMap::new();

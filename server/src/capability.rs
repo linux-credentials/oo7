@@ -100,7 +100,8 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
                 tracing::warn!("Failed to set PR_SET_KEEPCAPS");
             }
 
-            // Requires CAP_SETPCAP -> must run before reducing the bounding set drops it
+            // Requires CAP_SETPCAP -> must run before reducing the bounding set
+            // drops it
             if let Err(err) = set_bounding_set(CapabilitySet::IPC_LOCK) {
                 tracing::debug!("Could not set bounding set (may not be supported): {}", err);
             }
@@ -126,8 +127,9 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
             )?;
         }
         CapabilityState::None => {
-            // CAP_IPC_LOCK bypasses RLIMIT_MEMLOCK, but is not required when the
-            // process has a sufficient limit. Always try mlockall below.
+            // CAP_IPC_LOCK bypasses RLIMIT_MEMLOCK, but is not required when
+            // the process has a sufficient limit. Always try
+            // mlockall below.
             tracing::warn!("No process capabilities; relying on RLIMIT_MEMLOCK to lock memory");
         }
         CapabilityState::Partial => {
@@ -139,7 +141,8 @@ pub fn drop_unnecessary_capabilities() -> Result<(), rustix::io::Errno> {
                 );
             }
 
-            // Clear bounding set if we have CAP_SETPCAP (do this before dropping caps)
+            // Clear bounding set if we have CAP_SETPCAP (do this before
+            // dropping caps)
             if caps.effective.contains(CapabilitySet::SETPCAP)
                 && let Err(err) = set_bounding_set(CapabilitySet::IPC_LOCK)
             {

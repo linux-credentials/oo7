@@ -589,7 +589,8 @@ impl Collection {
                     let unlocked = match unlock_result {
                         Ok(unlocked) => unlocked,
                         Err(err) => {
-                            // Reload the locked keyring from disk before returning error
+                            // Reload the locked keyring from disk before
+                            // returning error
                             if let Some(path) = keyring_path
                                 && let Ok(reloaded) = oo7::file::LockedKeyring::load(&path).await
                             {

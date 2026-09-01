@@ -30,7 +30,8 @@ async fn prompt_called_twice_error_impl(
     // Give the prompt a moment to register the callback
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-    // Second call to prompt() should fail with "callback is ongoing already" error
+    // Second call to prompt() should fail with "callback is ongoing already"
+    // error
     assert!(
         prompt.prompt(None).await.is_err(),
         "Second call to prompt() should fail"
@@ -66,7 +67,8 @@ async fn prompt_not_found_error() -> Result<(), Box<dyn std::error::Error>> {
 
     assert!(!prompt_path.is_empty(), "Should have a prompt path");
 
-    // Remove the prompt from the service before MockPrompter tries to process it
+    // Remove the prompt from the service before MockPrompter tries to process
+    // it
     setup.server.remove_prompt(&prompt_path).await;
 
     // Manually serve a callback to trigger the error path

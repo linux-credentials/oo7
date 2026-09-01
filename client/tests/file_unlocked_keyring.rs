@@ -535,8 +535,8 @@ async fn delete_broken_items() -> Result<(), Error> {
     let keyring_path = v1_dir.join("default.keyring");
     fs::copy(&fixture_path, &keyring_path).await?;
 
-    // 1) Load with the correct password and add several valid items. This ensures
-    //    valid_items > broken_items that we'll add later.
+    // 1) Load with the correct password and add several valid items. This
+    //    ensures valid_items > broken_items that we'll add later.
     let keyring = UnlockedKeyring::load(&keyring_path, Some(Secret::blob("test"))).await?;
     for i in 0..VALID_TO_ADD {
         keyring
@@ -1201,7 +1201,8 @@ async fn partially_corrupted_keyring_error() -> Result<(), Error> {
     let key = key.as_ref().as_ref().to_vec();
     drop(keyring);
 
-    // Load_unchecked with wrong password and add 3 broken items (more than valid)
+    // Load_unchecked with wrong password and add 3 broken items (more than
+    // valid)
     let wrong_secret = Secret::from("wrong-password-long-enough".as_bytes());
     let keyring = unsafe { UnlockedKeyring::load_unchecked(&keyring_path, wrong_secret).await? };
     keyring
@@ -1329,7 +1330,8 @@ async fn set_attributes() -> Result<(), Error> {
     // Write the updated item back to the keyring at index 0
     keyring.replace_item_index(0, &item).await?;
 
-    // Now retrieve the item again from the keyring to verify the changes persisted
+    // Now retrieve the item again from the keyring to verify the changes
+    // persisted
     let mut items = keyring.items().await?;
     assert_eq!(items.len(), 1);
     let item = items.remove(0);

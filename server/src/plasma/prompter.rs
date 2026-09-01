@@ -213,7 +213,8 @@ impl PlasmaPrompterCallback {
         prompt: &Prompt,
         secret: Option<Secret>,
     ) -> Result<CallbackAction, ServiceError> {
-        // Handle each role differently based on what validation/preparation is needed
+        // Handle each role differently based on what validation/preparation is
+        // needed
         match prompt.role() {
             PromptRole::Unlock => {
                 if prompt.on_unlock_collection(secret).await? {

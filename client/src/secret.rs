@@ -35,7 +35,8 @@ impl FromStr for ContentType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // MIME types may include parameters, which are irrelevant to ContentType.
+        // MIME types may include parameters, which are irrelevant to
+        // ContentType.
         let media_type = s
             .split_once(';')
             .map_or(s, |(media_type, _)| media_type)

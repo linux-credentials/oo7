@@ -720,8 +720,8 @@ async fn lock_item_in_unlocked_collection() -> Result<(), Box<dyn std::error::Er
         "Collection should be unlocked"
     );
 
-    // When collection is unlocked, locking an item should happen directly without a
-    // prompt
+    // When collection is unlocked, locking an item should happen directly
+    // without a prompt
     let locked = setup.service_api.lock(&[item.inner().path()], None).await?;
 
     assert_eq!(locked.len(), 1, "Should have locked 1 item");
@@ -1064,8 +1064,8 @@ async fn create_collection_dismissed_plasma() -> Result<(), Box<dyn std::error::
 async fn complete_collection_creation_no_pending() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    // Try to complete collection creation with a prompt path that has no pending
-    // collection
+    // Try to complete collection creation with a prompt path that has no
+    // pending collection
     let fake_prompt_path = ObjectPath::try_from("/org/freedesktop/secrets/prompt/p999").unwrap();
     let secret = Secret::from("test-password-long-enough");
 

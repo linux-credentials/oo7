@@ -112,8 +112,9 @@ impl Service {
         } else {
             #[cfg(any(test, feature = "test-util"))]
             {
-                // For p2p test connections, use a dummy sender since p2p connections
-                // don't have a bus to assign unique names
+                // For p2p test connections, use a dummy sender since p2p
+                // connections don't have a bus to assign unique
+                // names
                 UniqueName::try_from(":p2p.test").unwrap()
             }
             #[cfg(not(any(test, feature = "test-util")))]
@@ -273,7 +274,8 @@ impl Service {
                 // The prompter will handle secret validation
                 // Here we just perform the unlock operation
 
-                // First, check for pending migrations (without holding collections lock)
+                // First, check for pending migrations (without holding
+                // collections lock)
                 for object in &not_unlocked {
                     let collection = {
                         let collections = service.collections.lock().await;
@@ -281,7 +283,8 @@ impl Service {
                     };
 
                     if let Some(collection) = collection {
-                        // Check if this collection has a pending migration by name
+                        // Check if this collection has a pending migration by
+                        // name
                         let migration_opt = {
                             let pending = service.pending_migrations.lock().await;
                             pending.get(collection.name()).cloned()
@@ -294,7 +297,8 @@ impl Service {
                                 migration_name
                             );
 
-                            // Attempt migration with the provided secret (no locks held)
+                            // Attempt migration with the provided secret (no
+                            // locks held)
                             match migration.migrate(&service.data_dir, secret.as_ref()).await {
                                 Ok(unlocked_keyring) => {
                                     tracing::info!(
@@ -421,7 +425,8 @@ impl Service {
                     match item.get_secret(session.clone()).await {
                         Ok((secret,)) => {
                             secrets.insert(item.path().clone().into(), secret);
-                            // To avoid iterating through all the remaining collections, if the
+                            // To avoid iterating through all the remaining
+                            // collections, if the
                             // items secrets are already retrieved.
                             if secrets.len() == items.len() {
                                 break 'outer;
@@ -884,8 +889,8 @@ impl Service {
                 }
             }
 
-            // Migration failed or no secret - create locked placeholder and register for
-            // pending migration
+            // Migration failed or no secret - create locked placeholder and
+            // register for pending migration
             tracing::debug!(
                 "Creating locked placeholder for KWallet keyring '{name}', will migrate on unlock",
             );
@@ -1223,9 +1228,11 @@ impl Service {
                     break;
                 } else if let Some(item) = collection.item_from_path(&resolved).await {
                     found = true;
-                    // If collection is locked, can't perform any item lock/unlock operations
+                    // If collection is locked, can't perform any item
+                    // lock/unlock operations
                     if collection_locked {
-                        // Unlocking an item when collection is locked requires unlocking collection
+                        // Unlocking an item when collection is locked requires
+                        // unlocking collection
                         if !locked {
                             with_prompt.push(resolved.clone());
                         } else {
@@ -1421,7 +1428,8 @@ impl Service {
         let signal_emitter = self.signal_emitter(service_path)?;
         Service::collection_created(&signal_emitter, &collection_path).await?;
 
-        // Emit PropertiesChanged for Collections property to invalidate client cache
+        // Emit PropertiesChanged for Collections property to invalidate client
+        // cache
         self.collections_changed(&signal_emitter).await?;
 
         tracing::info!(
@@ -1538,7 +1546,8 @@ impl Service {
                     let label = migration.label();
                     let alias = migration.alias();
 
-                    // Create a collection for this migrated keyring with unique label and alias
+                    // Create a collection for this migrated keyring with unique
+                    // label and alias
                     let (unique_label, unique_alias) = {
                         let collections = self.collections.lock().await;
                         Self::make_unique_label_and_alias(&collections, label, alias)

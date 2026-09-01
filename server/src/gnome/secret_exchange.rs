@@ -45,8 +45,9 @@ pub fn handshake(private_key: &Key, exchange: &str) -> Result<Key, crypto::Error
 pub fn retrieve(exchange: &str, aes_key: &Key) -> Option<oo7::Secret> {
     let decoded = decode(exchange)?;
 
-    // If we cancel an ongoing prompt call, the final exchange won't have the secret
-    // or IV. The following is to avoid `Option::unwrap()` on a `None` value
+    // If we cancel an ongoing prompt call, the final exchange won't have the
+    // secret or IV. The following is to avoid `Option::unwrap()` on a
+    // `None` value
     let secret = decoded.get(SECRET)?;
 
     // AES ciphertext must be a multiple of 16 bytes (block size)

@@ -454,8 +454,8 @@ impl MockPrompterService {
             // Small delay to ensure callback is fully registered
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-            // Call PromptReady directly without building a proxy (avoids introspection
-            // issues in p2p)
+            // Call PromptReady directly without building a proxy (avoids
+            // introspection issues in p2p)
             tracing::debug!(
                 "MockPrompter: calling PromptReady with None on {}",
                 callback_path
@@ -493,8 +493,8 @@ impl MockPrompterService {
             callback,
             type_
         );
-        // This is called by GNOMEPrompterCallback.prompter_init() with the server's
-        // exchange
+        // This is called by GNOMEPrompterCallback.prompter_init() with the
+        // server's exchange
         let callback_path = callback.to_owned();
         let unlock_password = self.unlock_password.clone();
         let should_accept = self.should_accept.clone();
@@ -788,7 +788,8 @@ impl MockPrompterServicePlasma {
                         break;
                     }
 
-                    // Wait for Retry signal before sending next secret from the queue
+                    // Wait for Retry signal before sending next secret from the
+                    // queue
                     signal_stream.next().await;
                 }
             });
@@ -816,7 +817,8 @@ impl MockPrompterServicePlasma {
             "MockPrompterServicePlasma: create_collection_prompt called for {}",
             request
         );
-        // Behavior is identical for both prompts. Visualization would be different.
+        // Behavior is identical for both prompts. Visualization would be
+        // different.
         self.unlock_collection_prompt(
             request,
             window_id,

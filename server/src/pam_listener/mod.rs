@@ -398,7 +398,8 @@ impl PamListener {
                     tracing::info!("Successfully changed password for collection: {}", path);
                     changed_count += 1;
 
-                    // Re-lock the collection if it was locked before we unlocked it
+                    // Re-lock the collection if it was locked before we
+                    // unlocked it
                     drop(keyring_guard);
                     if was_locked {
                         if let Err(e) = collection.set_locked(true, None).await {
