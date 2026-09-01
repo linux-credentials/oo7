@@ -23,7 +23,7 @@ use crate::{
     socket::send_secret_to_daemon,
 };
 
-const STASHED_PASSWORD_KEY: &[u8] = b"oo7_stashed_password\0";
+const STASHED_PASSWORD_KEY: &CStr = c"oo7_stashed_password";
 
 /// Get the username
 unsafe fn get_user(pamh: *mut pam_handle_t) -> Result<String, c_int> {
@@ -164,7 +164,7 @@ pub unsafe extern "C" fn pam_sm_authenticate(
     let ret = unsafe {
         ffi::pam_set_data(
             pamh,
-            STASHED_PASSWORD_KEY.as_ptr() as *const std::os::raw::c_char,
+            STASHED_PASSWORD_KEY.as_ptr(),
             password_ptr,
             Some(cleanup_password),
         )
@@ -238,13 +238,7 @@ pub unsafe extern "C" fn pam_sm_open_session(
     }
 
     let mut password_ptr: *const std::os::raw::c_void = std::ptr::null();
-    let ret = unsafe {
-        ffi::pam_get_data(
-            pamh,
-            STASHED_PASSWORD_KEY.as_ptr() as *const std::os::raw::c_char,
-            &mut password_ptr,
-        )
-    };
+    let ret = unsafe { ffi::pam_get_data(pamh, STASHED_PASSWORD_KEY.as_ptr(), &mut password_ptr) };
 
     if ret != PAM_SUCCESS || password_ptr.is_null() {
         tracing::debug!("No stashed password found in session");
