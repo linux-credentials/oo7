@@ -488,10 +488,10 @@ impl Commands {
                 };
 
                 let conn = zbus::Connection::session().await?;
-                conn.request_name("org.freedesktop.secrets.CliPrompter")
-                    .await?;
                 conn.object_server()
                     .at("/org/freedesktop/secrets/CliPrompter", CliPrompter)
+                    .await?;
+                conn.request_name("org.freedesktop.secrets.CliPrompter")
                     .await?;
 
                 (Some(conn), Keyring::Collection(collection))
