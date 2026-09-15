@@ -2372,9 +2372,9 @@ dependencies = [
 
 [[package]]
 name = "zgvariant"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63e0c3a9bc69ca818b5281575046ec75ff9a0f66fdfe35f4b94abbdc85968e83"
+checksum = "8dca004bfe7d03c9e68ae443e63b2c25c69ac2fcfc9c4f47bc3546ff04c102cc"
 dependencies = [
  "endi",
  "serde",
@@ -2387,9 +2387,9 @@ dependencies = [
 
 [[package]]
 name = "zgvariant_derive"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a67e56f4a51d6e02ab7faa5237abbaaa1fa4358af8d0cadfede6663e59211d1f"
+checksum = "1a5cbf304b5650a6be838eae8b9d400a84f7003faa1f68862c085f28d0357cb2"
 dependencies = [
  "proc-macro2",
  "quote",
