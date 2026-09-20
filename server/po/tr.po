@@ -1,0 +1,89 @@
+# Turkish translation for oo7.
+# Copyright (C) 2026 oo7's COPYRIGHT HOLDER
+# This file is distributed under the same license as the oo7 package.
+# Muhammet Kara <muhammetk@gmail.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: oo7 main\n"
+"Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
+"POT-Creation-Date: 2026-09-20 15:37+0000\n"
+"PO-Revision-Date: 2026-09-20 19:37+0300\n"
+"Last-Translator: Muhammet Kara <muhammetk@gmail.com>\n"
+"Language-Team: Turkish <takim@gnome.org.tr>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Gtranslator 49.0\n"
+
+#: ../src/gnome/prompter.rs:151
+msgid "Change Keyring Password"
+msgstr "Anahtarlık Parolasını Değiştir"
+
+#: ../src/gnome/prompter.rs:152
+#, rust-format
+msgid "Choose a new password for the “{}” keyring"
+msgstr "“{}” anahtarlığı için yeni bir parola seçin"
+
+#: ../src/gnome/prompter.rs:155 ../src/prompt/mod.rs:408
+#, rust-format
+msgid ""
+"An application wants to change the password for the “{}” keyring. Choose the "
+"new password you want to use for it."
+msgstr ""
+"Bir uygulama “{}” anahtarlığının parolasını değiştirmek istiyor. Bu "
+"anahtarlık için kullanmak istediğiniz yeni parolayı seçin."
+
+#: ../src/gnome/prompter.rs:160
+msgid "This operation cannot be reverted"
+msgstr "Bu işlem geri döndürülemez"
+
+#: ../src/gnome/prompter.rs:166
+msgid "Continue"
+msgstr "Devam Et"
+
+#: ../src/gnome/prompter.rs:167 ../src/gnome/prompter.rs:193
+#: ../src/gnome/prompter.rs:215
+msgid "Cancel"
+msgstr "İptal"
+
+#: ../src/gnome/prompter.rs:177
+msgid "Unlock Keyring"
+msgstr "Anahtarlık Kilidini Aç"
+
+#: ../src/gnome/prompter.rs:178
+msgid "Authentication required"
+msgstr "Kimlik doğrulama gerekli"
+
+#: ../src/gnome/prompter.rs:181 ../src/prompt/mod.rs:398
+#, rust-format
+msgid "An application wants access to the keyring “{}”, but it is locked"
+msgstr ""
+"Bir uygulama “{}” anahtarlığına erişmek istiyor, fakat anahtarlık kilitli"
+
+#: ../src/gnome/prompter.rs:192
+msgid "Unlock"
+msgstr "Kilidi Aç"
+
+#: ../src/gnome/prompter.rs:199
+msgid "New Keyring Password"
+msgstr "Yeni Anahtarlık Parolası"
+
+#: ../src/gnome/prompter.rs:200
+msgid "Choose password for new keyring"
+msgstr "Yeni anahtarlık için parola seçin"
+
+#: ../src/gnome/prompter.rs:203 ../src/prompt/mod.rs:403
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called “{}”. Choose the "
+"password you want to use for it."
+msgstr ""
+"Bir uygulama “{}” adlı yeni bir anahtarlık oluşturmak istiyor. Bunun için "
+"kullanmak istediğiniz parolayı seçin."
+
+#: ../src/gnome/prompter.rs:214
+msgid "Create"
+msgstr "Oluştur"
