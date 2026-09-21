@@ -16,7 +16,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.7.0-alpha"
+version = "0.7.0-beta"
 edition = "2024"
 authors = ["Bilal Elmoussaoui", "Sophie Herold", "Maximiliano Sandoval"]
 keywords = ["keyring", "secret", "service", "portal", "keychain"]
