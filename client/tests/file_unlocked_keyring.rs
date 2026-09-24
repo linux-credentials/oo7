@@ -824,6 +824,26 @@ async fn item_replacement_behavior() -> Result<(), Error> {
 }
 
 #[tokio::test]
+async fn item_replacement_ignores_secret_content_type() -> Result<(), Error> {
+    let temp_dir = tempdir().unwrap();
+    let keyring_path = temp_dir.path().join("replace_content_type.keyring");
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(strong_key())).await?;
+    let attrs = &[("app", "browser"), ("account", "alice")];
+
+    keyring
+        .create_item("Imported", attrs, Secret::blob(b"old"), false)
+        .await?;
+    keyring
+        .create_item("Updated", attrs, Secret::text("new"), true)
+        .await?;
+
+    let items = keyring.search_items(attrs).await?;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].secret(), Secret::text("new"));
+    Ok(())
+}
+
+#[tokio::test]
 async fn item_replacement_matches_attributes() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("replace_attributes_test.keyring");

@@ -5,7 +5,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use zgvariant::Type;
 
 use super::{Error, UnlockedItem};
-use crate::{AsAttributes, Key, Mac, crypto};
+use crate::{AsAttributes, CONTENT_TYPE_ATTRIBUTE, Key, Mac, crypto};
 
 #[derive(Deserialize, Serialize, Type, Debug, Clone, Zeroize, ZeroizeOnDrop)]
 pub(crate) struct EncryptedItem {
@@ -42,8 +42,12 @@ impl EncryptedItem {
     }
 
     pub fn matches_exact(&self, attributes: &impl AsAttributes, key: Option<&Key>) -> bool {
-        let attributes = attributes.as_attributes();
-        self.hashed_attributes.len() == attributes.len() && self.matches(&attributes, key)
+        // The secret's content type does not identify the item.
+        let mut attributes = attributes.as_attributes();
+        attributes.remove(CONTENT_TYPE_ATTRIBUTE);
+        let count = self.hashed_attributes.len()
+            - usize::from(self.hashed_attributes.contains_key(CONTENT_TYPE_ATTRIBUTE));
+        count == attributes.len() && self.matches(&attributes, key)
     }
 
     fn try_decrypt_inner(&self, key: Option<&Key>) -> Result<UnlockedItem, Error> {
