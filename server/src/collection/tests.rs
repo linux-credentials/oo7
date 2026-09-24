@@ -228,6 +228,26 @@ async fn create_item_with_replace() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
+async fn create_item_with_replace_after_content_type_change()
+-> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let attributes = &[("application", "browser"), ("account", "alice")];
+
+    // A migrated GNOME Keyring item can be a blob, even when a subsequent
+    // secret-tool store sends the same attributes with a text/plain secret.
+    setup
+        .create_item("Imported", attributes, oo7::Secret::blob(b"old"), false)
+        .await?;
+    let replacement = setup
+        .create_item("Updated", attributes, oo7::Secret::text("new"), true)
+        .await?;
+
+    assert_eq!(setup.collections[0].items().await?.len(), 1);
+    assert_eq!(replacement.secret(&setup.session).await?.value(), b"new");
+    Ok(())
+}
+
+#[tokio::test]
 async fn create_item_with_replace_matches_attributes() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
