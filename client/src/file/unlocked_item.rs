@@ -65,11 +65,13 @@ impl UnlockedItem {
     /// Check whether the attribute maps match.
     pub fn matches_exact(&self, attributes: &impl AsAttributes) -> bool {
         // The secret's content type does not identify the item.
-        let mut current = self.attributes.clone();
-        current.remove(CONTENT_TYPE_ATTRIBUTE);
-        let mut requested = attributes.as_attributes();
-        requested.remove(CONTENT_TYPE_ATTRIBUTE);
-        current == requested
+        let requested = attributes.as_search_attributes();
+        let count = self.attributes.len()
+            - usize::from(self.attributes.contains_key(CONTENT_TYPE_ATTRIBUTE));
+        count == requested.len()
+            && requested
+                .iter()
+                .all(|(key, value)| self.attributes.get(key) == Some(value))
     }
 
     /// Retrieve the item attributes as a typed schema.

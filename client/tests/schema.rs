@@ -133,6 +133,13 @@ async fn dont_match_name_excludes_schema_from_search() {
         Some("alice")
     );
     assert_eq!(search_attrs.get("port").map(String::as_str), Some("8080"));
+
+    // Exact replacement matching still includes the schema identity.
+    let replacement_attrs = schema.as_search_attributes();
+    assert_eq!(
+        replacement_attrs.get("xdg:schema").map(String::as_str),
+        Some("org.example.DontMatch")
+    );
 }
 
 #[tokio::test]
