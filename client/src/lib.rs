@@ -64,6 +64,12 @@ pub const CONTENT_TYPE_ATTRIBUTE: &str = "xdg:content-type";
 pub trait AsAttributes {
     fn as_attributes(&self) -> HashMap<String, String>;
 
+    fn as_search_attributes(&self) -> HashMap<String, String> {
+        let mut attributes = self.as_attributes();
+        attributes.remove(CONTENT_TYPE_ATTRIBUTE);
+        attributes
+    }
+
     fn search_attributes(&self) -> HashMap<String, String> {
         self.as_attributes()
     }

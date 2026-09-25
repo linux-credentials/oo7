@@ -43,8 +43,7 @@ impl EncryptedItem {
 
     pub fn matches_exact(&self, attributes: &impl AsAttributes, key: Option<&Key>) -> bool {
         // The secret's content type does not identify the item.
-        let mut attributes = attributes.as_attributes();
-        attributes.remove(CONTENT_TYPE_ATTRIBUTE);
+        let attributes = attributes.as_search_attributes();
         let count = self.hashed_attributes.len()
             - usize::from(self.hashed_attributes.contains_key(CONTENT_TYPE_ATTRIBUTE));
         count == attributes.len() && self.matches(&attributes, key)
