@@ -184,8 +184,6 @@ pub enum WeakKeyError {
     IterationCountTooLow(u32),
     /// Avoid attack on existing files
     SaltTooShort(usize),
-    /// Just not secure enough to store password
-    PasswordTooShort(usize),
     /// Should not occur
     ///
     /// Used by [`dbus`](crate::dbus) module that does not currently
@@ -200,9 +198,6 @@ impl std::fmt::Display for WeakKeyError {
         match self {
             Self::IterationCountTooLow(count) => write!(f, "Iteration count too low: {count}"),
             Self::SaltTooShort(length) => write!(f, "Salt too short: {length}"),
-            Self::PasswordTooShort(length) => {
-                write!(f, "Password too short: {length}")
-            }
             Self::StrengthUnknown => write!(f, "Strength unknown"),
         }
     }

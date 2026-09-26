@@ -11,7 +11,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use super::{FILE_HEADER, FILE_HEADER_LEN};
 use crate::{
     AsAttributes, Secret, crypto,
-    file::{Error, UnlockedItem, WeakKeyError},
+    file::{Error, UnlockedItem},
 };
 
 pub const MAJOR_VERSION: u8 = 0;
@@ -29,7 +29,6 @@ impl Keyring {
     pub fn decrypt_items(self, secret: &Secret) -> Result<Vec<UnlockedItem>, Error> {
         let (key, iv) = crypto::legacy_derive_key_and_iv(
             &**secret,
-            self.key_strength(secret),
             &self.salt,
             self.iteration_count.try_into().unwrap(),
         )?;
@@ -97,10 +96,6 @@ impl Keyring {
             Self::skip_acls(&mut cursor, acl_count)?;
         }
         Ok(items)
-    }
-
-    fn key_strength(&self, _secret: &[u8]) -> Result<(), WeakKeyError> {
-        Ok(())
     }
 
     fn read_byte_array<'a>(cursor: &mut Cursor<&'a [u8]>) -> Result<Option<&'a [u8]>, Error> {
