@@ -1,9 +1,8 @@
-use std::{collections::HashMap, fs::File, io::Write, sync::Arc};
+use std::{collections::HashMap, io::Write, os::unix::net::UnixStream, sync::Arc};
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 use base64::Engine;
 use oo7::{Secret, crypto, dbus};
-use rustix::net::{AddressFamily, SocketFlags, SocketType, socketpair};
 use tokio_stream::StreamExt;
 use zbus::zvariant::{Fd, ObjectPath, Optional, Value};
 
@@ -684,16 +683,12 @@ impl MockPrompterServicePlasma {
                 callback_path
             );
 
-            let (read_fd, write_fd) = socketpair(
-                AddressFamily::UNIX,
-                SocketType::STREAM,
-                SocketFlags::CLOEXEC | SocketFlags::NONBLOCK,
-                None,
-            )
-            .expect("Failed to create socketpair");
-            let mut file = File::from(write_fd);
-            file.write_all(secret.as_bytes()).unwrap();
-            drop(file); // Close write end to signal EOF
+            let (read_end, mut write_end) =
+                UnixStream::pair().expect("Failed to create socketpair");
+            read_end.set_nonblocking(true).unwrap();
+            write_end.set_nonblocking(true).unwrap();
+            write_end.write_all(secret.as_bytes()).unwrap();
+            drop(write_end); // Close write end to signal EOF
 
             connection
                 .call_method(
@@ -701,7 +696,7 @@ impl MockPrompterServicePlasma {
                     &callback_path,
                     Some("org.kde.secretprompter.request"),
                     "Accepted",
-                    &(Fd::Owned(read_fd)),
+                    &(Fd::Owned(read_end.into())),
                 )
                 .await?;
 
