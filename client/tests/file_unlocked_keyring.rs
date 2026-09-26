@@ -320,22 +320,25 @@ async fn delete() -> Result<(), Error> {
 }
 
 #[tokio::test]
-async fn write_with_weak_key() -> Result<(), Error> {
+async fn write_with_short_password() -> Result<(), Error> {
     let temp_dir = tempdir()?;
-    let path = temp_dir.path().join("write_with_weak_key.keyring");
+    let path = temp_dir.path().join("write_with_short_password.keyring");
 
-    let secret = Secret::from(vec![1, 2]);
-    let keyring = UnlockedKeyring::load(&path, Some(secret)).await?;
+    // Password policy is up to the caller, e.g. keyrings migrated from
+    // gnome-keyring can have any password.
+    let secret = Secret::from(vec![1]);
+    let keyring = UnlockedKeyring::load(&path, Some(secret.clone())).await?;
     let attributes: HashMap<&str, &str> = HashMap::default();
 
-    let result = keyring
+    keyring
         .create_item("label", &attributes, "my-password", false)
-        .await;
+        .await?;
+    keyring.write().await?;
 
-    assert!(matches!(
-        result,
-        Err(Error::WeakKey(WeakKeyError::PasswordTooShort(2)))
-    ));
+    let keyring = UnlockedKeyring::load(&path, Some(secret)).await?;
+    let items = keyring.items().await?;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].secret(), Secret::text("my-password"));
 
     Ok(())
 }

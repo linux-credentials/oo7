@@ -30,8 +30,6 @@ const DEFAULT_SALT_SIZE: usize = 32;
 
 const MIN_ITERATION_COUNT: u32 = 100000;
 const MIN_SALT_SIZE: usize = 32;
-// FIXME: choose a reasonable value
-const MIN_PASSWORD_LENGTH: usize = 4;
 
 const FILE_HEADER: &[u8] = b"GnomeKeyring\n\r\0\n";
 const FILE_HEADER_LEN: usize = FILE_HEADER.len();
@@ -101,13 +99,13 @@ impl Keyring {
         })
     }
 
-    pub fn key_strength(&self, secret: &[u8]) -> Result<(), WeakKeyError> {
+    /// Check the key derivation parameters stored in the file.
+    /// The password itself is not checked, its policy is up to the caller.
+    pub fn key_strength(&self) -> Result<(), WeakKeyError> {
         if self.iteration_count < MIN_ITERATION_COUNT {
             Err(WeakKeyError::IterationCountTooLow(self.iteration_count))
         } else if self.salt.len() < MIN_SALT_SIZE {
             Err(WeakKeyError::SaltTooShort(self.salt.len()))
-        } else if secret.len() < MIN_PASSWORD_LENGTH {
-            Err(WeakKeyError::PasswordTooShort(secret.len()))
         } else {
             Ok(())
         }
@@ -300,16 +298,7 @@ impl Keyring {
     pub fn derive_key(&self, secret: &Secret) -> Result<Key, crypto::Error> {
         crypto::derive_key(
             &**secret,
-            self.key_strength(secret),
-            &self.salt,
-            self.iteration_count.try_into().unwrap(),
-        )
-    }
-
-    pub(crate) fn derive_key_unchecked(&self, secret: &Secret) -> Result<Key, crypto::Error> {
-        crypto::derive_key(
-            &**secret,
-            Ok(()),
+            self.key_strength(),
             &self.salt,
             self.iteration_count.try_into().unwrap(),
         )
@@ -481,23 +470,18 @@ mod tests {
     async fn key_strength() -> Result<(), Error> {
         let mut keyring = Keyring::new()?;
         keyring.iteration_count = 50000; // Less than MIN_ITERATION_COUNT (100000)
-        let secret = Secret::from("test-password-that-is-long-enough");
-        let result = keyring.key_strength(&secret);
+        let result = keyring.key_strength();
         assert!(matches!(
             result,
             Err(WeakKeyError::IterationCountTooLow(50000))
         ));
 
-        let keyring = Keyring::new()?;
-        let secret = Secret::from("ab");
-        let result = keyring.key_strength(&secret);
-        assert!(matches!(result, Err(WeakKeyError::PasswordTooShort(2))));
-
         let mut keyring = Keyring::new()?;
         keyring.salt = vec![1, 2, 3, 4]; // Less than MIN_SALT_SIZE (32)
-        let secret = Secret::from("test-password-that-is-long-enough");
-        let result = keyring.key_strength(&secret);
+        let result = keyring.key_strength();
         assert!(matches!(result, Err(WeakKeyError::SaltTooShort(4))));
+
+        assert!(Keyring::new()?.key_strength().is_ok());
 
         Ok(())
     }
