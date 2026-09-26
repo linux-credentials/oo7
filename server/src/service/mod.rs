@@ -3,7 +3,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        Arc, OnceLock,
+        Arc, RwLock,
         atomic::{AtomicU32, Ordering},
     },
 };
@@ -54,7 +54,7 @@ pub struct Service {
     // Properties
     pub(crate) collections: Arc<Mutex<HashMap<OwnedObjectPath, Collection>>>,
     // Other attributes
-    connection: Arc<OnceLock<zbus::Connection>>,
+    connection: Arc<RwLock<Option<zbus::Connection>>>,
     // sessions mapped to their corresponding object path on the bus
     sessions: Arc<Mutex<HashMap<OwnedObjectPath, Session>>>,
     session_index: Arc<AtomicU32>,
@@ -124,7 +124,7 @@ impl Service {
         };
 
         let peer_info = async {
-            let proxy = zbus::fdo::DBusProxy::new(self.connection()).await.ok()?;
+            let proxy = zbus::fdo::DBusProxy::new(&self.connection()).await.ok()?;
             let pid = proxy
                 .get_connection_unix_process_id(sender.as_ref().into())
                 .await
@@ -544,7 +544,7 @@ impl Service {
         if is_graphical {
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             {
-                if in_plasma_environment(self.connection()).await {
+                if in_plasma_environment(&self.connection()).await {
                     return PrompterType::Plasma;
                 }
             }
@@ -561,7 +561,7 @@ impl Service {
     ) -> Self {
         Self {
             collections: Arc::new(Mutex::new(HashMap::new())),
-            connection: Arc::new(OnceLock::new()),
+            connection: Default::default(),
             sessions: Arc::new(Mutex::new(HashMap::new())),
             session_index: Arc::new(AtomicU32::new(0)),
             prompts: Arc::new(Mutex::new(HashMap::new())),
@@ -1029,7 +1029,7 @@ impl Service {
         secret: Option<Secret>,
         auto_create_default: bool,
     ) -> Result<(), Error> {
-        self.connection.set(connection.clone()).unwrap();
+        *self.connection.write().unwrap() = Some(connection.clone());
 
         let object_server = connection.object_server();
         let mut collections = self.collections.lock().await;
@@ -1137,7 +1137,8 @@ impl Service {
             .member("NameOwnerChanged")?
             .arg(2, "")?
             .build();
-        let mut stream = zbus::MessageStream::for_match_rule(rule, self.connection(), None).await?;
+        let mut stream =
+            zbus::MessageStream::for_match_rule(rule, &self.connection(), None).await?;
         while let Some(message) = stream.try_next().await? {
             let body = message.body();
             let Ok((_name, old_owner, new_owner)) =
@@ -1279,12 +1280,25 @@ impl Service {
         Ok((without_prompt, with_prompt))
     }
 
-    pub fn connection(&self) -> &zbus::Connection {
-        self.connection.get().unwrap()
+    pub fn connection(&self) -> zbus::Connection {
+        self.connection
+            .read()
+            .unwrap()
+            .clone()
+            .expect("service is not initialized")
     }
 
-    pub fn object_server(&self) -> &zbus::ObjectServer {
-        self.connection().object_server()
+    pub fn object_server(&self) -> zbus::ObjectServer {
+        self.connection().object_server().clone()
+    }
+
+    /// Drop the service's reference to its connection.
+    ///
+    /// The connection's object server holds the service, which in turn holds
+    /// the connection, so neither is ever freed otherwise.
+    #[cfg(any(test, feature = "test-util"))]
+    pub(crate) fn release_connection(&self) {
+        self.connection.write().unwrap().take();
     }
 
     async fn resolve_alias(
@@ -1469,7 +1483,7 @@ impl Service {
         P: TryInto<ObjectPath<'a>>,
         P::Error: Into<zbus::Error>,
     {
-        let signal_emitter = zbus::object_server::SignalEmitter::new(self.connection(), path)?;
+        let signal_emitter = zbus::object_server::SignalEmitter::new(&self.connection(), path)?;
 
         Ok(signal_emitter)
     }

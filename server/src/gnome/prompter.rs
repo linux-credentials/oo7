@@ -381,7 +381,7 @@ impl GNOMEPrompterCallback {
             ),
         };
 
-        let prompter = GNOMEPrompterProxy::new(connection).await?;
+        let prompter = GNOMEPrompterProxy::new(&connection).await?;
         let path = self.path.clone();
         let exchange = self.exchange.get().unwrap().clone();
         tokio::spawn(async move {
@@ -393,7 +393,7 @@ impl GNOMEPrompterCallback {
     }
 
     async fn prompter_done(&self, prompt: &Prompt, exchange: &str) -> Result<(), ServiceError> {
-        let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
+        let prompter = GNOMEPrompterProxy::new(&self.service.connection()).await?;
         let aes_key = secret_exchange::handshake(&self.private_key, exchange).map_err(|err| {
             custom_service_error(&format!(
                 "Failed to generate AES key for SecretExchange {err}."
@@ -462,7 +462,7 @@ impl GNOMEPrompterCallback {
 
     async fn prompter_dismissed(&self, prompt_path: OwnedObjectPath) -> Result<(), ServiceError> {
         let path = self.path.clone();
-        let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
+        let prompter = GNOMEPrompterProxy::new(&self.service.connection()).await?;
 
         tokio::spawn(async move { prompter.stop_prompting(&path).await });
         let signal_emitter = self.service.signal_emitter(prompt_path)?;

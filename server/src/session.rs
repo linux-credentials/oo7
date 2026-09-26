@@ -267,6 +267,8 @@ mod tests {
         command.spawn().expect("failed to spawn test child process")
     }
 
+    // Reads `/proc/<pid>/environ`
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn from_environ_detects_wayland() {
         let mut child = spawn_with_env(&[("WAYLAND_DISPLAY", "wayland-test")]);
@@ -279,6 +281,8 @@ mod tests {
         assert_eq!(session_type, Some(SessionType::Wayland));
     }
 
+    // Reads `/proc/<pid>/environ`
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn from_environ_detects_x11() {
         let mut child = spawn_with_env(&[("DISPLAY", ":0")]);

@@ -36,7 +36,7 @@ impl InternalInterface {
             )));
         };
 
-        let secret = DBusSecret::from_inner(self.service.connection(), secret)
+        let secret = DBusSecret::from_inner(&self.service.connection(), secret)
             .await
             .map_err(|err| {
                 custom_service_error(&format!("Failed to create session object {err}"))
