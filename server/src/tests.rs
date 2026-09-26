@@ -49,6 +49,12 @@ pub struct TestServiceSetup {
     _temp_dir: tempfile::TempDir,
 }
 
+impl Drop for TestServiceSetup {
+    fn drop(&mut self) {
+        self.server.release_connection();
+    }
+}
+
 impl TestServiceSetup {
     /// Get the default/Login collection
     pub async fn default_collection(

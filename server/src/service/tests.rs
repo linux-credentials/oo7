@@ -28,8 +28,8 @@ async fn open_session_encrypted() -> Result<(), Box<dyn std::error::Error>> {
         setup.server_public_key.is_some(),
         "Encrypted session should have server public key"
     );
-    let key = setup.aes_key.unwrap().clone();
-    assert_eq!((*key).as_ref().len(), 16, "AES key should be 16 bytes");
+    let key = setup.aes_key.as_deref().unwrap();
+    assert_eq!(key.as_ref().len(), 16, "AES key should be 16 bytes");
     Ok(())
 }
 
