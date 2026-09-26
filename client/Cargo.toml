@@ -24,6 +24,7 @@ endi.workspace = true
 futures-lite = { workspace = true, optional = true }
 futures-util.workspace = true
 getrandom = "0.4"
+hex = "0.4"
 hkdf = { workspace = true, optional = true }
 md-5 = { workspace = true, optional = true }
 num.workspace = true
