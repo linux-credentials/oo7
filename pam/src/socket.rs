@@ -418,7 +418,9 @@ mod tests {
 
         let message = PamMessage::unlock("testuser".to_string(), b"testpassword".to_vec());
 
-        let result = send_secret_to_daemon_async(message, 1000, false, Some(socket_path)).await;
+        // The socket must be owned by the given UID
+        let uid = unsafe { libc::getuid() };
+        let result = send_secret_to_daemon_async(message, uid, false, Some(socket_path)).await;
         assert!(result.is_ok());
 
         server.await?;
