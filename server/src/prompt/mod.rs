@@ -381,14 +381,14 @@ impl Prompt {
         self.service.object_server().at(&path, callback).await?;
         tracing::debug!("Prompt `{}` created.", self.path);
 
-        let prompter = GNOMEPrompterProxy::new(self.service.connection()).await?;
+        let prompter = GNOMEPrompterProxy::new(&self.service.connection()).await?;
         tokio::spawn(async move { prompter.begin_prompting(&path).await });
 
         Ok(())
     }
 
     async fn prompt_cli(&self) -> Result<(), ServiceError> {
-        let proxy = CliPrompterProxy::new(self.service.connection())
+        let proxy = CliPrompterProxy::new(&self.service.connection())
             .await
             .map_err(|e| custom_service_error(&format!("CLI prompter not available: {e}")))?;
 

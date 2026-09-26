@@ -174,7 +174,7 @@ impl PlasmaPrompterCallback {
         collection_name: &str,
     ) -> Result<(), ServiceError> {
         let path = self.path.clone();
-        let prompter = PlasmaPrompterProxy::new(self.service.connection()).await?;
+        let prompter = PlasmaPrompterProxy::new(&self.service.connection()).await?;
         let window_id = match window_id {
             Some(id) => id.to_string(),
             None => String::new(),
