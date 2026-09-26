@@ -162,41 +162,51 @@ impl UnlockedKeyring {
                 key: Default::default(),
                 secret: Mutex::new(secret.map(Arc::new)),
             }),
+            // Plain legacy keyrings don't have the binary file header
+            Err(Error::FileHeaderMismatch(_)) => Self::migrate_legacy(&content, path, secret),
             Err(Error::VersionMismatch(Some(version)))
                 if version[0] == api::LEGACY_MAJOR_VERSION =>
             {
-                #[cfg(feature = "tracing")]
-                tracing::debug!("Migrating from legacy keyring format");
-
-                let legacy_keyring = api::LegacyKeyring::try_from(content.as_slice())?;
-                let mut keyring = api::Keyring::new()?;
-
-                let key = secret
-                    .as_ref()
-                    .map(|s| keyring.derive_key_unchecked(s))
-                    .transpose()?;
-                let decrypted_items = legacy_keyring
-                    .decrypt_items(&secret.clone().unwrap_or_else(|| Secret::from(vec![])))?;
-
-                #[cfg(feature = "tracing")]
-                let _migrate_span =
-                    tracing::debug_span!("migrate_items", item_count = decrypted_items.len());
-
-                for item in decrypted_items {
-                    let encrypted_item = item.encrypt(key.as_ref())?;
-                    keyring.items.push(encrypted_item);
-                }
-
-                Ok(Self {
-                    keyring: Arc::new(RwLock::new(keyring)),
-                    path: Some(path.as_ref().to_path_buf()),
-                    mtime: Default::default(),
-                    key: Default::default(),
-                    secret: Mutex::new(secret.map(Arc::new)),
-                })
+                Self::migrate_legacy(&content, path, secret)
             }
             Err(err) => Err(err),
         }
+    }
+
+    fn migrate_legacy(
+        content: &[u8],
+        path: impl AsRef<Path>,
+        secret: Option<Secret>,
+    ) -> Result<Self, Error> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Migrating from legacy keyring format");
+
+        let legacy_keyring = api::LegacyKeyring::try_from(content)?;
+        let mut keyring = api::Keyring::new()?;
+
+        let key = secret
+            .as_ref()
+            .map(|s| keyring.derive_key_unchecked(s))
+            .transpose()?;
+        let decrypted_items = legacy_keyring
+            .decrypt_items(&secret.clone().unwrap_or_else(|| Secret::from(vec![])))?;
+
+        #[cfg(feature = "tracing")]
+        let _migrate_span =
+            tracing::debug_span!("migrate_items", item_count = decrypted_items.len());
+
+        for item in decrypted_items {
+            let encrypted_item = item.encrypt(key.as_ref())?;
+            keyring.items.push(encrypted_item);
+        }
+
+        Ok(Self {
+            keyring: Arc::new(RwLock::new(keyring)),
+            path: Some(path.as_ref().to_path_buf()),
+            mtime: Default::default(),
+            key: Default::default(),
+            secret: Mutex::new(secret.map(Arc::new)),
+        })
     }
 
     /// Helper for opening/creating keyrings with explicit paths.

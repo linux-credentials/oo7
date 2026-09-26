@@ -1398,6 +1398,37 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[tokio::test]
+async fn discover_plain_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+    let service = Service::new(temp_dir.path().to_path_buf(), None);
+
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/plain.keyring");
+    let v0_path = keyrings_dir.join("plain.keyring");
+    tokio::fs::copy(&fixture_path, &v0_path).await?;
+    // Not a keyring, should be skipped
+    tokio::fs::write(keyrings_dir.join("junk.keyring"), b"junk").await?;
+
+    // Plain keyrings are migrated even without a secret
+    let discovered = service.discover_keyrings(None).await?;
+    assert_eq!(discovered.len(), 1, "Only the plain keyring is discovered");
+
+    let (_, label, _, keyring) = &discovered[0];
+    assert_eq!(label, "Plain");
+    assert!(!keyring.is_locked(), "Plain keyring should be migrated");
+    assert!(service.pending_migrations.lock().await.is_empty());
+    assert!(keyrings_dir.join("v1/plain.keyring").exists());
+    assert!(crate::migration::stamp_path(&v0_path).exists());
+
+    Ok(())
+}
+
 #[cfg(feature = "kwallet_migration")]
 #[cfg(target_endian = "little")]
 #[tokio::test]

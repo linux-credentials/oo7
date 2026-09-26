@@ -1011,6 +1011,23 @@ impl Service {
 
                 Keyring::Locked(locked)
             }
+            // Plain legacy keyrings, written by gnome-keyring for an empty
+            // password, don't have the binary file header. Their migration
+            // doesn't need a secret, so if it fails this isn't a keyring.
+            Err(oo7::file::Error::FileHeaderMismatch(_)) => {
+                tracing::info!(
+                    "Found legacy plain keyring '{name}' at {}, migrating",
+                    path.display()
+                );
+
+                let migration = PendingMigration::V0 {
+                    name: name.to_owned(),
+                    path: path.to_path_buf(),
+                    label: label.clone(),
+                    alias: alias.clone(),
+                };
+                Keyring::Unlocked(migration.migrate(&self.data_dir, secret).await?)
+            }
             Err(e) => {
                 return Err(e.into());
             }
@@ -1297,6 +1314,7 @@ impl Service {
     /// The connection's object server holds the service, which in turn holds
     /// the connection, so neither is ever freed otherwise.
     #[cfg(any(test, feature = "test-util"))]
+    #[allow(dead_code)]
     pub(crate) fn release_connection(&self) {
         self.connection.write().unwrap().take();
     }
