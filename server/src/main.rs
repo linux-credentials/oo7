@@ -1,4 +1,5 @@
 #![deny(unsafe_code)]
+#[cfg(target_os = "linux")]
 mod capability;
 mod collection;
 mod error;
@@ -126,6 +127,7 @@ async fn read_secret_from_credentials_directory() -> Option<oo7::Secret> {
 }
 
 async fn inner_main(args: Args) -> Result<(), Error> {
+    #[cfg(target_os = "linux")]
     capability::drop_unnecessary_capabilities()?;
 
     let secret = if args.login {
