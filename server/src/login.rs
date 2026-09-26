@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 use std::{
     io::{self, IoSlice, Read},
     mem::MaybeUninit,
@@ -6,19 +7,24 @@ use std::{
     sync::LazyLock,
 };
 
+#[cfg(target_os = "linux")]
 use rustix::{
     fs::{MemfdFlags, SealFlags},
     net::{SendAncillaryBuffer, SendAncillaryMessage, SendFlags},
 };
 
+#[cfg(target_os = "linux")]
 const HELPER_TIMEOUT_SECS: u64 = 120;
+#[cfg(target_os = "linux")]
 const BINARY_NAME: &str = env!("CARGO_BIN_NAME");
 
+#[cfg(target_os = "linux")]
 pub static SOCKET_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     let uid = rustix::process::getuid().as_raw();
     PathBuf::from(format!("/run/user/{uid}/oo7-daemon-login.sock"))
 });
 
+#[cfg(target_os = "linux")]
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -151,3 +157,6 @@ fn main() {
     tracing::info!("Secret delivered to daemon");
     let _ = std::fs::remove_file(socket_path);
 }
+
+#[cfg(not(target_os = "linux"))]
+fn main() {}
