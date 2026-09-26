@@ -195,7 +195,6 @@ pub(crate) fn derive_key(
 
 pub(crate) fn legacy_derive_key_and_iv(
     secret: impl AsRef<[u8]>,
-    key_strength: Result<(), file::WeakKeyError>,
     salt: impl AsRef<[u8]>,
     iteration_count: usize,
 ) -> Result<(Key, Vec<u8>), super::Error> {
@@ -234,5 +233,6 @@ pub(crate) fn legacy_derive_key_and_iv(
     }
 
     let iv = buffer.split_off(cipher.key_len());
-    Ok((Key::new_with_strength(buffer, key_strength), iv))
+    // Only used to decrypt the legacy keyring, never to encrypt
+    Ok((Key::new_with_strength(buffer, Ok(())), iv))
 }
