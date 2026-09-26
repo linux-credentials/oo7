@@ -1,4 +1,4 @@
-//! Legacy GNOME Keyring file format low level API.
+//! Encrypted binary keyring format.
 
 use std::{
     collections::HashMap,
@@ -8,14 +8,11 @@ use std::{
 use endi::{Endian, ReadBytes};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use super::{Secret, UnlockedItem};
+use super::{FILE_HEADER, FILE_HEADER_LEN};
 use crate::{
-    AsAttributes, crypto,
-    file::{Error, WeakKeyError},
+    AsAttributes, Secret, crypto,
+    file::{Error, UnlockedItem, WeakKeyError},
 };
-
-const FILE_HEADER: &[u8] = b"GnomeKeyring\n\r\0\n";
-const FILE_HEADER_LEN: usize = FILE_HEADER.len();
 
 pub const MAJOR_VERSION: u8 = 0;
 pub const MINOR_VERSION: u8 = 0;

@@ -1139,6 +1139,7 @@ dependencies = [
  "futures-lite",
  "futures-util",
  "getrandom 0.4.3",
+ "hex",
  "hkdf",
  "md-5",
  "num",
