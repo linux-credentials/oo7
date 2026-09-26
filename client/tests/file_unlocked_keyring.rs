@@ -535,8 +535,8 @@ async fn delete_broken_items() -> Result<(), Error> {
     let keyring_path = v1_dir.join("default.keyring");
     fs::copy(&fixture_path, &keyring_path).await?;
 
-    // 1) Load with the correct password and add several valid items. This
-    //    ensures valid_items > broken_items that we'll add later.
+    // 1) Load with the correct password and add several valid items.
+    // This ensures valid_items > broken_items that we'll add later.
     let keyring = UnlockedKeyring::load(&keyring_path, Some(Secret::blob("test"))).await?;
     for i in 0..VALID_TO_ADD {
         keyring
