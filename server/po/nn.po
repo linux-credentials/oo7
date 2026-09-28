@@ -1,0 +1,87 @@
+# Norwegian Nynorsk translation for oo7.
+# Copyright (C) 2026 oo7's COPYRIGHT HOLDER
+# This file is distributed under the same license as the oo7 package.
+# Roy-Magne Mo <rmo@sunnmore.net>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: oo7 main\n"
+"Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
+"POT-Creation-Date: 2026-09-28 03:37+0000\n"
+"PO-Revision-Date: 2026-09-28 12:00+0200\n"
+"Last-Translator: Roy-Magne Mo <rmo@sunnmore.net>\n"
+"Language-Team: Norwegian Nynorsk <nn@li.org>\n"
+"Language: nn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: ../src/gnome/prompter.rs:151
+msgid "Change Keyring Password"
+msgstr "Endre passord for nøkkelring"
+
+#: ../src/gnome/prompter.rs:152
+#, rust-format
+msgid "Choose a new password for the “{}” keyring"
+msgstr "Vel eit nytt passord for nøkkelringen «{}»"
+
+#: ../src/gnome/prompter.rs:155 ../src/prompt/mod.rs:408
+#, rust-format
+msgid ""
+"An application wants to change the password for the “{}” keyring. Choose the "
+"new password you want to use for it."
+msgstr ""
+"Eit program vil endre passordet for nøkkelringen «{}». Vel det nye passordet"
+" du vil bruke for han."
+
+#: ../src/gnome/prompter.rs:160
+msgid "This operation cannot be reverted"
+msgstr "Denne handlinga kan ikkje gjerast om"
+
+#: ../src/gnome/prompter.rs:166
+msgid "Continue"
+msgstr "Hald fram"
+
+#: ../src/gnome/prompter.rs:167 ../src/gnome/prompter.rs:193
+#: ../src/gnome/prompter.rs:215
+msgid "Cancel"
+msgstr "Avbryt"
+
+#: ../src/gnome/prompter.rs:177
+msgid "Unlock Keyring"
+msgstr "Lås opp nøkkelring"
+
+#: ../src/gnome/prompter.rs:178
+msgid "Authentication required"
+msgstr "Autentisering er påkravd"
+
+#: ../src/gnome/prompter.rs:181 ../src/prompt/mod.rs:398
+#, rust-format
+msgid "An application wants access to the keyring “{}”, but it is locked"
+msgstr "Eit program vil ha tilgang til nøkkelringen «{}», men han er låst"
+
+#: ../src/gnome/prompter.rs:192
+msgid "Unlock"
+msgstr "Lås opp"
+
+#: ../src/gnome/prompter.rs:199
+msgid "New Keyring Password"
+msgstr "Nytt passord for nøkkelring"
+
+#: ../src/gnome/prompter.rs:200
+msgid "Choose password for new keyring"
+msgstr "Vel passord for ny nøkkelring"
+
+#: ../src/gnome/prompter.rs:203 ../src/prompt/mod.rs:403
+#, rust-format
+msgid ""
+"An application wants to create a new keyring called “{}”. Choose the "
+"password you want to use for it."
+msgstr ""
+"Eit program vil opprette ein ny nøkkelring som heiter «{}». Vel passordet du"
+" vil bruke for han."
+
+#: ../src/gnome/prompter.rs:214
+msgid "Create"
+msgstr "Opprett"
