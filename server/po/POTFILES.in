@@ -1,2 +1,3 @@
 src/gnome/prompter.rs
+src/plasma/prompter.rs
 src/prompt/mod.rs
