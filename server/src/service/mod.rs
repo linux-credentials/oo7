@@ -779,47 +779,55 @@ impl Service {
         let collections = self.collections.lock().await;
 
         for object in objects {
+            let resolved = Self::resolve_alias(&collections, object)
+                .await
+                .unwrap_or_else(|| object.clone());
+            let mut found = false;
             for (path, collection) in collections.iter() {
                 let collection_locked = collection.is_locked().await;
-                if *object == *path {
+                if resolved == *path {
+                    found = true;
                     if collection_locked == locked {
                         tracing::debug!(
                             "Collection: {} is already {}.",
-                            object,
+                            resolved,
                             if locked { "locked" } else { "unlocked" }
                         );
-                        without_prompt.push(object.clone());
+                        without_prompt.push(resolved.clone());
                     } else if locked {
                         // Locking never requires a prompt
                         collection.set_locked(true, None).await?;
-                        without_prompt.push(object.clone());
+                        without_prompt.push(resolved.clone());
                     } else {
                         // Unlocking may require a prompt
-                        with_prompt.push(object.clone());
+                        with_prompt.push(resolved.clone());
                     }
                     break;
-                } else if let Some(item) = collection.item_from_path(object).await {
+                } else if let Some(item) = collection.item_from_path(&resolved).await {
+                    found = true;
                     if locked == item.is_locked().await {
                         tracing::debug!(
                             "Item: {} is already {}.",
-                            object,
+                            resolved,
                             if locked { "locked" } else { "unlocked" }
                         );
-                        without_prompt.push(object.clone());
+                        without_prompt.push(resolved.clone());
                     // If the collection is unlocked, we can lock/unlock the
                     // item directly
                     } else if !collection_locked {
                         let keyring = collection.keyring.read().await;
                         item.set_locked(locked, keyring.as_ref().unwrap().as_unlocked())
                             .await?;
-                        without_prompt.push(object.clone());
+                        without_prompt.push(resolved.clone());
                     } else {
                         // Collection is locked, unlocking the item requires unlocking the
                         // collection
-                        with_prompt.push(object.clone());
+                        with_prompt.push(resolved.clone());
                     }
                     break;
                 }
+            }
+            if !found {
                 tracing::warn!("Object: {} does not exist.", object);
             }
         }
@@ -835,9 +843,31 @@ impl Service {
         self.connection().object_server()
     }
 
+    async fn resolve_alias(
+        collections: &HashMap<OwnedObjectPath, Collection>,
+        path: &ObjectPath<'_>,
+    ) -> Option<OwnedObjectPath> {
+        let alias = path.strip_prefix("/org/freedesktop/secrets/aliases/")?;
+        let alias_to_find = if alias == Self::LOGIN_ALIAS {
+            oo7::dbus::Service::DEFAULT_COLLECTION
+        } else {
+            alias
+        };
+        for (real_path, collection) in collections.iter() {
+            if collection.alias().await == alias_to_find {
+                return Some(real_path.clone());
+            }
+        }
+        None
+    }
+
     pub async fn collection_from_path(&self, path: &ObjectPath<'_>) -> Option<Collection> {
         let collections = self.collections.lock().await;
-        collections.get(path).cloned()
+        if let Some(collection) = collections.get(path).cloned() {
+            return Some(collection);
+        }
+        let resolved = Self::resolve_alias(&collections, path).await?;
+        collections.get(&resolved).cloned()
     }
 
     pub async fn session_index(&self) -> u32 {
