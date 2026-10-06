@@ -329,9 +329,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cargo-credential"
-version = "0.4.10"
+version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa57675b822ecda7f0be12eedbfabd890066271eedc7f2c45ed41e86e0f327a8"
+checksum = "5de74202293b2bc090da20d0b475aa74821caf0e901f29ba97003353886a5b42"
 dependencies = [
  "anyhow",
  "libc",
