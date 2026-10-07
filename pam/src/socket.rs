@@ -59,6 +59,7 @@ pub enum SocketError {
     Serialize(zgvariant::Error),
     Timeout,
     InvalidSocket(String),
+    Rejected,
 }
 
 impl std::fmt::Display for SocketError {
@@ -69,6 +70,7 @@ impl std::fmt::Display for SocketError {
             Self::Serialize(e) => write!(f, "Failed to serialize message: {e}"),
             Self::Timeout => write!(f, "Operation timed out"),
             Self::InvalidSocket(msg) => write!(f, "Invalid socket: {msg}"),
+            Self::Rejected => write!(f, "Daemon rejected secret"),
         }
     }
 }
@@ -78,7 +80,7 @@ impl std::error::Error for SocketError {
         match self {
             Self::Connect(e) | Self::Send(e) => Some(e),
             Self::Serialize(e) => Some(e),
-            Self::Timeout | Self::InvalidSocket(_) => None,
+            Self::Timeout | Self::InvalidSocket(_) | Self::Rejected => None,
         }
     }
 }
@@ -358,6 +360,11 @@ async fn send_secret_to_daemon_async(
     {
         Ok(Ok(_)) => {
             let length = u32::from_le_bytes(length_bytes) as usize;
+            if length > 64 * 1024 {
+                return Err(SocketError::InvalidSocket(
+                    "response exceeds size limit".into(),
+                ));
+            }
             let mut response_bytes = vec![0u8; length];
             if let Ok(Ok(_)) = timeout(
                 Duration::from_millis(SOCKET_TIMEOUT_MS),
@@ -369,17 +376,15 @@ async fn send_secret_to_daemon_async(
                     Ok(response) if response.success => {
                         tracing::debug!("Daemon accepted secret");
                     }
-                    Ok(response) => {
-                        tracing::warn!("Daemon rejected secret: {}", response.error_message);
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse daemon response: {e}");
-                    }
+                    Ok(_) => return Err(SocketError::Rejected),
+                    Err(e) => return Err(SocketError::Serialize(e)),
                 }
+            } else {
+                return Err(SocketError::Timeout);
             }
         }
         _ => {
-            tracing::debug!("No response from daemon");
+            return Err(SocketError::Timeout);
         }
     }
 
@@ -412,6 +417,13 @@ mod tests {
             let message = PamMessage::from_bytes(&message_bytes).unwrap();
             assert_eq!(message.username, "testuser");
             assert_eq!(message.new_secret, b"testpassword");
+            let response = zgvariant::to_bytes(
+                zgvariant::serialized::Context::new(zgvariant::LE, 0),
+                &(true, ""),
+            )
+            .unwrap();
+            stream.write_u32_le(response.len() as u32).await.unwrap();
+            stream.write_all(&response).await.unwrap();
         });
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -426,5 +438,55 @@ mod tests {
         server.await?;
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn delivery_requires_a_bounded_positive_acknowledgement() {
+        for accepted in [Some(true), Some(false), None] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("pam.sock");
+            let listener = UnixListener::bind(&path).unwrap();
+            let server = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let length = stream.read_u32_le().await.unwrap();
+                let mut message = vec![0; length as usize];
+                stream.read_exact(&mut message).await.unwrap();
+                if let Some(accepted) = accepted {
+                    let response = zgvariant::to_bytes(
+                        zgvariant::serialized::Context::new(zgvariant::LE, 0),
+                        &(accepted, "fixture"),
+                    )
+                    .unwrap();
+                    stream.write_u32_le(response.len() as u32).await.unwrap();
+                    stream.write_all(&response).await.unwrap();
+                }
+            });
+            let message = PamMessage::unlock("fixture".into(), b"synthetic-password".to_vec());
+            let result =
+                send_secret_to_daemon_async(message, unsafe { libc::getuid() }, false, Some(path))
+                    .await;
+            assert_eq!(result.is_ok(), accepted == Some(true));
+            server.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_response_is_refused_before_reading_its_body() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("pam.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let length = stream.read_u32_le().await.unwrap();
+            let mut message = vec![0; length as usize];
+            stream.read_exact(&mut message).await.unwrap();
+            stream.write_u32_le(64 * 1024 + 1).await.unwrap();
+        });
+        let message = PamMessage::unlock("fixture".into(), b"synthetic-password".to_vec());
+        let result =
+            send_secret_to_daemon_async(message, unsafe { libc::getuid() }, false, Some(path))
+                .await;
+        assert!(matches!(result, Err(SocketError::InvalidSocket(_))));
+        server.await.unwrap();
     }
 }

@@ -6,6 +6,8 @@
 mod ffi;
 mod protocol;
 mod socket;
+#[cfg(test)]
+mod tests;
 
 use std::{
     ffi::CStr,
@@ -24,6 +26,18 @@ use crate::{
 };
 
 const STASHED_PASSWORD_KEY: &CStr = c"oo7_stashed_password";
+
+/// Replacing PAM data invokes cleanup_password and zeroizes the old token.
+unsafe fn clear_stashed_password(pamh: *mut pam_handle_t) -> c_int {
+    unsafe {
+        ffi::pam_set_data(
+            pamh,
+            STASHED_PASSWORD_KEY.as_ptr(),
+            std::ptr::null_mut(),
+            None,
+        )
+    }
+}
 
 /// Get the username
 unsafe fn get_user(pamh: *mut pam_handle_t) -> Result<String, c_int> {
@@ -137,6 +151,13 @@ pub unsafe extern "C" fn pam_sm_authenticate(
         }
     };
 
+    // A retry without a password (for example fingerprint authentication) must
+    // not reuse a token captured during an earlier authentication attempt.
+    if unsafe { clear_stashed_password(pamh) } != PAM_SUCCESS {
+        tracing::error!("Failed to clear previous authentication token");
+        return PAM_AUTHTOK_RECOVER_ERR;
+    }
+
     tracing::debug!("PAM authentication for user: {}", username);
 
     let password = match unsafe { get_auth_token(pamh) } {
@@ -183,14 +204,51 @@ pub unsafe extern "C" fn pam_sm_authenticate(
     PAM_SUCCESS
 }
 
-/// PAM credential setting entry point
+/// Unlock an existing daemon when a screen locker refreshes credentials.
+/// The caller must first complete authentication and account management.
+#[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub extern "C" fn pam_sm_setcred(
-    _pamh: *mut pam_handle_t,
-    _flags: c_int,
+pub unsafe extern "C" fn pam_sm_setcred(
+    pamh: *mut pam_handle_t,
+    flags: c_int,
     _argc: c_int,
     _argv: *mut *const c_char,
 ) -> c_int {
+    if flags & ffi::PAM_DELETE_CRED != 0 {
+        unsafe { clear_stashed_password(pamh) };
+        return PAM_SUCCESS;
+    }
+    // Establishing a new login still hands off in open_session, once the user
+    // runtime directory exists. Refresh never starts a second daemon.
+    if flags & (ffi::PAM_REINITIALIZE_CRED | ffi::PAM_REFRESH_CRED) == 0 {
+        return PAM_SUCCESS;
+    }
+    let mut password_ptr = std::ptr::null();
+    if unsafe { ffi::pam_get_data(pamh, STASHED_PASSWORD_KEY.as_ptr(), &mut password_ptr) }
+        != PAM_SUCCESS
+        || password_ptr.is_null()
+    {
+        return PAM_SUCCESS;
+    }
+    let Ok(username) = (unsafe { get_user(pamh) }) else {
+        return PAM_SUCCESS;
+    };
+    let Some((uid, gid)) = get_user_credentials(&username) else {
+        return PAM_SUCCESS;
+    };
+    let password = unsafe { &*password_ptr.cast::<Zeroizing<Vec<u8>>>() };
+    let message = PamMessage::unlock(username, password.to_vec());
+    // Wait for the daemon response so a handoff cannot run after PAM teardown.
+    // Failure is non-fatal to OS authentication and retains the cold-login
+    // stash for a later open_session attempt.
+    match send_secret_to_daemon(message, uid, gid, false) {
+        Ok(()) => {
+            if unsafe { clear_stashed_password(pamh) } != PAM_SUCCESS {
+                tracing::error!("Failed to clear delivered authentication token");
+            }
+        }
+        Err(error) => tracing::warn!("Failed to refresh oo7 credentials: {}", error),
+    }
     PAM_SUCCESS
 }
 
