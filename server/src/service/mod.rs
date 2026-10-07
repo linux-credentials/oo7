@@ -19,6 +19,7 @@ use oo7::{
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
 use zbus::{
+    fdo::{RequestNameFlags, RequestNameReply},
     names::UniqueName,
     object_server::SignalEmitter,
     proxy::Defaults,
@@ -612,10 +613,8 @@ impl Service {
             }
         });
 
+        // The name is requested only once the service is initialized
         let connection = zbus::connection::Builder::session()?
-            .allow_name_replacements(true)
-            .replace_existing_names(request_replacement)
-            .name(oo7::dbus::api::Service::DESTINATION.as_deref().unwrap())?
             .serve_at(
                 oo7::dbus::api::Service::PATH.as_deref().unwrap(),
                 service.clone(),
@@ -639,6 +638,23 @@ impl Service {
         service
             .initialize(connection, discovered_keyrings, secret, true)
             .await?;
+
+        let mut flags = RequestNameFlags::AllowReplacement | RequestNameFlags::DoNotQueue;
+        if request_replacement {
+            flags |= RequestNameFlags::ReplaceExisting;
+        }
+        match connection_clone
+            .request_name_with_flags(
+                oo7::dbus::api::Service::DESTINATION.as_deref().unwrap(),
+                flags,
+            )
+            .await?
+        {
+            RequestNameReply::PrimaryOwner | RequestNameReply::AlreadyOwner => {}
+            RequestNameReply::Exists | RequestNameReply::InQueue => {
+                return Err(Error::Zbus(zbus::Error::NameTaken));
+            }
+        }
 
         // Replay any secrets that the PAM listener buffered during startup
         pam_listener_replay.replay_buffered_secrets().await;
