@@ -245,7 +245,7 @@ pub unsafe extern "C" fn pam_sm_open_session(
         return PAM_SUCCESS;
     }
 
-    let password = unsafe { &*(password_ptr as *const Zeroizing<Vec<u8>>) };
+    let password = unsafe { Box::from_raw(password_ptr.cast::<Zeroizing<Vec<u8>>>().cast_mut()) };
     tracing::debug!(
         "Retrieved stashed password of length {} bytes",
         password.len()
