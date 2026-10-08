@@ -194,3 +194,19 @@ fn credential_refresh_hands_off_once_and_preserves_cold_login_stash() {
         assert!(handle.password.is_none());
     }
 }
+
+#[test]
+fn authentication_retry_discards_the_previous_password() {
+    let _guard = ENVIRONMENT.lock().unwrap();
+    for token in [None, Some("")] {
+        let mut handle = Handle::new(Some("synthetic-old-attempt"));
+        handle.authenticate();
+        assert!(handle.password.is_some());
+        handle.token = token.map(|s| CString::new(s).unwrap());
+        handle.authenticate();
+        assert!(
+            handle.password.is_none(),
+            "a missing or empty password must erase an earlier token"
+        );
+    }
+}
