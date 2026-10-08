@@ -83,26 +83,10 @@ The module intercepts the password change operation:
 
 ### Lockscreen credential refresh
 
-Screen lockers that call `pam_setcred()` with `PAM_REINITIALIZE_CRED` or
-`PAM_REFRESH_CRED` can unlock the running oo7 daemon without opening a new
-session. Call credential refresh only after `pam_authenticate()` and
-`pam_acct_mgmt()` have succeeded on the same PAM handle. Keep `pam_oo7.so`
-optional and place its auth rule after the module that supplies `PAM_AUTHTOK`.
-
-The refresh hook sends the password captured during that authentication
-attempt and waits for the daemon's acknowledgement. It erases the stashed
-password after a successful handoff. Missing passwords, a stopped daemon, or
-a rejected handoff do not prevent OS authentication. Refresh does not start a
-daemon; a new login still uses `open_session` and its `auto_start` option.
-
-GNOME Keyring attempts its unlock in `pam_sm_authenticate`, while its
-`pam_sm_setcred` is a no-op. oo7 uses credential refresh here to keep delivery
-after the caller's authentication and account checks. Lockers that only call
-authentication/account hooks need to add a credential-refresh call.
-
-This uses the existing ordinary-password PAM protocol. TPM acquisition and
-privileged screen-unlock authorization require a separate desktop/authentication
-integration.
+Screen lockers that refresh PAM credentials after successful authentication can
+unlock an already running oo7 daemon. Keep `pam_oo7.so` optional and place its
+auth rule after the password-providing module. Credential refresh does not start
+the daemon; use the session rule with `auto_start` for a new login.
 
 ### Environment Variables
 

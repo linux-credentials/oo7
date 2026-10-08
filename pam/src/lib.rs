@@ -151,13 +151,6 @@ pub unsafe extern "C" fn pam_sm_authenticate(
         }
     };
 
-    // A retry without a password (for example fingerprint authentication) must
-    // not reuse a token captured during an earlier authentication attempt.
-    if unsafe { clear_stashed_password(pamh) } != PAM_SUCCESS {
-        tracing::error!("Failed to clear previous authentication token");
-        return PAM_AUTHTOK_RECOVER_ERR;
-    }
-
     tracing::debug!("PAM authentication for user: {}", username);
 
     let password = match unsafe { get_auth_token(pamh) } {

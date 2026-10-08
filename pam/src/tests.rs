@@ -193,12 +193,4 @@ fn credential_refresh_hands_off_once_and_preserves_cold_login_stash() {
         handle.credentials(PAM_REFRESH_CRED);
         assert!(handle.password.is_none());
     }
-    let mut retry = Handle::new(Some("synthetic-old-attempt"));
-    retry.authenticate();
-    retry.token = None;
-    retry.authenticate();
-    assert!(
-        retry.password.is_none(),
-        "passwordless retry must erase an earlier token"
-    );
 }

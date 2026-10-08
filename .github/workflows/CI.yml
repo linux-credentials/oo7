@@ -63,10 +63,6 @@ jobs:
         run: |
           cargo build --manifest-path ./pam/Cargo.toml
 
-      - name: Test PAM
-        run: |
-          cargo test --manifest-path ./pam/Cargo.toml
-
       - name: Build Portal
         run: |
           cargo build --manifest-path ./portal/Cargo.toml
@@ -92,6 +88,10 @@ jobs:
       - name: Test kwallet-parser
         run: |
           cargo test --manifest-path ./kwallet/parser/Cargo.toml
+
+      - name: Test PAM
+        run: |
+          cargo test --manifest-path ./pam/Cargo.toml
 
   cargo-deny:
       runs-on: ubuntu-latest
