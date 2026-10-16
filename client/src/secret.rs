@@ -27,7 +27,9 @@ impl<'de> Deserialize<'de> for ContentType {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Self::from_str(&s).map_err(serde::de::Error::custom)
+        // Like gnome-keyring, accept any content type, applications such as
+        // gnome-abrt use their own (application/libreport).
+        Ok(Self::from_str(&s).unwrap_or_default())
     }
 }
 
@@ -262,16 +264,10 @@ mod tests {
         let content_type: ContentType = encoded.deserialize().unwrap().0;
         assert_eq!(content_type, ContentType::Text);
 
-        // Test invalid content type deserialization
-        let encoded = to_bytes(ctxt, &"invalid/type").unwrap();
-        let result: Result<(ContentType, _), _> = encoded.deserialize();
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Invalid content type")
-        );
+        // Unknown content types deserialize as Blob
+        let encoded = to_bytes(ctxt, &"application/libreport").unwrap();
+        let content_type: ContentType = encoded.deserialize().unwrap().0;
+        assert_eq!(content_type, ContentType::Blob);
     }
 
     #[test]
