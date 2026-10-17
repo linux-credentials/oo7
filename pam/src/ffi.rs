@@ -10,6 +10,21 @@ pub const PAM_IGNORE: c_int = 25;
 pub const PAM_AUTHTOK: c_int = 6;
 pub const PAM_OLDAUTHTOK: c_int = 7;
 
+// Linux-PAM reserves bit 0 for PAM_DISALLOW_NULL_AUTHTOK. OpenPAM and
+// Solaris/Illumos start credential flags at bit 0 instead.
+#[cfg(target_os = "linux")]
+pub const PAM_DELETE_CRED: c_int = 0x4;
+#[cfg(target_os = "linux")]
+pub const PAM_REINITIALIZE_CRED: c_int = 0x8;
+#[cfg(target_os = "linux")]
+pub const PAM_REFRESH_CRED: c_int = 0x10;
+#[cfg(not(target_os = "linux"))]
+pub const PAM_DELETE_CRED: c_int = 0x2;
+#[cfg(not(target_os = "linux"))]
+pub const PAM_REINITIALIZE_CRED: c_int = 0x4;
+#[cfg(not(target_os = "linux"))]
+pub const PAM_REFRESH_CRED: c_int = 0x8;
+
 // PAM chauthtok flags
 // Solaris/Illumos use different values than Linux
 #[cfg(any(target_os = "solaris", target_os = "illumos"))]
