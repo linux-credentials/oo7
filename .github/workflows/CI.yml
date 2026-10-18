@@ -57,7 +57,7 @@ jobs:
       - name: Install PAM headers
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpam0g-dev
+          sudo apt-get install -y libpam0g-dev bubblewrap
 
       - name: Build PAM
         run: |
@@ -88,6 +88,9 @@ jobs:
       - name: Test kwallet-parser
         run: |
           cargo test --manifest-path ./kwallet/parser/Cargo.toml
+
+      - name: Test PAM supplementary groups
+        run: sudo python3 pam/tests/test_supplementary_groups.py target/debug/libpam_oo7.so
 
   cargo-deny:
       runs-on: ubuntu-latest
