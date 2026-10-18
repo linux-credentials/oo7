@@ -89,6 +89,10 @@ jobs:
         run: |
           cargo test --manifest-path ./kwallet/parser/Cargo.toml
 
+      - name: Test PAM
+        run: |
+          cargo test --manifest-path ./pam/Cargo.toml
+
   cargo-deny:
       runs-on: ubuntu-latest
       steps:
