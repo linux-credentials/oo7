@@ -26,9 +26,6 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 
-[tool.maturin]
-include = ["oo7.pyi", "py.typed"]
-
 [tool.ruff]
 line-length = 88
 target-version = "py38"
