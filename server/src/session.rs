@@ -124,6 +124,7 @@ impl SessionType {
     gen_blocking = false
 )]
 trait LoginManager {
+    #[zbus(name = "GetSessionByPID")]
     fn get_session_by_pid(&self, pid: u32) -> zbus::Result<OwnedObjectPath>;
 }
 
