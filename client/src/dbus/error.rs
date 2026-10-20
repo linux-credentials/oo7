@@ -48,12 +48,6 @@ impl From<zbus::fdo::Error> for Error {
     }
 }
 
-impl From<zbus::zvariant::Error> for Error {
-    fn from(e: zbus::zvariant::Error) -> Self {
-        Self::ZBus(zbus::Error::Variant(e))
-    }
-}
-
 impl From<ServiceError> for Error {
     fn from(e: ServiceError) -> Self {
         Self::Service(e)

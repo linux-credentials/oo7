@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use zbus::{
     interface,
     names::UniqueName,
-    zvariant::{ObjectPath, OwnedObjectPath},
+    wire::{ObjectPath, OwnedObjectPath},
 };
 
 use crate::Service;
@@ -37,7 +37,6 @@ impl SessionType {
         let session_path = manager.get_session_by_pid(pid).await.ok()?;
         let session = LoginSessionProxy::builder(&connection)
             .path(session_path)
-            .ok()?
             .build()
             .await
             .ok()?;
@@ -120,8 +119,7 @@ impl SessionType {
 #[zbus::proxy(
     default_service = "org.freedesktop.login1",
     interface = "org.freedesktop.login1.Manager",
-    default_path = "/org/freedesktop/login1",
-    gen_blocking = false
+    default_path = "/org/freedesktop/login1"
 )]
 trait LoginManager {
     #[zbus(name = "GetSessionByPID")]
@@ -130,8 +128,7 @@ trait LoginManager {
 
 #[zbus::proxy(
     default_service = "org.freedesktop.login1",
-    interface = "org.freedesktop.login1.Session",
-    gen_blocking = false
+    interface = "org.freedesktop.login1.Session"
 )]
 trait LoginSession {
     #[zbus(property)]
@@ -141,8 +138,7 @@ trait LoginSession {
 #[zbus::proxy(
     default_service = "org.freedesktop.systemd1",
     interface = "org.freedesktop.systemd1.Manager",
-    default_path = "/org/freedesktop/systemd1",
-    gen_blocking = false
+    default_path = "/org/freedesktop/systemd1"
 )]
 trait SystemdManager {
     #[zbus(property)]

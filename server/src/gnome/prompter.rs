@@ -5,7 +5,7 @@ use gettextrs::gettext;
 use oo7::{Key, ashpd::WindowIdentifierType, dbus::ServiceError};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
-use zbus::zvariant::{self, ObjectPath, Optional, OwnedObjectPath, Type, Value, as_value};
+use zbus::wire::{self, ObjectPath, Optional, OwnedObjectPath, Type, Variant, as_variant};
 
 use super::secret_exchange;
 use crate::{
@@ -14,17 +14,17 @@ use crate::{
     service::Service,
 };
 
-/// Custom serde module to handle GCR's double-Value wrapping bug
+/// Custom serde module to handle GCR's double-Variant wrapping bug
 ///
 /// See: https://gitlab.gnome.org/GNOME/gcr/-/merge_requests/169
 mod double_value_optional {
     use super::*;
 
-    fn unwrap_double_value<'de>(outer_value: Value<'de>) -> Result<Value<'de>, String> {
-        match outer_value.downcast_ref::<Value>() {
+    fn unwrap_double_value<'de>(outer_value: Variant<'de>) -> Result<Variant<'de>, String> {
+        match outer_value.downcast_ref::<Variant>() {
             Ok(_) => outer_value
-                .downcast::<Value>()
-                .map_err(|e| format!("Failed to unwrap double-wrapped Value: {e}")),
+                .downcast::<Variant>()
+                .map_err(|e| format!("Failed to unwrap double-wrapped Variant: {e}")),
             Err(_) => Ok(outer_value),
         }
     }
@@ -32,10 +32,10 @@ mod double_value_optional {
     pub fn deserialize<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
     where
         D: serde::Deserializer<'de>,
-        T: TryFrom<Value<'de>> + zvariant::Type,
+        T: TryFrom<Variant<'de>> + wire::Type,
         T::Error: std::fmt::Display,
     {
-        let outer_value = Value::deserialize(deserializer)?;
+        let outer_value = Variant::deserialize(deserializer)?;
         let value_to_deserialize =
             unwrap_double_value(outer_value).map_err(serde::de::Error::custom)?;
 
@@ -51,7 +51,7 @@ mod double_value_optional {
     where
         D: serde::Deserializer<'de>,
     {
-        let outer_value = Value::deserialize(deserializer)?;
+        let outer_value = Variant::deserialize(deserializer)?;
         let value = unwrap_double_value(outer_value).map_err(serde::de::Error::custom)?;
 
         match String::try_from(value) {
@@ -62,82 +62,82 @@ mod double_value_optional {
 }
 
 #[derive(Serialize, Deserialize, Type, Default)]
-#[zvariant(signature = "dict")]
+#[zbus(signature = "dict")]
 #[serde(rename_all = "kebab-case")]
 // GcrPrompt properties <https://gitlab.gnome.org/GNOME/gcr/-/blob/main/gcr/gcr-prompt.c#L95>
 pub struct Properties {
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     title: Option<String>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     message: Option<String>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     description: Option<String>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     warning: Option<String>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     password_new: Option<bool>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     password_strength: Option<i32>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     choice_label: Option<String>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     choice_chosen: Option<bool>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize_window_id",
         skip_serializing_if = "Option::is_none",
         default
     )]
     caller_window: Option<WindowIdentifierType>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
     continue_label: Option<String>,
     #[serde(
-        serialize_with = "as_value::optional::serialize",
+        serialize_with = "as_variant::optional::serialize",
         deserialize_with = "double_value_optional::deserialize",
         skip_serializing_if = "Option::is_none",
         default
@@ -219,13 +219,13 @@ impl Properties {
 
 #[derive(Deserialize, Serialize, Debug, Type)]
 #[serde(rename_all = "lowercase")]
-#[zvariant(signature = "s")]
+#[zbus(signature = "s")]
 pub enum Reply {
     No,
     Yes,
 }
 
-impl zvariant::NoneValue for Reply {
+impl wire::NoneValue for Reply {
     type NoneType = String;
 
     fn null_value() -> Self::NoneType {
@@ -247,7 +247,7 @@ impl TryFrom<String> for Reply {
 
 #[derive(Debug, Deserialize, Serialize, Type, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
-#[zvariant(signature = "s")]
+#[zbus(signature = "s")]
 pub enum PromptType {
     Confirm,
     Password,
@@ -256,8 +256,7 @@ pub enum PromptType {
 #[zbus::proxy(
     default_service = "org.gnome.keyring.SystemPrompter",
     interface = "org.gnome.keyring.internal.Prompter",
-    default_path = "/org/gnome/keyring/Prompter",
-    gen_blocking = false
+    default_path = "/org/gnome/keyring/Prompter"
 )]
 pub trait GNOMEPrompter {
     fn begin_prompting(&self, callback: &ObjectPath<'_>) -> Result<(), ServiceError>;
@@ -466,7 +465,7 @@ impl GNOMEPrompterCallback {
 
         tokio::spawn(async move { prompter.stop_prompting(&path).await });
         let signal_emitter = self.service.signal_emitter(prompt_path)?;
-        let result = zvariant::Value::new::<Vec<OwnedObjectPath>>(vec![])
+        let result = wire::Variant::new::<Vec<OwnedObjectPath>>(vec![])
             .try_into_owned()
             .unwrap();
 
@@ -479,7 +478,7 @@ impl GNOMEPrompterCallback {
 mod tests {
     use std::collections::HashMap;
 
-    use zvariant::{serialized::Context, to_bytes};
+    use wire::{serialized::Context, to_bytes};
 
     use super::*;
 
@@ -492,7 +491,7 @@ mod tests {
         };
 
         // Serialize to bytes
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
+        let ctxt = Context::new(wire::LE, 0);
         let encoded = to_bytes(ctxt, &props).expect("Failed to serialize");
 
         // Deserialize back to verify roundtrip works
@@ -504,21 +503,21 @@ mod tests {
 
     #[test]
     fn deserialize_properties() {
-        let mut map: HashMap<String, Value> = HashMap::new();
+        let mut map: HashMap<String, Variant> = HashMap::new();
 
-        // Double-wrap: Value<Value<String>>
+        // Double-wrap: Variant<Variant<String>>
         map.insert(
             "title".to_string(),
-            Value::new(Value::new("Unlock Keyring")),
+            Variant::new(Variant::new("Unlock Keyring")),
         );
 
         map.insert(
             "message".to_string(),
-            Value::new(Value::new("Authentication required")),
+            Variant::new(Variant::new("Authentication required")),
         );
 
         // Serialize the HashMap
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
+        let ctxt = Context::new(wire::LE, 0);
         let encoded = to_bytes(ctxt, &map).expect("Failed to serialize test data");
 
         // Deserialize as Properties
@@ -527,14 +526,17 @@ mod tests {
         assert_eq!(props.title, Some("Unlock Keyring".to_string()));
         assert_eq!(props.message, Some("Authentication required".to_string()));
 
-        let mut map: HashMap<String, Value> = HashMap::new();
+        let mut map: HashMap<String, Variant> = HashMap::new();
 
-        // Single-wrap: Value<String> (the correct format)
-        map.insert("title".to_string(), Value::new("Unlock Keyring"));
-        map.insert("message".to_string(), Value::new("Authentication required"));
+        // Single-wrap: Variant<String> (the correct format)
+        map.insert("title".to_string(), Variant::new("Unlock Keyring"));
+        map.insert(
+            "message".to_string(),
+            Variant::new("Authentication required"),
+        );
 
         // Serialize the HashMap
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
+        let ctxt = Context::new(wire::LE, 0);
         let encoded = to_bytes(ctxt, &map).expect("Failed to serialize test data");
 
         // Deserialize as Properties - should also work
@@ -549,7 +551,7 @@ mod tests {
             ..Default::default()
         };
 
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
+        let ctxt = Context::new(wire::LE, 0);
         let encoded = to_bytes(ctxt, &props).expect("Failed to serialize");
         let decoded: Properties = encoded.deserialize().unwrap().0;
 
@@ -563,7 +565,7 @@ mod tests {
             ..Default::default()
         };
 
-        let ctxt = Context::new_dbus(zvariant::LE, 0);
+        let ctxt = Context::new(wire::LE, 0);
         let encoded = to_bytes(ctxt, &props).expect("Failed to serialize");
         let decoded: Properties = encoded.deserialize().unwrap().0;
 

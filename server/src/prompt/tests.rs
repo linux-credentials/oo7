@@ -89,7 +89,7 @@ async fn prompt_not_found_error() -> Result<(), Box<dyn std::error::Error>> {
     // Now call prompt_ready which should fail because the prompt doesn't exist
     let result = callback
         .prompt_ready(
-            zbus::zvariant::Optional::from(None),
+            zbus::wire::Optional::from(None),
             crate::gnome::prompter::Properties::default(),
             "",
         )

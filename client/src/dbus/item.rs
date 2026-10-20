@@ -5,7 +5,7 @@ use ashpd::WindowIdentifier;
 use async_lock::RwLock;
 #[cfg(feature = "tokio")]
 use tokio::sync::RwLock;
-use zbus::zvariant::ObjectPath;
+use zbus::wire::ObjectPath;
 
 use super::{Algorithm, Error, api};
 use crate::{AsAttributes, Key, Secret};

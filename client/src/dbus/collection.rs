@@ -6,7 +6,7 @@ use async_lock::RwLock;
 use futures_util::{Stream, StreamExt};
 #[cfg(feature = "tokio")]
 use tokio::sync::RwLock;
-use zbus::zvariant::{ObjectPath, OwnedObjectPath};
+use zbus::wire::{ObjectPath, OwnedObjectPath};
 
 use super::{Algorithm, Error, Item, api};
 use crate::{AsAttributes, Key, Secret};

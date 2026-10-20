@@ -23,7 +23,7 @@ use zbus::{
     names::UniqueName,
     object_server::SignalEmitter,
     proxy::Defaults,
-    zvariant::{ObjectPath, Optional, OwnedObjectPath, OwnedValue, Value},
+    wire::{ObjectPath, Optional, OwnedObjectPath, OwnedVariant, Variant},
 };
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
@@ -80,16 +80,16 @@ impl Service {
     pub async fn open_session(
         &self,
         algorithm: Algorithm,
-        input: Value<'_>,
+        input: Variant<'_>,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(object_server)] object_server: &zbus::ObjectServer,
-    ) -> Result<(OwnedValue, OwnedObjectPath), ServiceError> {
+    ) -> Result<(OwnedVariant, OwnedObjectPath), ServiceError> {
         let (public_key, aes_key) = match algorithm {
             Algorithm::Plain => (None, None),
             Algorithm::Encrypted => {
                 let client_public_key = Key::try_from(input).map_err(|err| {
                     custom_service_error(&format!(
-                        "Input Value could not be converted into a Key {err}."
+                        "Input Variant could not be converted into a Key {err}."
                     ))
                 })?;
                 let private_key = Key::generate_private_key().map_err(|err| {
@@ -164,8 +164,8 @@ impl Service {
         object_server.at(&path, session).await?;
 
         let service_key = public_key
-            .map(OwnedValue::from)
-            .unwrap_or_else(|| Value::new::<Vec<u8>>(vec![]).try_into_owned().unwrap());
+            .map(OwnedVariant::from)
+            .unwrap_or_else(|| Variant::new::<Vec<u8>>(vec![]).try_into_owned().unwrap());
 
         Ok((service_key, path))
     }
@@ -203,7 +203,7 @@ impl Service {
                 .complete_collection_creation(&creation_prompt_path, secret)
                 .await?;
 
-            Ok(Value::new(collection_path).try_into_owned().unwrap())
+            Ok(Variant::new(collection_path).try_into_owned().unwrap())
         });
 
         prompt.set_action(action).await;
@@ -374,7 +374,7 @@ impl Service {
                         }
                     }
                 }
-                Ok(Value::new(not_unlocked).try_into_owned().unwrap())
+                Ok(Variant::new(not_unlocked).try_into_owned().unwrap())
             });
 
             prompt.set_action(action).await;
@@ -614,11 +614,11 @@ impl Service {
         });
 
         // The name is requested only once the service is initialized
-        let connection = zbus::connection::Builder::session()?
+        let connection = zbus::connection::Builder::session()
             .serve_at(
                 oo7::dbus::api::Service::PATH.as_deref().unwrap(),
                 service.clone(),
-            )?
+            )
             .build()
             .await?;
 
@@ -639,9 +639,9 @@ impl Service {
             .initialize(connection, discovered_keyrings, secret, true)
             .await?;
 
-        let mut flags = RequestNameFlags::AllowReplacement | RequestNameFlags::DoNotQueue;
+        let mut flags = RequestNameFlags::ALLOW_REPLACEMENT | RequestNameFlags::DO_NOT_QUEUE;
         if request_replacement {
-            flags |= RequestNameFlags::ReplaceExisting;
+            flags |= RequestNameFlags::REPLACE_EXISTING;
         }
         match connection_clone
             .request_name_with_flags(
@@ -1165,11 +1165,11 @@ impl Service {
     async fn on_client_disconnect(&self) -> zbus::Result<()> {
         let rule = zbus::MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
-            .sender("org.freedesktop.DBus")?
-            .interface("org.freedesktop.DBus")?
-            .member("NameOwnerChanged")?
-            .arg(2, "")?
-            .build();
+            .sender("org.freedesktop.DBus")
+            .interface("org.freedesktop.DBus")
+            .member("NameOwnerChanged")
+            .arg(2, "")
+            .build()?;
         let mut stream =
             zbus::MessageStream::for_match_rule(rule, &self.connection(), None).await?;
         while let Some(message) = stream.try_next().await? {

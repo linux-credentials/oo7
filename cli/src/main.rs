@@ -25,7 +25,7 @@ impl CliPrompter {
         &self,
         _label: &str,
         description: &str,
-    ) -> zbus::fdo::Result<(zbus::zvariant::OwnedFd, bool)> {
+    ) -> zbus::fdo::Result<(zbus::wire::OwnedFd, bool)> {
         let password = match rpassword::prompt_password(format!("{description}: ")) {
             Ok(p) => p,
             Err(e) => {
@@ -43,7 +43,7 @@ impl CliPrompter {
         }
         drop(write_fd);
         Ok((
-            zbus::zvariant::OwnedFd::from(std::os::fd::OwnedFd::from(read_fd)),
+            zbus::wire::OwnedFd::from(std::os::fd::OwnedFd::from(read_fd)),
             true,
         ))
     }
@@ -53,15 +53,14 @@ impl CliPrompter {
 #[zbus::proxy(
     interface = "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface",
     default_service = "org.freedesktop.secrets",
-    default_path = "/org/freedesktop/secrets",
-    gen_blocking = false
+    default_path = "/org/freedesktop/secrets"
 )]
 trait InternalInterface {
     #[zbus(name = "ChangeWithPrompt")]
     fn change_with_prompt(
         &self,
-        collection: &zbus::zvariant::ObjectPath<'_>,
-    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+        collection: &zbus::wire::ObjectPath<'_>,
+    ) -> zbus::Result<zbus::wire::OwnedObjectPath>;
 }
 
 enum Error {
@@ -707,8 +706,8 @@ impl Commands {
                             .expect("D-Bus connection available in collection mode");
 
                         let introspectable = zbus::fdo::IntrospectableProxy::builder(conn)
-                            .destination("org.freedesktop.secrets")?
-                            .path("/org/freedesktop/secrets")?
+                            .destination("org.freedesktop.secrets")
+                            .path("/org/freedesktop/secrets")
                             .build()
                             .await?;
                         let xml = introspectable.introspect().await?;

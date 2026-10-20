@@ -10,7 +10,7 @@ use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use zbus::{
     object_server::SignalEmitter,
-    zvariant::{self, ObjectPath, OwnedFd, OwnedObjectPath, Type},
+    wire::{self, ObjectPath, OwnedFd, OwnedObjectPath, Type},
 };
 
 use crate::{
@@ -57,8 +57,7 @@ pub async fn in_plasma_environment(connection: &zbus::Connection) -> bool {
 #[zbus::proxy(
     default_service = "org.kde.secretprompter",
     interface = "org.kde.secretprompter",
-    default_path = "/SecretPrompter",
-    gen_blocking = false
+    default_path = "/SecretPrompter"
 )]
 pub trait PlasmaPrompter {
     fn unlock_collection_prompt(
@@ -247,7 +246,7 @@ impl PlasmaPrompterCallback {
 
     async fn prompter_dismissed(&self, prompt_path: OwnedObjectPath) -> Result<(), ServiceError> {
         let signal_emitter = self.service.signal_emitter(prompt_path)?;
-        let result = zvariant::Value::new::<Vec<OwnedObjectPath>>(vec![])
+        let result = wire::Variant::new::<Vec<OwnedObjectPath>>(vec![])
             .try_into_owned()
             .unwrap();
 

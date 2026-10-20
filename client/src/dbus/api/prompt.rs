@@ -3,13 +3,13 @@ use std::fmt;
 use ashpd::WindowIdentifier;
 use futures_util::StreamExt;
 use serde::Serialize;
-use zbus::zvariant::{ObjectPath, OwnedValue, Type};
+use zbus::wire::{ObjectPath, OwnedVariant, Type};
 
 use super::DESTINATION;
 use crate::dbus::{Error, ServiceError};
 
 #[derive(Type)]
-#[zvariant(signature = "o")]
+#[zbus(signature = "o")]
 #[doc(alias = "org.freedesktop.Secret.Prompt")]
 pub struct Prompt(zbus::Proxy<'static>);
 
@@ -40,7 +40,7 @@ impl Prompt {
         if path != ObjectPath::default() {
             Ok(Some(
                 zbus::proxy::Builder::new(connection)
-                    .path(path)?
+                    .path(path)
                     .build()
                     .await?,
             ))
@@ -76,12 +76,12 @@ impl Prompt {
     pub async fn receive_completed(
         &self,
         window_id: Option<WindowIdentifier>,
-    ) -> Result<OwnedValue, Error> {
+    ) -> Result<OwnedVariant, Error> {
         let mut stream = self.inner().receive_signal("Completed").await?;
         let (value, _) = futures_util::try_join!(
             async {
                 let message = stream.next().await.unwrap();
-                let (dismissed, result) = message.body().deserialize::<(bool, OwnedValue)>()?;
+                let (dismissed, result) = message.body().deserialize::<(bool, OwnedVariant)>()?;
                 if dismissed {
                     Err(Error::Dismissed)
                 } else {

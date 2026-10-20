@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
-use zbus::zvariant;
+use zbus::wire;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-#[derive(Default, PartialEq, Eq, Copy, Clone, Debug, zvariant::Type)]
-#[zvariant(signature = "s")]
+#[derive(Default, PartialEq, Eq, Copy, Clone, Debug, wire::Type)]
+#[zbus(signature = "s")]
 pub enum ContentType {
     Text,
     #[default]
@@ -217,7 +217,7 @@ impl AsRef<[u8]> for Secret {
 
 #[cfg(test)]
 mod tests {
-    use zbus::zvariant::{Endian, serialized::Context, to_bytes};
+    use zbus::wire::{Endian, serialized::Context, to_bytes};
 
     use super::*;
 
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn content_type_serialization() {
-        let ctxt = Context::new_dbus(Endian::Little, 0);
+        let ctxt = Context::new(Endian::Little, 0);
 
         // Test Text serialization
         let encoded = to_bytes(ctxt, &ContentType::Text).unwrap();

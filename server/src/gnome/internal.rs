@@ -9,7 +9,7 @@ use oo7::{
     },
     file::Keyring,
 };
-use zbus::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue};
+use zbus::wire::{ObjectPath, OwnedObjectPath, OwnedVariant};
 
 use crate::{
     error::custom_service_error,
@@ -194,7 +194,7 @@ impl InternalInterface {
                     collection_path
                 );
 
-                Ok(OwnedValue::from(ObjectPath::from_str_unchecked("/")))
+                Ok(OwnedVariant::from(ObjectPath::from_str_unchecked("/")))
             }
         });
 
@@ -221,7 +221,7 @@ impl InternalInterface {
 #[cfg(test)]
 mod tests {
     use oo7::{Secret, dbus};
-    use zbus::zvariant::{ObjectPath, OwnedObjectPath};
+    use zbus::wire::{ObjectPath, OwnedObjectPath};
 
     use crate::tests::TestServiceSetup;
 
@@ -229,8 +229,7 @@ mod tests {
     #[zbus::proxy(
         interface = "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface",
         default_service = "org.freedesktop.secrets",
-        default_path = "/org/freedesktop/secrets",
-        gen_blocking = false
+        default_path = "/org/freedesktop/secrets"
     )]
     trait InternalInterfaceProxy {
         #[zbus(name = "CreateWithMasterPassword")]
@@ -307,7 +306,7 @@ mod tests {
 
         // Get the default collection
         let default_collection = setup.default_collection().await?;
-        let collection_path: zbus::zvariant::OwnedObjectPath =
+        let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
         // Lock the collection
@@ -349,7 +348,7 @@ mod tests {
             .await?;
 
         let default_collection = setup.default_collection().await?;
-        let collection_path: zbus::zvariant::OwnedObjectPath =
+        let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
         // Prepare original and new secrets
@@ -403,7 +402,7 @@ mod tests {
             .await?;
 
         let default_collection = setup.default_collection().await?;
-        let collection_path: zbus::zvariant::OwnedObjectPath =
+        let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
         // Call ChangeWithPrompt via D-Bus
@@ -462,7 +461,7 @@ mod tests {
             .await?;
 
         let default_collection = setup.default_collection().await?;
-        let collection_path: zbus::zvariant::OwnedObjectPath =
+        let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
         // Create an item first so that the unlock validation has something to

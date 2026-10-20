@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt};
 
 use ashpd::WindowIdentifier;
 use futures_util::{Stream, StreamExt};
-use zbus::zvariant::{self, ObjectPath, OwnedObjectPath, OwnedValue, Type, Value};
+use zbus::wire::{self, ObjectPath, OwnedObjectPath, OwnedVariant, Type, Variant};
 
 use super::{
     Collection, DBusSecret, DESTINATION, Item, PATH, Prompt, Properties, Session, Unlockable,
@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[derive(Type)]
-#[zvariant(signature = "o")]
+#[zbus(signature = "o")]
 #[doc(alias = "org.freedesktop.secrets")]
 pub struct Service(zbus::Proxy<'static>);
 
@@ -80,7 +80,7 @@ impl Service {
     pub async fn collections(&self) -> Result<Vec<Collection>, Error> {
         let collections_paths = self
             .inner()
-            .get_property::<Vec<ObjectPath>>("Collections")
+            .get_property::<Vec<OwnedObjectPath>>("Collections")
             .await?;
         Collection::from_paths(self.inner().connection(), collections_paths).await
     }
@@ -90,8 +90,8 @@ impl Service {
         &self,
         client_public_key: Option<Key>,
     ) -> Result<(Option<Key>, Session), Error> {
-        let (algorithm, key): (_, Value<'_>) = match client_public_key {
-            None => (Algorithm::Plain, zvariant::Str::default().into()),
+        let (algorithm, key): (_, Variant<'_>) = match client_public_key {
+            None => (Algorithm::Plain, wire::Str::default().into()),
             Some(key) => (Algorithm::Encrypted, key.into()),
         };
         let (service_key, session_path) = self
@@ -100,7 +100,7 @@ impl Service {
             .await
             .map_err::<ServiceError, _>(From::from)?
             .body()
-            .deserialize::<(OwnedValue, OwnedObjectPath)>()?;
+            .deserialize::<(OwnedVariant, OwnedObjectPath)>()?;
         let session = Session::new(self.inner().connection(), session_path).await?;
 
         let key = match algorithm {

@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt, hash::Hash, time::Duration};
 
 use ashpd::WindowIdentifier;
 use serde::Serialize;
-use zbus::zvariant::{ObjectPath, OwnedObjectPath, Type};
+use zbus::wire::{ObjectPath, OwnedObjectPath, Type};
 
 use super::{DBusSecret, DESTINATION, Prompt, Session, Unlockable};
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Type, Clone)]
-#[zvariant(signature = "o")]
+#[zbus(signature = "o")]
 #[doc(alias = "org.freedesktop.Secret.Item")]
 pub struct Item(zbus::Proxy<'static>);
 
@@ -36,7 +36,7 @@ impl Item {
         P::Error: Into<zbus::Error>,
     {
         zbus::proxy::Builder::new(connection)
-            .path(object_path)?
+            .path(object_path)
             .uncached_properties(&["Label", "Attributes", "Created", "Modified", "Locked"])
             .build()
             .await
