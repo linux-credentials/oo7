@@ -19,8 +19,9 @@ mod tests;
 use std::{
     io::{IoSliceMut, IsTerminal, Read},
     mem::MaybeUninit,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::LazyLock,
+    time::{Duration, Instant},
 };
 
 use clap::Parser;
@@ -35,6 +36,12 @@ static LOGIN_HELPER_SOCKET: LazyLock<PathBuf> = LazyLock::new(|| {
     let uid = rustix::process::getuid().as_raw();
     PathBuf::from(format!("/run/user/{uid}/oo7-daemon-login.sock"))
 });
+
+/// How long to wait for `oo7-daemon-login` to bind its socket before giving up.
+const LOGIN_HELPER_WAIT: Duration = Duration::from_millis(500);
+
+/// Interval between connect attempts while waiting for the helper.
+const LOGIN_HELPER_POLL: Duration = Duration::from_millis(10);
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -56,13 +63,36 @@ struct Args {
     is_verbose: bool,
 }
 
-fn read_secret_from_login_helper() -> Option<oo7::Secret> {
+/// Bounded wait for the transient `oo7-daemon-login` helper to bind its socket.
+///
+/// `pam_oo7.so auto_start` spawns the helper from the same PAM session stack
+/// that starts this daemon, one module after `pam_systemd.so`, so the two race
+/// by a few tens of milliseconds and either can win. A single connect attempt
+/// silently drops the login secret whenever the daemon wins, leaving the login
+/// collection locked for the whole session with no error logged anywhere.
+async fn connect_to_login_helper(socket_path: &Path) -> Option<tokio::net::UnixStream> {
+    let deadline = Instant::now() + LOGIN_HELPER_WAIT;
+
+    loop {
+        match tokio::net::UnixStream::connect(socket_path).await {
+            Ok(stream) => return Some(stream),
+            Err(e) if Instant::now() >= deadline => {
+                tracing::debug!(
+                    "No login helper at {} after {} ms: {e}",
+                    socket_path.display(),
+                    LOGIN_HELPER_WAIT.as_millis(),
+                );
+                return None;
+            }
+            Err(_) => tokio::time::sleep(LOGIN_HELPER_POLL).await,
+        }
+    }
+}
+
+async fn read_secret_from_login_helper() -> Option<oo7::Secret> {
     let socket_path = &*LOGIN_HELPER_SOCKET;
 
-    let stream = match std::os::unix::net::UnixStream::connect(socket_path) {
-        Ok(s) => s,
-        Err(_) => return None,
-    };
+    let stream = connect_to_login_helper(socket_path).await?;
 
     tracing::info!("Connected to login helper at {}", socket_path.display());
 
@@ -71,12 +101,15 @@ fn read_secret_from_login_helper() -> Option<oo7::Secret> {
     let mut space = [MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(1))];
     let mut cmsg_buf = RecvAncillaryBuffer::new(&mut space);
 
-    match rustix::net::recvmsg(&stream, &mut iov, &mut cmsg_buf, RecvFlags::empty()) {
-        Ok(_) => {}
-        Err(e) => {
-            tracing::warn!("Failed to receive from login helper: {e}");
-            return None;
-        }
+    let received = stream
+        .async_io(tokio::io::Interest::READABLE, || {
+            rustix::net::recvmsg(&stream, &mut iov, &mut cmsg_buf, RecvFlags::empty())
+                .map_err(Into::into)
+        })
+        .await;
+    if let Err(e) = received {
+        tracing::warn!("Failed to receive from login helper: {e}");
+        return None;
     }
 
     for msg in cmsg_buf.drain() {
@@ -145,7 +178,7 @@ async fn inner_main(args: Args) -> Result<(), Error> {
             Some(oo7::Secret::from(buff))
         }
     } else {
-        match read_secret_from_login_helper() {
+        match read_secret_from_login_helper().await {
             Some(secret) => Some(secret),
             None => read_secret_from_credentials_directory().await,
         }
@@ -195,4 +228,39 @@ async fn main() -> Result<(), Error> {
     inner_main(args).await.inspect_err(|err| {
         tracing::error!("{err:#}");
     })
+}
+
+#[cfg(test)]
+mod login_helper_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn connect_waits_for_late_bind() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let socket_path = temp_dir.path().join("oo7-daemon-login.sock");
+
+        // The helper binds after the daemon's first connect attempt has failed.
+        let helper_path = socket_path.clone();
+        let helper = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            let listener = tokio::net::UnixListener::bind(&helper_path)?;
+            listener.accept().await?;
+            std::io::Result::Ok(())
+        });
+
+        assert!(connect_to_login_helper(&socket_path).await.is_some());
+        helper.await??;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn connect_gives_up_without_helper() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let socket_path = temp_dir.path().join("oo7-daemon-login.sock");
+
+        let start = Instant::now();
+        assert!(connect_to_login_helper(&socket_path).await.is_none());
+        assert!(start.elapsed() >= LOGIN_HELPER_WAIT);
+        Ok(())
+    }
 }
