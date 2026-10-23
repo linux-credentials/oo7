@@ -80,7 +80,12 @@ impl Prompt {
         let mut stream = self.inner().receive_signal("Completed").await?;
         let (value, _) = futures_util::try_join!(
             async {
-                let message = stream.next().await.unwrap();
+                let message = stream.next().await.ok_or_else(|| {
+                    Error::IO(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "Secret Service prompt stream ended before Completed",
+                    ))
+                })?;
                 let (dismissed, result) = message.body().deserialize::<(bool, OwnedValue)>()?;
                 if dismissed {
                     Err(Error::Dismissed)
