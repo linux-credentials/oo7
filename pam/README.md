@@ -28,6 +28,8 @@ cargo build --release -p pam_oo7
 
 The resulting library will be at: `target/release/libpam_oo7.so`
 
+See [tests/README.md](tests/README.md) for regression test instructions.
+
 ## Installation
 
 ### 1. Copy the PAM module

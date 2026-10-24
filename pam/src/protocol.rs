@@ -54,15 +54,24 @@ impl PamMessage {
 }
 
 #[derive(Debug, Deserialize, Type)]
+#[cfg_attr(test, derive(Serialize))]
 pub struct PamResponse {
     pub success: bool,
     pub error_message: String,
 }
 
+// Integration tests encode responses; the PAM module decodes them.
+#[cfg_attr(test, allow(dead_code))]
 impl PamResponse {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, zgvariant::Error> {
         let ctxt = Context::new(zgvariant::LE, 0);
         let data = zgvariant::serialized::Data::new(bytes, ctxt);
         data.deserialize().map(|(msg, _)| msg)
+    }
+
+    #[cfg(test)]
+    pub fn to_bytes(&self) -> Result<Vec<u8>, zgvariant::Error> {
+        let ctxt = Context::new(zgvariant::LE, 0);
+        to_bytes(ctxt, self).map(|data| data.to_vec())
     }
 }

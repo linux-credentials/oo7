@@ -1,8 +1,14 @@
+//! PAM bindings shared by the module and its integration test fixtures.
+
+// Each target uses a different subset of these bindings.
+#![allow(dead_code)]
+
 use std::os::raw::{c_char, c_int, c_void};
 
 // PAM return codes
 pub const PAM_SUCCESS: c_int = 0;
 pub const PAM_SYSTEM_ERR: c_int = 4;
+pub const PAM_CONV_ERR: c_int = 19;
 pub const PAM_AUTHTOK_RECOVER_ERR: c_int = 20;
 pub const PAM_IGNORE: c_int = 25;
 
@@ -30,7 +36,44 @@ pub struct pam_handle_t {
     _private: [u8; 0],
 }
 
+// Conversation messages and responses are only passed through as pointers.
+#[repr(C)]
+pub struct PamMessage {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+pub struct PamResponse {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+pub struct PamConversation {
+    pub conversation: unsafe extern "C" fn(
+        c_int,
+        *mut *const PamMessage,
+        *mut *mut PamResponse,
+        *mut c_void,
+    ) -> c_int,
+    pub data: *mut c_void,
+}
+
 unsafe extern "C" {
+    /// Start a transaction with a private Linux-PAM configuration directory
+    pub fn pam_start_confdir(
+        service: *const c_char,
+        user: *const c_char,
+        conversation: *const PamConversation,
+        confdir: *const c_char,
+        handle: *mut *mut pam_handle_t,
+    ) -> c_int;
+
+    pub fn pam_authenticate(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+    pub fn pam_open_session(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+    pub fn pam_close_session(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+    pub fn pam_chauthtok(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+    pub fn pam_end(pamh: *mut pam_handle_t, status: c_int) -> c_int;
+
     /// Get the username
     pub fn pam_get_user(
         pamh: *mut pam_handle_t,
@@ -44,6 +87,9 @@ unsafe extern "C" {
         item_type: c_int,
         item: *mut *const c_void,
     ) -> c_int;
+
+    /// Set a PAM item
+    pub fn pam_set_item(pamh: *mut pam_handle_t, item_type: c_int, item: *const c_void) -> c_int;
 
     /// Store data in PAM context with a cleanup function
     pub fn pam_set_data(
