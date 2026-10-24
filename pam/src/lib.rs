@@ -270,20 +270,18 @@ pub unsafe extern "C" fn pam_sm_open_session(
 
     let message = PamMessage::unlock(username.clone(), password.to_vec());
 
-    // Send the secret to the oo7 daemon
-    std::thread::spawn(move || {
-        match send_secret_to_daemon(message, user_uid, user_gid, auto_start) {
-            Ok(_) => {
-                tracing::info!(
-                    "Successfully sent secret to oo7 daemon for user: {}",
-                    username
-                );
-            }
-            Err(e) => {
-                tracing::error!("Failed to send secret to oo7 daemon: {}", e);
-            }
+    // Complete delivery before the caller can exit or unload the PAM module.
+    match send_secret_to_daemon(message, user_uid, user_gid, auto_start) {
+        Ok(_) => {
+            tracing::info!(
+                "Successfully sent secret to oo7 daemon for user: {}",
+                username
+            );
         }
-    });
+        Err(e) => {
+            tracing::error!("Failed to send secret to oo7 daemon: {}", e);
+        }
+    }
 
     PAM_SUCCESS
 }
@@ -378,19 +376,19 @@ pub unsafe extern "C" fn pam_sm_chauthtok(
             new_password.to_vec(),
         );
 
-        std::thread::spawn(move || {
-            match send_secret_to_daemon(message, user_uid, user_gid, false) {
-                Ok(_) => {
-                    tracing::info!(
-                        "Successfully sent password change request to oo7 daemon for user: {}",
-                        username
-                    );
-                }
-                Err(e) => {
-                    tracing::error!("Failed to send password change to oo7 daemon: {}", e);
-                }
+        // A password-changing application may exit immediately after PAM
+        // returns.
+        match send_secret_to_daemon(message, user_uid, user_gid, false) {
+            Ok(_) => {
+                tracing::info!(
+                    "Successfully sent password change request to oo7 daemon for user: {}",
+                    username
+                );
             }
-        });
+            Err(e) => {
+                tracing::error!("Failed to send password change to oo7 daemon: {}", e);
+            }
+        }
 
         return PAM_SUCCESS;
     }

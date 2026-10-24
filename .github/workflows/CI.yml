@@ -89,6 +89,9 @@ jobs:
         run: |
           cargo test --manifest-path ./kwallet/parser/Cargo.toml
 
+      - name: Test PAM request lifetime
+        run: python3 pam/tests/test_request_lifetime.py target/debug/libpam_oo7.so
+
   cargo-deny:
       runs-on: ubuntu-latest
       steps:
