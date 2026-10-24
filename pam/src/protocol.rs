@@ -56,7 +56,8 @@ impl PamMessage {
 #[derive(Debug, Deserialize, Type)]
 pub struct PamResponse {
     pub success: bool,
-    pub error_message: String,
+    #[serde(rename = "error_message")]
+    pub _error_message: String,
 }
 
 impl PamResponse {

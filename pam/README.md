@@ -81,6 +81,13 @@ The module intercepts the password change operation:
 
 ## Configuration
 
+### Lockscreen credential refresh
+
+Screen lockers that refresh PAM credentials after successful authentication can
+unlock an already running oo7 daemon. Keep `pam_oo7.so` optional and place its
+auth rule after the password-providing module. Credential refresh does not start
+the daemon; use the session rule with `auto_start` for a new login.
+
 ### Environment Variables
 
 - `OO7_PAM_SOCKET`: Path to the Unix domain socket for daemon communication
