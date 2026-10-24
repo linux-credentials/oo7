@@ -52,17 +52,3 @@ impl PamMessage {
         data.deserialize().map(|(msg, _)| msg)
     }
 }
-
-#[derive(Debug, Deserialize, Type)]
-pub struct PamResponse {
-    pub success: bool,
-    pub error_message: String,
-}
-
-impl PamResponse {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, zgvariant::Error> {
-        let ctxt = Context::new(zgvariant::LE, 0);
-        let data = zgvariant::serialized::Data::new(bytes, ctxt);
-        data.deserialize().map(|(msg, _)| msg)
-    }
-}

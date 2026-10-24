@@ -11,6 +11,13 @@ description = "PAM module for oo7 Secret Service integration"
 
 [lib]
 name = "pam_oo7"
+# The rlib also lets Cargo build the shared module for integration tests.
+crate-type = ["cdylib", "rlib"]
+
+# Loaded by the integration tests
+[[example]]
+name = "pam_test_tokens"
+path = "tests/common/tokens.rs"
 crate-type = ["cdylib"]
 
 [dependencies]

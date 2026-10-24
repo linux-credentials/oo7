@@ -5,14 +5,10 @@ use std::{
     time::Duration,
 };
 
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::UnixStream,
-    time::timeout,
-};
+use tokio::{io::AsyncWriteExt, net::UnixStream, time::timeout};
 use zeroize::Zeroizing;
 
-use crate::protocol::{PamMessage, PamResponse};
+use crate::protocol::PamMessage;
 
 /// Timeout for socket operations (in milliseconds)
 const SOCKET_TIMEOUT_MS: u64 = 5000;
@@ -331,57 +327,22 @@ async fn send_secret_to_daemon_async(
     tracing::debug!("Sending message for user {}", message.username);
     let message_bytes = Zeroizing::new(message.to_bytes().map_err(SocketError::Serialize)?);
 
-    let length = message_bytes.len() as u32;
-    stream
-        .write_all(&length.to_le_bytes())
-        .await
-        .map_err(SocketError::Send)?;
+    let mut request = Zeroizing::new(Vec::with_capacity(4 + message_bytes.len()));
+    request.extend_from_slice(&(message_bytes.len() as u32).to_le_bytes());
+    request.extend_from_slice(&message_bytes);
 
-    timeout(
-        Duration::from_millis(SOCKET_TIMEOUT_MS),
-        stream.write_all(&message_bytes),
-    )
+    timeout(Duration::from_millis(SOCKET_TIMEOUT_MS), async {
+        stream.write_all(&request).await?;
+        // The daemon reads the whole request before acting on it, so it is
+        // handled even if the PAM caller exits right after we return. Don't
+        // wait for the response, it would stall the login on the unlock.
+        stream.shutdown().await
+    })
     .await
     .map_err(|_| SocketError::Timeout)?
     .map_err(SocketError::Send)?;
 
-    stream.flush().await.map_err(SocketError::Send)?;
-
-    tracing::debug!("Sent message to daemon, reading response");
-
-    let mut length_bytes = [0u8; 4];
-    match timeout(
-        Duration::from_millis(SOCKET_TIMEOUT_MS),
-        stream.read_exact(&mut length_bytes),
-    )
-    .await
-    {
-        Ok(Ok(_)) => {
-            let length = u32::from_le_bytes(length_bytes) as usize;
-            let mut response_bytes = vec![0u8; length];
-            if let Ok(Ok(_)) = timeout(
-                Duration::from_millis(SOCKET_TIMEOUT_MS),
-                stream.read_exact(&mut response_bytes),
-            )
-            .await
-            {
-                match PamResponse::from_bytes(&response_bytes) {
-                    Ok(response) if response.success => {
-                        tracing::debug!("Daemon accepted secret");
-                    }
-                    Ok(response) => {
-                        tracing::warn!("Daemon rejected secret: {}", response.error_message);
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse daemon response: {e}");
-                    }
-                }
-            }
-        }
-        _ => {
-            tracing::debug!("No response from daemon");
-        }
-    }
+    tracing::debug!("Sent message to daemon");
 
     Ok(())
 }
