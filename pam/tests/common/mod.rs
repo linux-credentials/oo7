@@ -1,5 +1,7 @@
 //! Drives the built PAM module through a private Linux-PAM configuration.
 
+pub mod namespace;
+
 use std::{
     ffi::{CStr, CString, c_char, c_int, c_void},
     fs,
@@ -115,12 +117,16 @@ impl Fixture {
 
     /// Start a transaction for the current user, without a daemon listening.
     pub fn start(&self) -> Pam {
+        self.start_for(&self.username)
+    }
+
+    pub fn start_for(&self, username: &str) -> Pam {
         let _ = fs::remove_file(&self.socket_path);
         let conv = Box::new(PamConv {
             conv: no_conversation,
             appdata_ptr: std::ptr::null_mut(),
         });
-        let user = CString::new(self.username.as_str()).unwrap();
+        let user = CString::new(username).unwrap();
         let confdir = CString::new(self.dir.path().as_os_str().as_encoded_bytes()).unwrap();
         let mut handle = std::ptr::null_mut();
         let ret = unsafe {
