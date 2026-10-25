@@ -86,6 +86,23 @@ The module intercepts the password change operation:
 - `OO7_PAM_SOCKET`: Path to the Unix domain socket for daemon communication
   - Default: `$XDG_RUNTIME_DIR/oo7/pam.sock` (typically `/run/user/$UID/oo7/pam.sock`)
 
+## Testing
+
+Run ordinary PAM tests with `cargo test -p oo7-pam`.
+
+Credential tests require bubblewrap, Linux 4.9 or newer, and root execution.
+With sudo already authorized, Cargo builds as the normal user and elevates only
+the test executables:
+
+```sh
+OO7_PAM_PRIVILEGED_TESTS=1 \
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER='sudo -n --preserve-env=OO7_PAM_PRIVILEGED_TESTS' \
+cargo test -p oo7-pam -- --ignored
+```
+
+Use the runner variable for your host target if it differs. Credential changes
+use synthetic accounts and temporary PAM configuration inside private namespaces.
+
 ## License
 
 The project is released under the MIT license.

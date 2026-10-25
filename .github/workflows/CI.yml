@@ -57,7 +57,7 @@ jobs:
       - name: Install PAM headers
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpam0g-dev
+          sudo apt-get install -y libpam0g-dev bubblewrap
 
       - name: Build PAM
         run: |
@@ -91,6 +91,12 @@ jobs:
 
       - name: Test PAM
         run: cargo test --manifest-path ./pam/Cargo.toml
+
+      - name: Test PAM (privileged)
+        env:
+          OO7_PAM_PRIVILEGED_TESTS: "1"
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -n --preserve-env=OO7_PAM_PRIVILEGED_TESTS
+        run: cargo test --manifest-path ./pam/Cargo.toml -- --ignored
 
   cargo-deny:
       runs-on: ubuntu-latest

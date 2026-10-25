@@ -113,7 +113,9 @@ pub fn send_secret_to_daemon(
         }
         0 => {
             unsafe {
-                if libc::setgid(gid) < 0
+                // Clear inherited groups before dropping root privileges.
+                if (current_euid == 0 && libc::setgroups(0, std::ptr::null()) < 0)
+                    || libc::setgid(gid) < 0
                     || libc::setuid(uid) < 0
                     || libc::setegid(gid) < 0
                     || libc::seteuid(uid) < 0
