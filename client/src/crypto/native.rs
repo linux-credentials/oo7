@@ -149,7 +149,11 @@ pub(crate) fn verify_mac(
 pub(crate) fn verify_checksum_md5(digest: impl AsRef<[u8]>, content: impl AsRef<[u8]>) -> bool {
     let mut hasher = Md5::new();
     hasher.update(content.as_ref());
-    hasher.finalize_fixed().ct_eq(digest.as_ref()).into()
+    hasher
+        .finalize_fixed()
+        .as_slice()
+        .ct_eq(digest.as_ref())
+        .into()
 }
 
 pub(crate) fn derive_key(
