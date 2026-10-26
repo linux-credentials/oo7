@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ashpd::WindowIdentifier;
 use futures_util::{Stream, StreamExt};
-use zbus::zvariant::OwnedObjectPath;
+use zbus::wire::OwnedObjectPath;
 
 use super::{Algorithm, Collection, Error, ServiceError, api};
 use crate::Key;
@@ -49,7 +49,7 @@ impl Service {
     /// Create a new instance of the Service, an encrypted communication would
     /// be attempted first and would fall back to a plain one if that fails.
     pub async fn new() -> Result<Self, Error> {
-        let cnx = zbus::connection::Builder::session()?
+        let cnx = zbus::connection::Builder::session()
             .method_timeout(std::time::Duration::from_secs(30))
             .build()
             .await?;
@@ -76,7 +76,7 @@ impl Service {
 
     /// Create a new instance of the Service with plain algorithm.
     pub async fn plain() -> Result<Self, Error> {
-        let cnx = zbus::connection::Builder::session()?
+        let cnx = zbus::connection::Builder::session()
             .method_timeout(std::time::Duration::from_secs(30))
             .build()
             .await?;
@@ -91,7 +91,7 @@ impl Service {
 
     /// Create a new instance of the Service with encrypted algorithm.
     pub async fn encrypted() -> Result<Self, Error> {
-        let cnx = zbus::connection::Builder::session()?
+        let cnx = zbus::connection::Builder::session()
             .method_timeout(std::time::Duration::from_secs(30))
             .build()
             .await?;

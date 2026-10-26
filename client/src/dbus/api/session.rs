@@ -1,13 +1,13 @@
 use std::fmt;
 
 use serde::Serialize;
-use zbus::zvariant::{ObjectPath, Type};
+use zbus::wire::{ObjectPath, Type};
 
 use super::DESTINATION;
 use crate::dbus::{Error, ServiceError};
 
 #[derive(Type)]
-#[zvariant(signature = "o")]
+#[zbus(signature = "o")]
 #[doc(alias = "org.freedesktop.Secret.Session")]
 pub struct Session(zbus::Proxy<'static>);
 
@@ -32,7 +32,7 @@ impl Session {
         P::Error: Into<zbus::Error>,
     {
         zbus::proxy::Builder::new(connection)
-            .path(object_path)?
+            .path(object_path)
             .build()
             .await
             .map_err(From::from)

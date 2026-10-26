@@ -1,4 +1,4 @@
-use zbus::zvariant;
+use zbus::wire;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{crypto, file};
@@ -96,33 +96,33 @@ impl Key {
     }
 }
 
-impl From<Key> for zvariant::Value<'static> {
+impl From<Key> for wire::Variant<'static> {
     fn from(key: Key) -> Self {
         let mut key = key;
         let inner: Vec<u8> = std::mem::take(&mut key.key);
-        zvariant::Array::from(inner).into()
+        wire::Array::from(inner).into()
     }
 }
 
-impl From<Key> for zvariant::OwnedValue {
+impl From<Key> for wire::OwnedVariant {
     fn from(key: Key) -> Self {
-        zvariant::Value::from(key).try_into_owned().unwrap()
+        wire::Variant::from(key).try_into_owned().unwrap()
     }
 }
 
-impl TryFrom<zvariant::Value<'_>> for Key {
-    type Error = zvariant::Error;
+impl TryFrom<wire::Variant<'_>> for Key {
+    type Error = wire::Error;
 
-    fn try_from(value: zvariant::Value<'_>) -> Result<Self, Self::Error> {
+    fn try_from(value: wire::Variant<'_>) -> Result<Self, Self::Error> {
         Ok(Key::new(value.try_into()?))
     }
 }
 
-impl TryFrom<zvariant::OwnedValue> for Key {
-    type Error = zvariant::Error;
+impl TryFrom<wire::OwnedVariant> for Key {
+    type Error = wire::Error;
 
-    fn try_from(value: zvariant::OwnedValue) -> Result<Self, Self::Error> {
-        Self::try_from(zvariant::Value::from(value))
+    fn try_from(value: wire::OwnedVariant) -> Result<Self, Self::Error> {
+        Self::try_from(wire::Variant::from(value))
     }
 }
 

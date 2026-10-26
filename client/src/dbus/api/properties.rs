@@ -4,7 +4,7 @@ use serde::{
     Deserialize,
     ser::{Serialize, SerializeMap},
 };
-use zbus::zvariant::{self, Type, Value};
+use zbus::wire::{self, Type, Variant};
 
 use crate::AsAttributes;
 
@@ -14,7 +14,7 @@ const ITEM_PROPERTY_ATTRIBUTES: &str = "org.freedesktop.Secret.Item.Attributes";
 const COLLECTION_PROPERTY_LABEL: &str = "org.freedesktop.Secret.Collection.Label";
 
 #[derive(Debug, Type)]
-#[zvariant(signature = "a{sv}")]
+#[zbus(signature = "a{sv}")]
 pub struct Properties {
     label: String,
     attributes: Option<HashMap<String, String>>,
@@ -51,20 +51,20 @@ impl Serialize for Properties {
     {
         if self.attributes.is_none() {
             let mut map = serializer.serialize_map(Some(1))?;
-            map.serialize_entry(COLLECTION_PROPERTY_LABEL, &Value::from(&self.label))?;
+            map.serialize_entry(COLLECTION_PROPERTY_LABEL, &Variant::from(&self.label))?;
             map.end()
         } else {
             let mut map = serializer.serialize_map(Some(2))?;
-            map.serialize_entry(ITEM_PROPERTY_LABEL, &Value::from(&self.label))?;
-            let mut dict = zbus::zvariant::Dict::new(String::SIGNATURE, String::SIGNATURE);
+            map.serialize_entry(ITEM_PROPERTY_LABEL, &Variant::from(&self.label))?;
+            let mut dict = zbus::wire::Dict::new(String::SIGNATURE, String::SIGNATURE);
 
             if let Some(attributes) = &self.attributes {
                 for (key, value) in attributes {
-                    dict.add(key, value).expect("Key/Value of correct types");
+                    dict.add(key, value).expect("Key/value of correct types");
                 }
             }
 
-            map.serialize_entry(ITEM_PROPERTY_ATTRIBUTES, &Value::from(dict))?;
+            map.serialize_entry(ITEM_PROPERTY_ATTRIBUTES, &Variant::from(dict))?;
             map.end()
         }
     }
@@ -75,13 +75,12 @@ impl<'de> Deserialize<'de> for Properties {
     where
         D: serde::Deserializer<'de>,
     {
-        let map: HashMap<&str, Value<'_>> = HashMap::deserialize(deserializer)?;
+        let map: HashMap<&str, Variant<'_>> = HashMap::deserialize(deserializer)?;
         if map.contains_key(COLLECTION_PROPERTY_LABEL) {
-            let label =
-                zvariant::Str::try_from(map.get(COLLECTION_PROPERTY_LABEL).unwrap()).unwrap();
+            let label = wire::Str::try_from(map.get(COLLECTION_PROPERTY_LABEL).unwrap()).unwrap();
             Ok(Self::for_collection(&label))
         } else {
-            let label = zvariant::Str::try_from(map.get(ITEM_PROPERTY_LABEL).unwrap()).unwrap();
+            let label = wire::Str::try_from(map.get(ITEM_PROPERTY_LABEL).unwrap()).unwrap();
             let attributes = HashMap::<String, String>::try_from(
                 map.get(ITEM_PROPERTY_ATTRIBUTES)
                     .unwrap()
@@ -96,7 +95,7 @@ impl<'de> Deserialize<'de> for Properties {
 
 #[cfg(test)]
 mod tests {
-    use zbus::zvariant::{Endian, Type, serialized::Context, to_bytes};
+    use zbus::wire::{Endian, Type, serialized::Context, to_bytes};
 
     use super::*;
 
@@ -107,13 +106,13 @@ mod tests {
         assert!(properties.attributes().is_none());
         assert_eq!(properties.label(), "some_label");
 
-        let ctxt = Context::new_dbus(Endian::Little, 0);
+        let ctxt = Context::new(Endian::Little, 0);
         let encoded = to_bytes(ctxt, &properties).unwrap();
-        let decoded: HashMap<&str, Value<'_>> = encoded.deserialize().unwrap().0;
+        let decoded: HashMap<&str, Variant<'_>> = encoded.deserialize().unwrap().0;
 
         assert_eq!(
             decoded[COLLECTION_PROPERTY_LABEL],
-            Value::from("some_label")
+            Variant::from("some_label")
         );
         assert!(!decoded.contains_key(ITEM_PROPERTY_ATTRIBUTES));
         assert!(!decoded.contains_key(ITEM_PROPERTY_LABEL));
@@ -128,16 +127,16 @@ mod tests {
         assert!(properties.attributes().is_some());
         assert_eq!(properties.label(), "some_label");
 
-        let ctxt = Context::new_dbus(Endian::Little, 0);
+        let ctxt = Context::new(Endian::Little, 0);
         let encoded = to_bytes(ctxt, &properties).unwrap();
-        let decoded: HashMap<&str, Value<'_>> = encoded.deserialize().unwrap().0;
+        let decoded: HashMap<&str, Variant<'_>> = encoded.deserialize().unwrap().0;
 
-        assert_eq!(decoded[ITEM_PROPERTY_LABEL], Value::from("some_label"));
+        assert_eq!(decoded[ITEM_PROPERTY_LABEL], Variant::from("some_label"));
         assert!(!decoded.contains_key(COLLECTION_PROPERTY_LABEL));
         assert!(decoded.contains_key(ITEM_PROPERTY_ATTRIBUTES));
         assert_eq!(
             decoded[ITEM_PROPERTY_ATTRIBUTES],
-            zvariant::Dict::from(attributes).into()
+            wire::Dict::from(attributes).into()
         );
     }
 
@@ -150,9 +149,9 @@ mod tests {
     fn deserialize_collection_properties() {
         // Create serialized data that represents collection properties
         let mut map = HashMap::new();
-        map.insert(COLLECTION_PROPERTY_LABEL, Value::from("test_collection"));
+        map.insert(COLLECTION_PROPERTY_LABEL, Variant::from("test_collection"));
 
-        let ctxt = Context::new_dbus(Endian::Little, 0);
+        let ctxt = Context::new(Endian::Little, 0);
         let encoded = to_bytes(ctxt, &map).unwrap();
 
         // Deserialize through the Properties Deserialize trait
@@ -164,7 +163,7 @@ mod tests {
 
     #[test]
     fn deserialize_item_properties() {
-        use zbus::zvariant::Dict;
+        use zbus::wire::Dict;
 
         // Create serialized data that represents item properties
         let mut attrs_dict = Dict::new(String::SIGNATURE, String::SIGNATURE);
@@ -172,10 +171,10 @@ mod tests {
         attrs_dict.add("key2", "value2").unwrap();
 
         let mut map = HashMap::new();
-        map.insert(ITEM_PROPERTY_LABEL, Value::from("test_item"));
-        map.insert(ITEM_PROPERTY_ATTRIBUTES, Value::from(attrs_dict));
+        map.insert(ITEM_PROPERTY_LABEL, Variant::from("test_item"));
+        map.insert(ITEM_PROPERTY_ATTRIBUTES, Variant::from(attrs_dict));
 
-        let ctxt = Context::new_dbus(Endian::Little, 0);
+        let ctxt = Context::new(Endian::Little, 0);
         let encoded = to_bytes(ctxt, &map).unwrap();
 
         // Deserialize through the Properties Deserialize trait

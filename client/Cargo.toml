@@ -57,7 +57,7 @@ default = ["tokio", "native_crypto"]
 # Enables unstable low-level API
 unstable = []
 async-std = [
-    "zbus/async-io",
+    "zbus/default-rt",
     "dep:async-fs",
     "dep:async-io",
     "dep:async-lock",

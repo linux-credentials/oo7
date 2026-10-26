@@ -20,6 +20,7 @@ allow = [
 
 [sources]
 allow-git = [
+  "https://github.com/bilelmoussaoui/ashpd", # pending a release with zbus 6 support
 ]
 
 [bans]

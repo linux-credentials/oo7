@@ -4,7 +4,7 @@ use std::{collections::HashMap, io::Write, os::unix::net::UnixStream, sync::Arc}
 use base64::Engine;
 use oo7::{Secret, crypto, dbus};
 use tokio_stream::StreamExt;
-use zbus::zvariant::{Fd, ObjectPath, Optional, Value};
+use zbus::wire::{Fd, ObjectPath, Optional, Variant};
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 use crate::gnome::{
@@ -17,14 +17,14 @@ use crate::service::{PrompterType, Service};
 async fn create_p2p_connection()
 -> Result<(zbus::Connection, zbus::Connection), Box<dyn std::error::Error>> {
     let guid = zbus::Guid::generate();
-    let (p0, p1) = tokio::net::UnixStream::pair()?;
+    let (p0, p1) = UnixStream::pair()?;
 
     let (client_conn, server_conn) = tokio::try_join!(
         // Client
         zbus::connection::Builder::unix_stream(p0).p2p().build(),
         // Server
         zbus::connection::Builder::unix_stream(p1)
-            .server(guid)?
+            .server(guid)
             .p2p()
             .build(),
     )?;
@@ -465,7 +465,7 @@ impl MockPrompterService {
                 "MockPrompter: calling PromptReady with None on {}",
                 callback_path
             );
-            let properties: HashMap<String, Value> = HashMap::new();
+            let properties: HashMap<String, Variant> = HashMap::new();
             let empty_exchange = "";
 
             connection
@@ -514,7 +514,7 @@ impl MockPrompterService {
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
             let accept = *should_accept.lock().await;
-            let properties: HashMap<String, Value> = HashMap::new();
+            let properties: HashMap<String, Variant> = HashMap::new();
 
             if !accept {
                 tracing::debug!("MockPrompter: dismissing prompt");
@@ -769,11 +769,8 @@ impl MockPrompterServicePlasma {
             tokio::spawn(async move {
                 let proxy: zbus::proxy::Proxy<'_> = zbus::proxy::Builder::new(&connection)
                     .destination("org.kde.client") // apparently unused but still required for p2p
-                    .unwrap()
                     .path(callback_path.clone())
-                    .unwrap()
                     .interface("org.kde.secretprompter.request")
-                    .unwrap()
                     .build()
                     .await
                     .unwrap();

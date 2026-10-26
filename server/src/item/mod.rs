@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use oo7::dbus::{ServiceError, api::DBusSecretInner};
 use tokio::sync::Mutex;
-use zbus::zvariant::{ObjectPath, OwnedObjectPath};
+use zbus::wire::{ObjectPath, OwnedObjectPath};
 
 use crate::{Service, collection::Collection, error::custom_service_error};
 
@@ -64,7 +64,7 @@ impl Item {
                     // Now delete the item
                     item_self.delete_unlocked(&coll, &caller).await?;
 
-                    Ok(zbus::zvariant::Value::new(OwnedObjectPath::default())
+                    Ok(zbus::wire::Variant::new(OwnedObjectPath::default())
                         .try_into_owned()
                         .unwrap())
                 },

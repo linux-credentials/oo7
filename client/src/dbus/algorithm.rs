@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use zbus::zvariant;
+use zbus::wire;
 
-#[derive(Debug, zvariant::Type, PartialEq, Eq, Copy, Clone)]
-#[zvariant(signature = "s")]
+#[derive(Debug, wire::Type, PartialEq, Eq, Copy, Clone)]
+#[zbus(signature = "s")]
 /// Algorithm used to start a new session.
 ///
 /// The communication between the Secret Service and the application can either
@@ -44,13 +44,13 @@ impl<'de> Deserialize<'de> for Algorithm {
 
 #[cfg(test)]
 mod tests {
-    use zbus::zvariant::{Endian, serialized::Context, to_bytes};
+    use zbus::wire::{Endian, serialized::Context, to_bytes};
 
     use super::*;
 
     #[test]
     fn serialization() {
-        let ctxt = Context::new_dbus(Endian::Little, 0);
+        let ctxt = Context::new(Endian::Little, 0);
 
         // Test serializing Plain
         let encoded = to_bytes(ctxt, &Algorithm::Plain).unwrap();

@@ -12,7 +12,7 @@ use tokio::{
 use zbus::{
     interface,
     object_server::SignalEmitter,
-    zvariant::{ObjectPath, Optional, OwnedObjectPath, OwnedValue},
+    wire::{ObjectPath, Optional, OwnedObjectPath, OwnedVariant},
 };
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
@@ -35,7 +35,7 @@ trait CliPrompter {
         &self,
         label: &str,
         description: &str,
-    ) -> zbus::Result<(zbus::zvariant::OwnedFd, bool)>;
+    ) -> zbus::Result<(zbus::wire::OwnedFd, bool)>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,7 +48,7 @@ pub enum PromptRole {
 /// A boxed future that represents the action to be taken when a prompt
 /// completes
 pub type PromptActionFuture =
-    Pin<Box<dyn Future<Output = Result<OwnedValue, ServiceError>> + Send + 'static>>;
+    Pin<Box<dyn Future<Output = Result<OwnedVariant, ServiceError>> + Send + 'static>>;
 
 /// Represents the action to be taken when a prompt completes
 pub struct PromptAction {
@@ -62,7 +62,7 @@ impl PromptAction {
     pub fn new<F, Fut>(f: F) -> Self
     where
         F: FnOnce(Option<Secret>) -> Fut + Send + 'static,
-        Fut: Future<Output = Result<OwnedValue, ServiceError>> + Send + 'static,
+        Fut: Future<Output = Result<OwnedVariant, ServiceError>> + Send + 'static,
     {
         Self {
             action: Box::new(move |secret| Box::pin(f(secret))),
@@ -70,7 +70,7 @@ impl PromptAction {
     }
 
     /// Execute the action with the provided secret
-    pub async fn execute(self, secret: Option<Secret>) -> Result<OwnedValue, ServiceError> {
+    pub async fn execute(self, secret: Option<Secret>) -> Result<OwnedVariant, ServiceError> {
         (self.action)(secret).await
     }
 }
@@ -159,7 +159,7 @@ impl Prompt {
     pub async fn completed(
         signal_emitter: &SignalEmitter<'_>,
         dismissed: bool,
-        result: OwnedValue,
+        result: OwnedVariant,
     ) -> zbus::Result<()>;
 }
 

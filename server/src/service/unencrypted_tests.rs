@@ -1,5 +1,5 @@
 use oo7::{Secret, file::UnlockedKeyring};
-use zbus::zvariant::ObjectPath;
+use zbus::wire::ObjectPath;
 
 use crate::tests::TestServiceSetup;
 

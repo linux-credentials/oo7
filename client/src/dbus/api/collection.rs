@@ -3,7 +3,7 @@ use std::{fmt, time::Duration};
 use ashpd::WindowIdentifier;
 use futures_util::{Stream, StreamExt};
 use serde::Serialize;
-use zbus::zvariant::{ObjectPath, OwnedObjectPath, Type};
+use zbus::wire::{ObjectPath, OwnedObjectPath, Type};
 
 use super::{DBusSecret, DESTINATION, Item, Prompt, Properties, Unlockable};
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(Type)]
-#[zvariant(signature = "o")]
+#[zbus(signature = "o")]
 #[doc(alias = "org.freedesktop.Secret.Collection")]
 pub struct Collection(zbus::Proxy<'static>);
 
@@ -37,7 +37,7 @@ impl Collection {
         P::Error: Into<zbus::Error>,
     {
         zbus::proxy::Builder::new(connection)
-            .path(object_path)?
+            .path(object_path)
             .uncached_properties(&["Label", "Modified", "Items", "Locked"])
             .build()
             .await
@@ -94,7 +94,7 @@ impl Collection {
     pub async fn items(&self) -> Result<Vec<Item>, Error> {
         let item_paths = self
             .inner()
-            .get_property::<Vec<ObjectPath>>("Items")
+            .get_property::<Vec<OwnedObjectPath>>("Items")
             .await?;
         Item::from_paths(self.inner().connection(), item_paths).await
     }

@@ -15,8 +15,8 @@ use oo7::{
     file::Keyring,
 };
 use tokio::sync::{Mutex, RwLock};
-use zbus::{interface, object_server::SignalEmitter, proxy::Defaults, zvariant};
-use zvariant::{ObjectPath, OwnedObjectPath};
+use wire::{ObjectPath, OwnedObjectPath};
+use zbus::{interface, object_server::SignalEmitter, proxy::Defaults, wire};
 
 use crate::{
     Service,
@@ -73,7 +73,7 @@ impl Collection {
 
                     collection.delete_unlocked(&caller_owned).await?;
 
-                    Ok(zvariant::Value::new(OwnedObjectPath::default())
+                    Ok(wire::Variant::new(OwnedObjectPath::default())
                         .try_into_owned()
                         .unwrap())
                 });
@@ -208,7 +208,7 @@ impl Collection {
                         .create_item_unlocked(properties, secret, replace)
                         .await?;
 
-                    Ok(zvariant::Value::new(item_path).try_into_owned().unwrap())
+                    Ok(wire::Variant::new(item_path).try_into_owned().unwrap())
                 });
 
             prompt.set_action(action).await;
@@ -437,7 +437,7 @@ impl Collection {
     ) -> zbus::Result<()>;
 }
 
-pub(crate) fn collection_path(label: &str) -> Result<OwnedObjectPath, zvariant::Error> {
+pub(crate) fn collection_path(label: &str) -> Result<OwnedObjectPath, wire::Error> {
     let sanitized_label = label
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");

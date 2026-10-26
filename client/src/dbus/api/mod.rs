@@ -1,17 +1,17 @@
 pub(crate) const DESTINATION: zbus::names::BusName<'static> = zbus::names::BusName::WellKnown(
     zbus::names::WellKnownName::from_static_str_unchecked("org.freedesktop.secrets"),
 );
-pub(crate) const PATH: zbus::zvariant::ObjectPath<'static> =
-    zbus::zvariant::ObjectPath::from_static_str_unchecked("/org/freedesktop/secrets");
+pub(crate) const PATH: zbus::wire::ObjectPath<'static> =
+    zbus::wire::ObjectPath::from_static_str_unchecked("/org/freedesktop/secrets");
 
 /// A common trait implemented by objects that can be
 /// locked or unlocked. Like [`Collection`] or [`Item`].
-pub trait Unlockable: serde::Serialize + zbus::zvariant::Type {}
+pub trait Unlockable: serde::Serialize + zbus::wire::Type {}
 
-impl Unlockable for zbus::zvariant::ObjectPath<'_> {}
-impl Unlockable for zbus::zvariant::OwnedObjectPath {}
-impl Unlockable for &zbus::zvariant::ObjectPath<'_> {}
-impl Unlockable for &zbus::zvariant::OwnedObjectPath {}
+impl Unlockable for zbus::wire::ObjectPath<'_> {}
+impl Unlockable for zbus::wire::OwnedObjectPath {}
+impl Unlockable for &zbus::wire::ObjectPath<'_> {}
+impl Unlockable for &zbus::wire::OwnedObjectPath {}
 
 mod collection;
 mod item;

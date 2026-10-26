@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize, ser::SerializeTuple};
-use zbus::zvariant::{OwnedObjectPath, Type};
+use zbus::wire::{OwnedObjectPath, Type};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use super::Session;
 use crate::{Key, Secret, crypto, dbus::Error, secret::ContentType};
 
 #[derive(Debug, Serialize, Deserialize, Type, Zeroize, ZeroizeOnDrop)]
-#[zvariant(signature = "(oayays)")]
+#[zbus(signature = "(oayays)")]
 /// Same as [`DBusSecret`] without tying the session path to a [`Session`] type.
 pub struct DBusSecretInner(
     #[zeroize(skip)] pub OwnedObjectPath,
@@ -18,7 +18,7 @@ pub struct DBusSecretInner(
 );
 
 #[derive(Debug, Type, Zeroize, ZeroizeOnDrop)]
-#[zvariant(signature = "(oayays)")]
+#[zbus(signature = "(oayays)")]
 pub struct DBusSecret {
     #[zeroize(skip)]
     pub(crate) session: Arc<Session>,

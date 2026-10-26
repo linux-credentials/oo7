@@ -4,7 +4,7 @@ mod error;
 use ashpd::{
     PortalError, async_trait,
     desktop::HandleToken,
-    zbus::{self, zvariant::OwnedValue},
+    zbus::{self, wire::OwnedVariant},
 };
 use clap::Parser;
 pub use error::Result;
@@ -38,7 +38,7 @@ impl ashpd::backend::secret::SecretImpl for Secret {
         token: HandleToken,
         app_id: ashpd::MaybeAppID,
         fd: std::os::fd::OwnedFd,
-    ) -> ashpd::backend::Result<HashMap<String, OwnedValue>> {
+    ) -> ashpd::backend::Result<HashMap<String, OwnedVariant>> {
         tracing::debug!("Request from app: {app_id}");
 
         let task = tokio::spawn(async move { send_secret_to_app(&app_id, fd).await });
@@ -141,9 +141,9 @@ async fn main() -> Result<()> {
     );
 
     let mut flags =
-        zbus::fdo::RequestNameFlags::AllowReplacement | zbus::fdo::RequestNameFlags::DoNotQueue;
+        zbus::fdo::RequestNameFlags::ALLOW_REPLACEMENT | zbus::fdo::RequestNameFlags::DO_NOT_QUEUE;
     if args.replace {
-        flags |= zbus::fdo::RequestNameFlags::ReplaceExisting;
+        flags |= zbus::fdo::RequestNameFlags::REPLACE_EXISTING;
     }
 
     let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
