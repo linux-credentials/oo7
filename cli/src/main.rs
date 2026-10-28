@@ -273,7 +273,7 @@ struct CollectionOutput {
 impl CollectionOutput {
     async fn from_collection(collection: &oo7::dbus::Collection) -> Result<Self, Error> {
         let path = collection.path().to_string();
-        let alias = path.split('/').last().unwrap_or_default().to_string();
+        let alias = path.split('/').next_back().unwrap_or_default().to_string();
         let is_temporary = alias == Service::SESSION_COLLECTION;
         Ok(Self {
             alias,
