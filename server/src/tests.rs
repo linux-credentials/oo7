@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::Write, os::unix::net::UnixStream, sync::Arc}
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 use base64::Engine;
-use oo7::{Secret, crypto, dbus};
+use oo7::{Secret, crypto, dbus, file::UnlockedKeyring};
 use tokio_stream::StreamExt;
 use zbus::wire::{Fd, ObjectPath, Optional, Variant};
 
@@ -46,7 +46,7 @@ pub struct TestServiceSetup {
     #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
     pub(crate) mock_prompter_plasma: MockPrompterServicePlasma,
     // Keep temp dir alive for duration of test
-    _temp_dir: tempfile::TempDir,
+    temp_dir: tempfile::TempDir,
 }
 
 impl Drop for TestServiceSetup {
@@ -133,7 +133,7 @@ impl TestServiceSetup {
             mock_prompter,
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             mock_prompter_plasma,
-            _temp_dir: temp_dir,
+            temp_dir,
         })
     }
 
@@ -210,7 +210,7 @@ impl TestServiceSetup {
             mock_prompter,
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             mock_prompter_plasma,
-            _temp_dir: temp_dir,
+            temp_dir,
         })
     }
 
@@ -284,8 +284,34 @@ impl TestServiceSetup {
             mock_prompter,
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             mock_prompter_plasma,
-            _temp_dir: temp_dir,
+            temp_dir,
         })
+    }
+
+    /// Create a test setup with an empty Login keyring stored on disk
+    pub(crate) async fn with_login_keyring(
+        secret: Secret,
+    ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::TempDir::new()?;
+        UnlockedKeyring::open_at(temp_dir.path(), "login", Some(secret.clone()))
+            .await?
+            .write()
+            .await?;
+
+        let mut setup =
+            Self::with_disk_keyrings(temp_dir.path().to_path_buf(), None, Some(secret)).await?;
+        setup.temp_dir = temp_dir;
+        Ok(setup)
+    }
+
+    /// Load the Login keyring of [`Self::with_login_keyring`] from disk
+    pub(crate) async fn login_keyring(
+        &self,
+    ) -> Result<UnlockedKeyring, Box<dyn std::error::Error>> {
+        let keyring =
+            UnlockedKeyring::open_at(self.temp_dir.path(), "login", self.keyring_secret.clone())
+                .await?;
+        Ok(keyring)
     }
 
     pub(crate) async fn set_password_accept(&self, accept: bool) {
