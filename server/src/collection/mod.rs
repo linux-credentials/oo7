@@ -372,6 +372,14 @@ impl Collection {
 
         let old_label = self.label.lock().await.clone();
         *self.label.lock().await = label.to_owned();
+
+        let collections = self.service.collections.lock().await;
+        self.service
+            .write_collections_file(&collections)
+            .await
+            .map_err(|err| zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(err.to_string()))))?;
+        drop(collections);
+
         tracing::info!(
             "Collection `{}` label changed from \"{}\" to \"{}\".",
             self.path,
@@ -521,6 +529,10 @@ impl Collection {
         if serves_self {
             let _ = object_server.remove::<Collection, _>(&path).await;
         }
+    }
+
+    pub async fn restore_label(&self, label: &str) {
+        *self.label.lock().await = label.to_owned();
     }
 
     pub async fn alias(&self) -> String {

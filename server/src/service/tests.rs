@@ -1641,6 +1641,73 @@ async fn create_collection_serves_alias_path() -> Result<(), Box<dyn std::error:
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 #[tokio::test]
+async fn set_alias_persists() -> Result<(), Box<dyn std::error::Error>> {
+    let setup =
+        TestServiceSetup::with_login_keyring(Secret::from("test-password-long-enough")).await?;
+    let collection = setup
+        .service_api
+        .create_collection("Work Stuff", Some("work"), None)
+        .await?;
+    let path = collection.inner().path().to_string();
+
+    let setup = setup.restart().await?;
+    let collection = setup
+        .service_api
+        .read_alias("work")
+        .await?
+        .expect("Alias should survive a restart");
+    assert_eq!(collection.inner().path().as_str(), path);
+    assert_eq!(collection.label().await?, "Work Stuff");
+
+    setup.service_api.set_alias("default", &collection).await?;
+
+    let setup = setup.restart().await?;
+    let default_collection = setup
+        .service_api
+        .read_alias("default")
+        .await?
+        .expect("Default alias should survive a restart");
+    assert_eq!(default_collection.inner().path().as_str(), path);
+    assert!(setup.service_api.read_alias("work").await?.is_none());
+    // Login, Work Stuff and session
+    assert_eq!(setup.collections.len(), 3);
+    let login = setup
+        .server
+        .collection_from_path(&ObjectPath::from_static_str_unchecked(
+            "/org/freedesktop/secrets/collection/login",
+        ))
+        .await
+        .expect("Login collection should exist");
+    assert_eq!(login.alias().await, "");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn remove_alias_persists() -> Result<(), Box<dyn std::error::Error>> {
+    let setup =
+        TestServiceSetup::with_login_keyring(Secret::from("test-password-long-enough")).await?;
+
+    setup
+        .service_api
+        .inner()
+        .call_method(
+            "SetAlias",
+            &("default", ObjectPath::from_static_str_unchecked("/")),
+        )
+        .await?;
+    assert!(setup.service_api.read_alias("default").await?.is_none());
+
+    let setup = setup.restart().await?;
+    assert!(setup.service_api.read_alias("default").await?.is_none());
+    // The Login keyring is not opened a second time
+    assert_eq!(setup.collections.len(), 2);
+
+    Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
 async fn alias_paths_served_at_startup() -> Result<(), Box<dyn std::error::Error>> {
     let secret = Secret::from("test-password-long-enough");
     let data_dir = tempfile::tempdir()?;
@@ -1676,6 +1743,29 @@ async fn alias_paths_served_at_startup() -> Result<(), Box<dyn std::error::Error
         .await?;
         assert_eq!(alias.label().await?, label);
     }
+
+    Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn delete_collection_with_alias() -> Result<(), Box<dyn std::error::Error>> {
+    let setup =
+        TestServiceSetup::with_login_keyring(Secret::from("test-password-long-enough")).await?;
+    let collection = setup
+        .service_api
+        .create_collection("Work", Some("work"), None)
+        .await?;
+    setup.service_api.set_alias("default", &collection).await?;
+
+    collection.delete(None).await?;
+    assert!(setup.service_api.read_alias("default").await?.is_none());
+
+    let setup = setup.restart().await?;
+    assert!(setup.service_api.read_alias("default").await?.is_none());
+    assert!(setup.service_api.read_alias("work").await?.is_none());
+    // Login and session
+    assert_eq!(setup.collections.len(), 2);
 
     Ok(())
 }

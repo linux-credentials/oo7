@@ -819,3 +819,25 @@ fn test_collection_path() {
         "/org/freedesktop/secrets/collection/b_r"
     );
 }
+
+#[tokio::test]
+async fn set_label_persists() -> Result<(), Box<dyn std::error::Error>> {
+    let setup =
+        TestServiceSetup::with_login_keyring(oo7::Secret::from("test-password-long-enough"))
+            .await?;
+    let collection = setup.default_collection().await?;
+    let path = collection.inner().path().to_string();
+
+    collection.set_label("Personal").await?;
+
+    let setup = setup.restart().await?;
+    let collection = setup
+        .service_api
+        .read_alias("default")
+        .await?
+        .expect("Default collection should exist");
+    assert_eq!(collection.inner().path().as_str(), path);
+    assert_eq!(collection.label().await?, "Personal");
+
+    Ok(())
+}
