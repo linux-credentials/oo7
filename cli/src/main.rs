@@ -261,6 +261,43 @@ impl fmt::Display for ItemOutput {
     }
 }
 
+#[derive(Serialize)]
+struct CollectionOutput {
+    alias: String,
+    label: String,
+    path: String,
+    is_locked: bool,
+    is_temporary: bool,
+}
+
+impl CollectionOutput {
+    async fn from_collection(collection: &oo7::dbus::Collection) -> Result<Self, Error> {
+        let path = collection.path().to_string();
+        let alias = path.split('/').last().unwrap_or_default().to_string();
+        let is_temporary = alias == Service::SESSION_COLLECTION;
+        Ok(Self {
+            alias,
+            label: collection.label().await?,
+            path,
+            is_locked: collection.is_locked().await?,
+            is_temporary,
+        })
+    }
+}
+
+impl fmt::Display for CollectionOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}\t{}\t{}", self.alias, self.label, self.path)?;
+        if self.is_locked {
+            write!(f, " (locked)")?;
+        }
+        if self.is_temporary {
+            write!(f, " (temporary)")?;
+        }
+        writeln!(f)
+    }
+}
+
 enum Keyring {
     File(oo7::file::UnlockedKeyring),
     Collection(oo7::dbus::Collection),
@@ -358,6 +395,12 @@ enum Commands {
         json: bool,
     },
 
+    #[command(name = "list-collections", about = "List available collections")]
+    ListCollections {
+        #[arg(long, help = "Format the output as json.")]
+        json: bool,
+    },
+
     #[command(name = "lock", about = "Lock the keyring")]
     Lock,
 
@@ -411,6 +454,10 @@ impl Commands {
         }
 
         let service = Service::new().await?;
+
+        if let Commands::ListCollections { json } = self {
+            return Self::list_collections(&service, json).await;
+        }
         if matches!(self, Commands::ChangeSecret { .. }) && args.app_id.is_some() {
             return Err(Error::new(
                 "Changing the secret is not supported for application keyrings.",
@@ -498,7 +545,7 @@ impl Commands {
         };
 
         let output = match self {
-            Commands::Migrate { .. } => unreachable!(),
+            Commands::Migrate { .. } | Commands::ListCollections { .. } => unreachable!(),
             Commands::Delete { attributes } => {
                 match keyring {
                     Keyring::Collection(collection) => {
@@ -836,6 +883,21 @@ impl Commands {
             }
         }
 
+        Ok(())
+    }
+
+    async fn list_collections(service: &Service, json: bool) -> Result<(), Error> {
+        let mut entries = Vec::new();
+        for collection in &service.collections().await? {
+            entries.push(CollectionOutput::from_collection(collection).await?);
+        }
+        if json {
+            println!("{}", serde_json::to_string_pretty(&entries).unwrap());
+        } else {
+            for entry in &entries {
+                print!("{entry}");
+            }
+        }
         Ok(())
     }
 }
