@@ -742,13 +742,13 @@ impl Service {
         }
     }
 
-    /// The keyring file has no field for the label and alias of its
+    /// The keyring file has no field for the label and aliases of its
     /// collection, so they are kept in this file, keyed by keyring name.
     fn collections_file(&self) -> std::path::PathBuf {
         self.data_dir.join("keyrings/v1/collections")
     }
 
-    async fn read_collections_file(&self) -> HashMap<String, (String, String)> {
+    async fn read_collections_file(&self) -> HashMap<String, (String, Vec<String>)> {
         let path = self.collections_file();
         let bytes = match tokio::fs::read(&path).await {
             Ok(bytes) => bytes,
@@ -768,7 +768,7 @@ impl Service {
         }
     }
 
-    /// Save the label and alias of the collections stored on disk
+    /// Save the label and aliases of the collections stored on disk
     pub(crate) async fn write_collections_file(
         &self,
         collections: &HashMap<OwnedObjectPath, Collection>,
@@ -783,9 +783,15 @@ impl Service {
                 .and_then(|k| k.path())
                 .is_some();
             if on_disk {
+                let alias = collection.alias().await;
+                let aliases = if alias.is_empty() {
+                    vec![]
+                } else {
+                    vec![alias]
+                };
                 saved.insert(
                     collection.name().to_owned(),
-                    (collection.label().await, collection.alias().await),
+                    (collection.label().await, aliases),
                 );
             }
         }
@@ -1146,8 +1152,9 @@ impl Service {
 
         let saved = self.read_collections_file().await;
         for (name, _, alias, _) in &mut discovered_keyrings {
-            if let Some((_, saved_alias)) = saved.get(name) {
-                alias.clone_from(saved_alias);
+            if let Some((_, saved_aliases)) = saved.get(name) {
+                // A collection has a single alias for now
+                *alias = saved_aliases.first().cloned().unwrap_or_default();
             }
         }
 
