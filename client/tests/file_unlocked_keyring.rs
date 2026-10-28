@@ -457,6 +457,11 @@ async fn migrate_from_plain_legacy_with_secret() -> Result<(), Error> {
 }
 
 #[tokio::test]
+async fn migrate_from_plain_legacy_with_short_secret() -> Result<(), Error> {
+    migrate_from_plain_legacy(Some(Secret::from(vec![1]))).await
+}
+
+#[tokio::test]
 async fn migrate() -> Result<(), Error> {
     let data_dir = tempdir()?;
     let v0_dir = data_dir.path().join("keyrings");
