@@ -16,7 +16,7 @@ use oo7::{
     },
     file::{Keyring, LockedKeyring, UnlockedKeyring},
 };
-use tokio::sync::Mutex;
+use tokio::{io::AsyncWriteExt, sync::Mutex};
 use tokio_stream::StreamExt;
 use zbus::{
     fdo::{RequestNameFlags, RequestNameReply},
@@ -801,7 +801,15 @@ impl Service {
                 .await?;
         }
         let tmp_path = path.with_extension("tmp");
-        tokio::fs::write(&tmp_path, bytes.to_vec()).await?;
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp_path)
+            .await?;
+        file.write_all(&bytes).await?;
+        file.sync_all().await?;
         tokio::fs::rename(&tmp_path, &path).await?;
         Ok(())
     }

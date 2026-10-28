@@ -1706,6 +1706,24 @@ async fn remove_alias_persists() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[tokio::test]
+async fn collections_file_is_private() -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let setup =
+        TestServiceSetup::with_login_keyring(Secret::from("test-password-long-enough")).await?;
+    setup
+        .default_collection()
+        .await?
+        .set_label("Personal")
+        .await?;
+
+    let metadata = tokio::fs::metadata(setup.server.collections_file()).await?;
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+
+    Ok(())
+}
+
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 #[tokio::test]
 async fn alias_paths_served_at_startup() -> Result<(), Box<dyn std::error::Error>> {
