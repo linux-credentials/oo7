@@ -1550,3 +1550,71 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(migration.alias(), "kdewallet");
     Ok(())
 }
+
+#[tokio::test]
+async fn set_alias_updates_alias_path() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let login = setup.service_api.read_alias("default").await?.unwrap();
+    let other = setup
+        .collections
+        .iter()
+        .find(|c| c.inner().path() != login.inner().path())
+        .unwrap();
+    let alias = |name: &str| {
+        dbus::api::Collection::new(
+            &setup.client_conn,
+            format!("/org/freedesktop/secrets/aliases/{name}"),
+        )
+    };
+
+    setup.service_api.set_alias("work", other).await?;
+    assert_eq!(alias("work").await?.label().await?, other.label().await?);
+
+    setup.service_api.set_alias("default", other).await?;
+    assert_eq!(alias("default").await?.label().await?, other.label().await?);
+    assert!(alias("work").await?.label().await.is_err());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn delete_collection_removes_alias_path() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let login = setup.service_api.read_alias("default").await?.unwrap();
+
+    login.delete(None).await?;
+
+    let alias = dbus::api::Collection::new(
+        &setup.client_conn,
+        "/org/freedesktop/secrets/aliases/default",
+    )
+    .await?;
+    assert!(alias.label().await.is_err());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn delete_collection_through_alias_path() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let login = setup.service_api.read_alias("default").await?.unwrap();
+    let other = setup
+        .collections
+        .iter()
+        .find(|c| c.inner().path() != login.inner().path())
+        .unwrap();
+    setup.service_api.set_alias("work", other).await?;
+
+    for name in ["default", "work"] {
+        let alias = dbus::api::Collection::new(
+            &setup.client_conn,
+            format!("/org/freedesktop/secrets/aliases/{name}"),
+        )
+        .await?;
+        tokio::time::timeout(std::time::Duration::from_secs(5), alias.delete(None)).await??;
+        assert!(alias.label().await.is_err());
+    }
+    assert!(setup.service_api.collections().await?.is_empty());
+
+    Ok(())
+}
