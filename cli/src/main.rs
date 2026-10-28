@@ -856,7 +856,7 @@ struct Arguments {
         short,
         long,
         global = true,
-        help = "Specify a collection. The default collection will be used if not specified"
+        help = "Specify a collection by name. The default collection will be used if not specified"
     )]
     collection: Option<String>,
     #[arg(
@@ -864,7 +864,7 @@ struct Arguments {
         short,
         long,
         global = true,
-        help = "Specify a keyring. The default collection will be used if not specified"
+        help = "Specify the path to a keyring. The default collection will be used if not specified"
     )]
     keyring: Option<PathBuf>,
     #[arg(
