@@ -494,7 +494,17 @@ impl Commands {
             });
             (Some(secret), path)
         } else if let Some(keyring) = args.keyring {
-            (args.secret, Some(keyring))
+            let secret = args.secret.or_else(|| {
+                if std::io::stdin().is_terminal() {
+                    rpassword::prompt_password("Keyring secret: ")
+                        .ok()
+                        .filter(|s| !s.is_empty())
+                        .map(oo7::Secret::from)
+                } else {
+                    None
+                }
+            });
+            (secret, Some(keyring))
         } else if let Some(secret) = args.secret {
             (
                 Some(secret),
