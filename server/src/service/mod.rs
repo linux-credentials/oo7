@@ -38,9 +38,6 @@ use crate::{
     session::{PeerInfo, Session, SessionType},
 };
 
-const DEFAULT_COLLECTION_ALIAS_PATH: ObjectPath<'static> =
-    ObjectPath::from_static_str_unchecked("/org/freedesktop/secrets/aliases/default");
-
 /// Prompter type
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PrompterType {
@@ -1106,7 +1103,7 @@ impl Service {
 
         // Build all collections under the lock, then register on D-Bus after
         // releasing it to avoid deadlocks with incoming calls.
-        let mut built_collections: Vec<(Collection, String)> = Vec::new();
+        let mut built_collections: Vec<Collection> = Vec::new();
 
         for (name, label, alias, keyring) in discovered_keyrings {
             tracing::info!("Setting up collection '{name}' (alias: {alias}).");
@@ -1115,7 +1112,7 @@ impl Service {
             let collection =
                 Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
             collections.insert(collection.path().to_owned().into(), collection.clone());
-            built_collections.push((collection, unique_alias));
+            built_collections.push(collection);
         }
 
         // Always create session collection (always temporary)
@@ -1135,21 +1132,19 @@ impl Service {
         drop(collections);
 
         // Now register on D-Bus and dispatch items without holding the lock
-        for (collection, alias) in &built_collections {
+        for collection in &built_collections {
             collection.dispatch_items().await?;
             object_server
                 .at(collection.path(), collection.clone())
                 .await?;
-
-            if alias == oo7::dbus::Service::DEFAULT_COLLECTION {
-                object_server
-                    .at(DEFAULT_COLLECTION_ALIAS_PATH, collection.clone())
-                    .await?;
-            }
+            collection.serve_alias_path().await;
         }
 
         let session_path = session_collection.path().to_owned();
-        object_server.at(&session_path, session_collection).await?;
+        object_server
+            .at(&session_path, session_collection.clone())
+            .await?;
+        session_collection.serve_alias_path().await;
 
         // Spawn client disconnect handler
         let service = self.clone();
@@ -1464,6 +1459,7 @@ impl Service {
         self.object_server()
             .at(collection.path(), collection.clone())
             .await?;
+        collection.serve_alias_path().await;
 
         // Add to collections
         self.collections
@@ -1625,21 +1621,11 @@ impl Service {
                         continue;
                     }
 
+                    collection.serve_alias_path().await;
                     self.collections
                         .lock()
                         .await
-                        .insert(collection_path.clone(), collection.clone());
-
-                    if alias == oo7::dbus::Service::DEFAULT_COLLECTION
-                        && let Err(e) = self
-                            .object_server()
-                            .at(DEFAULT_COLLECTION_ALIAS_PATH, collection)
-                            .await
-                    {
-                        tracing::error!(
-                            "Failed to register default alias for migrated collection '{name}': {e}",
-                        );
-                    }
+                        .insert(collection_path.clone(), collection);
 
                     if let Ok(signal_emitter) =
                         self.signal_emitter(oo7::dbus::api::Service::PATH.as_ref().unwrap())

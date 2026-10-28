@@ -1618,3 +1618,64 @@ async fn delete_collection_through_alias_path() -> Result<(), Box<dyn std::error
 
     Ok(())
 }
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn create_collection_serves_alias_path() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+
+    let collection = setup
+        .service_api
+        .create_collection("Extra", Some("spare"), None)
+        .await?;
+
+    let alias =
+        dbus::api::Collection::new(&setup.client_conn, "/org/freedesktop/secrets/aliases/spare")
+            .await?;
+    assert_eq!(alias.label().await?, "Extra");
+    let path = setup.service_api.read_alias("spare").await?.unwrap();
+    assert_eq!(path.inner().path(), collection.inner().path());
+
+    Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn alias_paths_served_at_startup() -> Result<(), Box<dyn std::error::Error>> {
+    let secret = Secret::from("test-password-long-enough");
+    let data_dir = tempfile::tempdir()?;
+    UnlockedKeyring::open_at(data_dir.path(), "login", Some(secret.clone()))
+        .await?
+        .write()
+        .await?;
+    let setup = TestServiceSetup::with_disk_keyrings(
+        data_dir.path().to_path_buf(),
+        None,
+        Some(secret.clone()),
+    )
+    .await?;
+    setup
+        .service_api
+        .create_collection("Work", Some("work"), None)
+        .await?;
+
+    // A new service on the same keyrings
+    let setup =
+        TestServiceSetup::with_disk_keyrings(data_dir.path().to_path_buf(), None, Some(secret))
+            .await?;
+
+    for (name, label) in [
+        ("default", "Login"),
+        ("work", "Work"),
+        ("session", "session"),
+    ] {
+        let alias = dbus::api::Collection::new(
+            &setup.client_conn,
+            format!("/org/freedesktop/secrets/aliases/{name}"),
+        )
+        .await?;
+        assert_eq!(alias.label().await?, label);
+    }
+
+    Ok(())
+}

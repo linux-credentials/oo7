@@ -489,18 +489,22 @@ impl Collection {
     pub async fn set_alias(&self, alias: &str) {
         let old_alias = std::mem::replace(&mut *self.alias.lock().await, alias.to_owned());
         self.remove_alias_path(&old_alias).await;
+        self.serve_alias_path().await;
+    }
 
-        // The alias path serves this collection now, whichever one it served
-        // before
-        if let Some(path) = alias_path(alias) {
-            let object_server = self.service.object_server();
-            let _ = object_server.remove::<Collection, _>(&path).await;
-            if let Err(err) = object_server.at(&path, self.clone()).await {
-                tracing::warn!(
-                    "Failed to serve collection `{}` at `{path}`: {err}",
-                    self.path
-                );
-            }
+    /// Serve this collection at the path of its alias, in place of the
+    /// collection served there before
+    pub async fn serve_alias_path(&self) {
+        let Some(path) = alias_path(&self.alias().await) else {
+            return;
+        };
+        let object_server = self.service.object_server();
+        let _ = object_server.remove::<Collection, _>(&path).await;
+        if let Err(err) = object_server.at(&path, self.clone()).await {
+            tracing::warn!(
+                "Failed to serve collection `{}` at `{path}`: {err}",
+                self.path
+            );
         }
     }
 

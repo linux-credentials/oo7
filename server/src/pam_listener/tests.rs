@@ -118,6 +118,21 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
         "Migrated Legacy collection should exist"
     );
 
+    // The migrated collection is served at the path of its alias, like the
+    // others
+    for collection in collections.values() {
+        let path = format!(
+            "/org/freedesktop/secrets/aliases/{}",
+            collection.alias().await
+        );
+        let served = setup
+            .server
+            .object_server()
+            .interface::<_, crate::collection::Collection>(path.as_str())
+            .await?;
+        assert_eq!(served.get().await.path(), collection.path());
+    }
+
     let v1_migrated = v1_dir.join("legacy.keyring");
     assert!(v1_migrated.exists(), "V1 file should exist after migration");
 
