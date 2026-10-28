@@ -936,7 +936,7 @@ struct Arguments {
         short,
         long,
         global = true,
-        help = "Specify the path to a keyring. The default collection will be used if not specified"
+        help = "Specify the path to a keyring file"
     )]
     keyring: Option<PathBuf>,
     #[arg(
@@ -944,14 +944,14 @@ struct Arguments {
         short,
         long,
         global = true,
-        help = "Specify the keyring secret. The default collection will be used if not specified"
+        help = "Specify the keyring secret"
     )]
     secret: Option<oo7::Secret>,
     #[arg(
         name = "app-id",
         long,
         global = true,
-        help = "Specify a sandboxed application ID. The default collection will be used if not specified"
+        help = "Specify a sandboxed application ID"
     )]
     app_id: Option<oo7::ashpd::AppID>,
     #[arg(
