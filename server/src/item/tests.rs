@@ -537,61 +537,32 @@ async fn locked_item_operations() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Serve a login keyring stored on disk, holding "Test Item" and an item
-/// whose attributes are a superset of its own.
-async fn disk_keyring_setup()
--> Result<(tempfile::TempDir, TestServiceSetup, dbus::api::Item), Box<dyn std::error::Error>> {
-    let temp_dir = tempfile::tempdir()?;
-    let secret = oo7::Secret::from("test-password-long-enough");
-    let keyring =
-        oo7::file::UnlockedKeyring::open_at(temp_dir.path(), "login", Some(secret.clone())).await?;
-    keyring
+#[tokio::test]
+async fn set_label_persists() -> Result<(), Box<dyn std::error::Error>> {
+    let setup =
+        TestServiceSetup::with_login_keyring(oo7::Secret::from("test-password-long-enough"))
+            .await?;
+    let collection = setup.default_collection().await?;
+
+    // Stored first, with a superset of the changed item's attributes
+    let other_secret = setup.create_dbus_secret("other-secret")?;
+    collection
         .create_item(
             "Other Item",
             &[("app", "test"), ("user", "other")],
-            oo7::Secret::text("other-secret"),
+            &other_secret,
             false,
+            None,
         )
         .await?;
-    keyring
-        .create_item(
-            "Test Item",
-            &[("app", "test")],
-            oo7::Secret::text("test-secret"),
-            false,
-        )
+    let secret = setup.create_dbus_secret("test-secret")?;
+    let item = collection
+        .create_item("Test Item", &[("app", "test")], &secret, false, None)
         .await?;
-
-    let setup =
-        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, Some(secret))
-            .await?;
-    let mut item = None;
-    for i in setup.default_collection().await?.items().await? {
-        if i.label().await? == "Test Item" {
-            item = Some(i);
-        }
-    }
-
-    Ok((temp_dir, setup, item.expect("Test Item should exist")))
-}
-
-/// Load the items back from the keyring file.
-async fn stored_items(
-    temp_dir: &tempfile::TempDir,
-) -> Result<Vec<oo7::file::UnlockedItem>, Box<dyn std::error::Error>> {
-    let secret = oo7::Secret::from("test-password-long-enough");
-    let keyring =
-        oo7::file::UnlockedKeyring::open_at(temp_dir.path(), "login", Some(secret)).await?;
-    Ok(keyring.items().await?)
-}
-
-#[tokio::test]
-async fn set_label_persists() -> Result<(), Box<dyn std::error::Error>> {
-    let (temp_dir, _setup, item) = disk_keyring_setup().await?;
 
     item.set_label("New Label").await?;
 
-    let items = stored_items(&temp_dir).await?;
+    let items = setup.login_keyring().await?.items().await?;
     let labels = items.iter().map(|i| i.label()).collect::<Vec<_>>();
     assert_eq!(labels, ["Other Item", "New Label"]);
 
@@ -600,11 +571,30 @@ async fn set_label_persists() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn set_attributes_persists() -> Result<(), Box<dyn std::error::Error>> {
-    let (temp_dir, _setup, item) = disk_keyring_setup().await?;
+    let setup =
+        TestServiceSetup::with_login_keyring(oo7::Secret::from("test-password-long-enough"))
+            .await?;
+    let collection = setup.default_collection().await?;
+
+    // Stored first, with a superset of the changed item's attributes
+    let other_secret = setup.create_dbus_secret("other-secret")?;
+    collection
+        .create_item(
+            "Other Item",
+            &[("app", "test"), ("user", "other")],
+            &other_secret,
+            false,
+            None,
+        )
+        .await?;
+    let secret = setup.create_dbus_secret("test-secret")?;
+    let item = collection
+        .create_item("Test Item", &[("app", "test")], &secret, false, None)
+        .await?;
 
     item.set_attributes(&[("app", "updated")]).await?;
 
-    let items = stored_items(&temp_dir).await?;
+    let items = setup.login_keyring().await?.items().await?;
     assert_eq!(items[0].attributes().get("user").unwrap(), "other");
     assert_eq!(items[1].label(), "Test Item");
     assert_eq!(items[1].attributes().get("app").unwrap(), "updated");
@@ -614,13 +604,32 @@ async fn set_attributes_persists() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn set_secret_persists() -> Result<(), Box<dyn std::error::Error>> {
-    let (temp_dir, setup, item) = disk_keyring_setup().await?;
+    let setup =
+        TestServiceSetup::with_login_keyring(oo7::Secret::from("test-password-long-enough"))
+            .await?;
+    let collection = setup.default_collection().await?;
+
+    // Stored first, with a superset of the changed item's attributes
+    let other_secret = setup.create_dbus_secret("other-secret")?;
+    collection
+        .create_item(
+            "Other Item",
+            &[("app", "test"), ("user", "other")],
+            &other_secret,
+            false,
+            None,
+        )
+        .await?;
+    let secret = setup.create_dbus_secret("test-secret")?;
+    let item = collection
+        .create_item("Test Item", &[("app", "test")], &secret, false, None)
+        .await?;
 
     let new_secret = oo7::Secret::text("new-secret");
     item.set_secret(&setup.create_dbus_secret(new_secret.clone())?)
         .await?;
 
-    let items = stored_items(&temp_dir).await?;
+    let items = setup.login_keyring().await?.items().await?;
     assert_eq!(items[0].secret(), oo7::Secret::text("other-secret"));
     assert_eq!(items[1].secret(), new_secret);
 

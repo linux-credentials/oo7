@@ -33,16 +33,7 @@ impl Item {
         } else {
             "unknown".to_string()
         };
-        let Some(collection) = self
-            .service
-            .collection_from_path(&self.collection_path)
-            .await
-        else {
-            return Err(ServiceError::NoSuchObject(format!(
-                "Collection `{}` does not exist.",
-                self.collection_path
-            )));
-        };
+        let collection = self.collection().await?;
 
         // Check if item or collection is locked
         if self.is_locked().await || collection.is_locked().await {
