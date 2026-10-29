@@ -225,6 +225,13 @@ fn start_login_helper(secret: &[u8]) -> Result<(), SocketError> {
                 libc::close(pipe_read);
             }
 
+            // Leave the login's session and its controlling terminal. On a
+            // text console, the terminal is hung up when the session moves on
+            // to the user's shell, and the SIGHUP would kill the helper before
+            // oo7-daemon has picked up the secret.
+            libc::setsid();
+            libc::signal(libc::SIGHUP, libc::SIG_IGN);
+
             let path = std::ffi::CString::new(
                 option_env!("OO7_DAEMON_LOGIN_PATH").unwrap_or("/usr/libexec/oo7-daemon-login"),
             )
