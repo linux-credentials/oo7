@@ -136,6 +136,7 @@ impl Collection {
 
         // Remove collection from object server
         object_server.remove::<Collection, _>(&self.path).await?;
+        self.remove_alias_path(&self.alias().await).await;
 
         // Notify service to remove from collections list
         self.service.remove_collection(&self.path).await;
@@ -437,6 +438,10 @@ impl Collection {
     ) -> zbus::Result<()>;
 }
 
+pub(crate) fn alias_path(alias: &str) -> Option<OwnedObjectPath> {
+    OwnedObjectPath::try_from(format!("/org/freedesktop/secrets/aliases/{alias}")).ok()
+}
+
 pub(crate) fn collection_path(label: &str) -> Result<OwnedObjectPath, wire::Error> {
     let sanitized_label = label
         .to_lowercase()
@@ -482,7 +487,40 @@ impl Collection {
     }
 
     pub async fn set_alias(&self, alias: &str) {
-        *self.alias.lock().await = alias.to_owned();
+        let old_alias = std::mem::replace(&mut *self.alias.lock().await, alias.to_owned());
+        self.remove_alias_path(&old_alias).await;
+        self.serve_alias_path(alias).await;
+    }
+
+    /// Serve this collection at the path of `alias`, in place of the
+    /// collection served there before
+    pub async fn serve_alias_path(&self, alias: &str) {
+        let Some(path) = alias_path(alias) else {
+            return;
+        };
+        let object_server = self.service.object_server();
+        let _ = object_server.remove::<Collection, _>(&path).await;
+        if let Err(err) = object_server.at(&path, self.clone()).await {
+            tracing::warn!(
+                "Failed to serve collection `{}` at `{path}`: {err}",
+                self.path
+            );
+        }
+    }
+
+    /// Stop serving this collection at the path of `alias`
+    async fn remove_alias_path(&self, alias: &str) {
+        let Some(path) = alias_path(alias) else {
+            return;
+        };
+        let object_server = self.service.object_server();
+        let serves_self = match object_server.interface::<_, Collection>(&path).await {
+            Ok(collection) => collection.get().await.path == self.path,
+            Err(_) => false,
+        };
+        if serves_self {
+            let _ = object_server.remove::<Collection, _>(&path).await;
+        }
     }
 
     pub async fn alias(&self) -> String {

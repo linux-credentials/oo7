@@ -38,9 +38,6 @@ use crate::{
     session::{PeerInfo, Session, SessionType},
 };
 
-const DEFAULT_COLLECTION_ALIAS_PATH: ObjectPath<'static> =
-    ObjectPath::from_static_str_unchecked("/org/freedesktop/secrets/aliases/default");
-
 /// Prompter type
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PrompterType {
@@ -1140,16 +1137,16 @@ impl Service {
             object_server
                 .at(collection.path(), collection.clone())
                 .await?;
-
-            if alias == oo7::dbus::Service::DEFAULT_COLLECTION {
-                object_server
-                    .at(DEFAULT_COLLECTION_ALIAS_PATH, collection.clone())
-                    .await?;
-            }
+            collection.serve_alias_path(alias).await;
         }
 
         let session_path = session_collection.path().to_owned();
-        object_server.at(&session_path, session_collection).await?;
+        object_server
+            .at(&session_path, session_collection.clone())
+            .await?;
+        session_collection
+            .serve_alias_path(oo7::dbus::Service::SESSION_COLLECTION)
+            .await;
 
         // Spawn client disconnect handler
         let service = self.clone();
@@ -1464,6 +1461,7 @@ impl Service {
         self.object_server()
             .at(collection.path(), collection.clone())
             .await?;
+        collection.serve_alias_path(&unique_alias).await;
 
         // Add to collections
         self.collections
@@ -1625,21 +1623,11 @@ impl Service {
                         continue;
                     }
 
+                    collection.serve_alias_path(&unique_alias).await;
                     self.collections
                         .lock()
                         .await
-                        .insert(collection_path.clone(), collection.clone());
-
-                    if alias == oo7::dbus::Service::DEFAULT_COLLECTION
-                        && let Err(e) = self
-                            .object_server()
-                            .at(DEFAULT_COLLECTION_ALIAS_PATH, collection)
-                            .await
-                    {
-                        tracing::error!(
-                            "Failed to register default alias for migrated collection '{name}': {e}",
-                        );
-                    }
+                        .insert(collection_path.clone(), collection);
 
                     if let Ok(signal_emitter) =
                         self.signal_emitter(oo7::dbus::api::Service::PATH.as_ref().unwrap())
