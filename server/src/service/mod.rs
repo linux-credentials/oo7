@@ -1103,7 +1103,7 @@ impl Service {
 
         // Build all collections under the lock, then register on D-Bus after
         // releasing it to avoid deadlocks with incoming calls.
-        let mut built_collections: Vec<Collection> = Vec::new();
+        let mut built_collections: Vec<(Collection, String)> = Vec::new();
 
         for (name, label, alias, keyring) in discovered_keyrings {
             tracing::info!("Setting up collection '{name}' (alias: {alias}).");
@@ -1112,7 +1112,7 @@ impl Service {
             let collection =
                 Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
             collections.insert(collection.path().to_owned().into(), collection.clone());
-            built_collections.push(collection);
+            built_collections.push((collection, unique_alias));
         }
 
         // Always create session collection (always temporary)
@@ -1132,19 +1132,21 @@ impl Service {
         drop(collections);
 
         // Now register on D-Bus and dispatch items without holding the lock
-        for collection in &built_collections {
+        for (collection, alias) in &built_collections {
             collection.dispatch_items().await?;
             object_server
                 .at(collection.path(), collection.clone())
                 .await?;
-            collection.serve_alias_path().await;
+            collection.serve_alias_path(alias).await;
         }
 
         let session_path = session_collection.path().to_owned();
         object_server
             .at(&session_path, session_collection.clone())
             .await?;
-        session_collection.serve_alias_path().await;
+        session_collection
+            .serve_alias_path(oo7::dbus::Service::SESSION_COLLECTION)
+            .await;
 
         // Spawn client disconnect handler
         let service = self.clone();
@@ -1459,7 +1461,7 @@ impl Service {
         self.object_server()
             .at(collection.path(), collection.clone())
             .await?;
-        collection.serve_alias_path().await;
+        collection.serve_alias_path(&unique_alias).await;
 
         // Add to collections
         self.collections
@@ -1621,7 +1623,7 @@ impl Service {
                         continue;
                     }
 
-                    collection.serve_alias_path().await;
+                    collection.serve_alias_path(&unique_alias).await;
                     self.collections
                         .lock()
                         .await

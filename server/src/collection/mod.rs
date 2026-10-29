@@ -438,7 +438,7 @@ impl Collection {
     ) -> zbus::Result<()>;
 }
 
-fn alias_path(alias: &str) -> Option<OwnedObjectPath> {
+pub(crate) fn alias_path(alias: &str) -> Option<OwnedObjectPath> {
     OwnedObjectPath::try_from(format!("/org/freedesktop/secrets/aliases/{alias}")).ok()
 }
 
@@ -489,13 +489,13 @@ impl Collection {
     pub async fn set_alias(&self, alias: &str) {
         let old_alias = std::mem::replace(&mut *self.alias.lock().await, alias.to_owned());
         self.remove_alias_path(&old_alias).await;
-        self.serve_alias_path().await;
+        self.serve_alias_path(alias).await;
     }
 
-    /// Serve this collection at the path of its alias, in place of the
+    /// Serve this collection at the path of `alias`, in place of the
     /// collection served there before
-    pub async fn serve_alias_path(&self) {
-        let Some(path) = alias_path(&self.alias().await) else {
+    pub async fn serve_alias_path(&self, alias: &str) {
+        let Some(path) = alias_path(alias) else {
             return;
         };
         let object_server = self.service.object_server();
