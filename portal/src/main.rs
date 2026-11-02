@@ -1,5 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 mod error;
+#[cfg(test)]
+mod tests;
 
 use ashpd::{
     PortalError, async_trait,
@@ -41,7 +43,10 @@ impl ashpd::backend::secret::SecretImpl for Secret {
     ) -> ashpd::backend::Result<HashMap<String, OwnedVariant>> {
         tracing::debug!("Request from app: {app_id}");
 
-        let task = tokio::spawn(async move { send_secret_to_app(&app_id, fd).await });
+        let task = tokio::spawn(async move {
+            let service = Service::new().await?;
+            send_secret_to_app(&service, &app_id, fd).await
+        });
 
         // Store the abort handle for this request
         {
@@ -66,16 +71,16 @@ impl ashpd::backend::secret::SecretImpl for Secret {
 }
 
 /// Generates, stores and send the secret back to the fd stream
-async fn send_secret_to_app(app_id: &ashpd::MaybeAppID, fd: std::os::fd::OwnedFd) -> Result<()> {
-    let service = Service::new().await?;
+async fn send_secret_to_app(
+    service: &Service,
+    app_id: &ashpd::MaybeAppID,
+    fd: std::os::fd::OwnedFd,
+) -> Result<()> {
     let collection = service.default_collection().await?;
-    let Ok(app_id) = app_id.inner() else {
-        return Err(
-            ashpd::PortalError::InvalidArgument("A valid App ID is required".to_string()).into(),
-        );
-    };
-
-    let attributes = &[("app_id", app_id)];
+    // Native apps can have a desktop file name or an empty ID. Keep the
+    // original value to find secrets stored by other portal backends.
+    let app_id = app_id.to_string();
+    let attributes = &[("app_id", app_id.as_str())];
 
     // Write the secret to the FD (may be a pipe or a socket).
     let mut file = tokio::fs::File::from_std(std::fs::File::from(fd));
