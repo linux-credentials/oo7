@@ -171,9 +171,20 @@ impl Prompt {
         collection: Option<crate::collection::Collection>,
     ) -> Self {
         let index = service.prompt_index();
+        let path =
+            OwnedObjectPath::try_from(format!("/org/freedesktop/secrets/prompt/p{index}")).unwrap();
+        Self::with_path(service, role, label, collection, path)
+    }
+
+    pub fn with_path(
+        service: Service,
+        role: PromptRole,
+        label: String,
+        collection: Option<crate::collection::Collection>,
+        path: OwnedObjectPath,
+    ) -> Self {
         Self {
-            path: OwnedObjectPath::try_from(format!("/org/freedesktop/secrets/prompt/p{index}"))
-                .unwrap(),
+            path,
             service,
             role,
             label,
@@ -339,9 +350,7 @@ impl Prompt {
         window_id: Option<ashpd::WindowIdentifierType>,
     ) -> Result<(), ServiceError> {
         if self.plasma_callback.get().is_some() {
-            return Err(custom_service_error(
-                "A prompt callback is ongoing already.",
-            ));
+            return Ok(());
         }
 
         let callback = PlasmaPrompterCallback::new(self.service.clone(), self.path.clone()).await;
@@ -363,9 +372,7 @@ impl Prompt {
         window_id: Option<ashpd::WindowIdentifierType>,
     ) -> Result<(), ServiceError> {
         if self.gnome_callback.get().is_some() {
-            return Err(custom_service_error(
-                "A GNOME prompt callback is ongoing already.",
-            ));
+            return Ok(());
         };
 
         let callback =

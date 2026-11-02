@@ -1679,3 +1679,115 @@ async fn alias_paths_served_at_startup() -> Result<(), Box<dyn std::error::Error
 
     Ok(())
 }
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn concurrent_unlock_creates_single_prompt_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    concurrent_unlock_creates_single_prompt_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn concurrent_unlock_creates_single_prompt_plasma() -> Result<(), Box<dyn std::error::Error>>
+{
+    concurrent_unlock_creates_single_prompt_impl(PrompterType::Plasma).await
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn concurrent_item_unlock_creates_single_prompt_gnome()
+-> Result<(), Box<dyn std::error::Error>> {
+    concurrent_item_unlock_creates_single_prompt_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn concurrent_item_unlock_creates_single_prompt_plasma()
+-> Result<(), Box<dyn std::error::Error>> {
+    concurrent_item_unlock_creates_single_prompt_impl(PrompterType::Plasma).await
+}
+
+async fn concurrent_item_unlock_creates_single_prompt_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
+
+    let collection = setup.default_collection().await?;
+    let dbus_secret = setup.create_dbus_secret("item-secret")?;
+    let item = collection
+        .create_item(
+            "test-item",
+            &HashMap::from([("app", "test")]),
+            &dbus_secret,
+            false,
+            None,
+        )
+        .await?;
+
+    setup.lock_collection(collection).await?;
+    assert!(collection.is_locked().await?);
+
+    let secret = setup.keyring_secret.clone().unwrap();
+    setup
+        .set_password_queue(vec![secret.clone(), secret.clone(), secret])
+        .await;
+
+    let item_path = item.inner().path().to_owned();
+    let paths1 = [item_path.clone()];
+    let paths2 = [item_path];
+    let (r1, r2) = tokio::join!(
+        setup.service_api.unlock(&paths1, None),
+        setup.service_api.unlock(&paths2, None),
+    );
+
+    let _unlocked1 = r1?;
+    let _unlocked2 = r2?;
+
+    assert!(
+        !collection.is_locked().await?,
+        "Collection should be unlocked after concurrent item unlock requests"
+    );
+
+    Ok(())
+}
+
+async fn concurrent_unlock_creates_single_prompt_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
+
+    let collection = setup.default_collection().await?;
+
+    // Lock the collection
+    setup.lock_collection(collection).await?;
+    assert!(collection.is_locked().await?);
+
+    // Queue enough passwords for however many prompts get created
+    let secret = setup.keyring_secret.clone().unwrap();
+    setup
+        .set_password_queue(vec![secret.clone(), secret.clone(), secret])
+        .await;
+
+    // Fire two Unlock calls concurrently for the same collection.
+    let collection_path = collection.inner().path().to_owned();
+    let paths1 = [collection_path.clone()];
+    let paths2 = [collection_path];
+    let (r1, r2) = tokio::join!(
+        setup.service_api.unlock(&paths1, None),
+        setup.service_api.unlock(&paths2, None),
+    );
+
+    // Both should succeed (not panic the daemon).
+    let _unlocked1 = r1?;
+    let _unlocked2 = r2?;
+
+    // The collection should be unlocked.
+    assert!(
+        !collection.is_locked().await?,
+        "Collection should be unlocked after concurrent requests"
+    );
+
+    Ok(())
+}
