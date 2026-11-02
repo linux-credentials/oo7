@@ -61,6 +61,8 @@ pub struct Service {
     prompt_index: Arc<AtomicU32>,
     // pending collection creations: prompt_path -> (label, alias)
     pending_collections: Arc<Mutex<HashMap<OwnedObjectPath, (String, String)>>>,
+    // pending unlock: object_path -> prompt path (for deduplication)
+    pending_unlocks: Arc<Mutex<HashMap<OwnedObjectPath, OwnedObjectPath>>>,
     // pending keyring migrations: name -> migration
     pub(crate) pending_migrations: Arc<Mutex<HashMap<String, PendingMigration>>>,
     // Data directory for keyrings (e.g., ~/.local/share or test temp dir)
@@ -259,22 +261,54 @@ impl Service {
         tracing::info!("Unlock requested for {} objects.", objects.len());
         let (unlocked, not_unlocked) = self.set_locked(false, &objects).await?;
         if !not_unlocked.is_empty() {
+            // Hold the lock across both the lookup and the registration so
+            // a concurrent Unlock cannot slip between the two.
+            let mut pending = self.pending_unlocks.lock().await;
+
+            // Another unlock for the same object(s) is already prompting;
+            // return the same prompt path so both callers share one prompt.
+            if let Some(prompt_path) = not_unlocked
+                .iter()
+                .find_map(|obj| pending.get(obj).cloned())
+            {
+                drop(pending);
+                return Ok((unlocked, prompt_path));
+            }
+
+            // First caller: reserve the prompt path while holding the lock
+            // so concurrent callers see it before the Prompt is fully created.
+            let index = self.prompt_index();
+            let prompt_path =
+                OwnedObjectPath::try_from(format!("/org/freedesktop/secrets/prompt/p{index}"))
+                    .unwrap();
+            for obj in &not_unlocked {
+                pending.insert(obj.clone(), prompt_path.clone());
+            }
+            drop(pending);
+
             // Extract the label and collection before creating the prompt
             let label = self.extract_label_from_objects(&not_unlocked).await;
             let collection = self.extract_collection_from_objects(&not_unlocked).await;
 
-            let prompt = Prompt::new(self.clone(), PromptRole::Unlock, label, collection).await;
+            let prompt = Prompt::with_path(
+                self.clone(),
+                PromptRole::Unlock,
+                label,
+                collection,
+                prompt_path,
+            );
             let path = OwnedObjectPath::from(prompt.path().clone());
 
             // Create the unlock action
             let service = self.clone();
+            let not_unlocked_for_action = not_unlocked.clone();
             let action = PromptAction::new(move |secret: Option<Secret>| async move {
                 // The prompter will handle secret validation
                 // Here we just perform the unlock operation
 
                 // First, check for pending migrations (without holding
                 // collections lock)
-                for object in &not_unlocked {
+                for object in &not_unlocked_for_action {
                     let collection = {
                         let collections = service.collections.lock().await;
                         collections.get(object).cloned()
@@ -371,7 +405,15 @@ impl Service {
                         }
                     }
                 }
-                Ok(Variant::new(not_unlocked).try_into_owned().unwrap())
+                {
+                    let mut pending = service.pending_unlocks.lock().await;
+                    for obj in &not_unlocked_for_action {
+                        pending.remove(obj);
+                    }
+                }
+                Ok(Variant::new(not_unlocked_for_action)
+                    .try_into_owned()
+                    .unwrap())
             });
 
             prompt.set_action(action).await;
@@ -565,6 +607,7 @@ impl Service {
             prompts: Arc::new(Mutex::new(HashMap::new())),
             prompt_index: Arc::new(AtomicU32::new(0)),
             pending_collections: Arc::new(Mutex::new(HashMap::new())),
+            pending_unlocks: Arc::new(Mutex::new(HashMap::new())),
             pending_migrations: Arc::new(Mutex::new(HashMap::new())),
             data_dir,
             pam_socket,
