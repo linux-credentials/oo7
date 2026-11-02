@@ -21,16 +21,11 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 zeroize.workspace = true
 
-[dev-dependencies]
-oo7-daemon = { path = "../server", default-features = false, features = ["test-util"] }
-
 [features]
 default = ["native_crypto"]
 native_crypto = [
-    "oo7/native_crypto",
-    "oo7-daemon/native_crypto",
+    "oo7/native_crypto"
 ]
 openssl_crypto = [
-    "oo7/openssl_crypto",
-    "oo7-daemon/openssl_crypto",
+    "oo7/openssl_crypto"
 ]

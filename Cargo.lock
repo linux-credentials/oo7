@@ -1126,7 +1126,6 @@ dependencies = [
  "ashpd",
  "clap",
  "oo7",
- "oo7-daemon",
  "tokio",
  "tracing",
  "tracing-subscriber",

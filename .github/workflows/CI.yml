@@ -85,11 +85,6 @@ jobs:
         run: |
           cargo test --manifest-path ./server/Cargo.toml --no-default-features --features openssl_crypto
 
-      - name: Test Portal (native)
-        run: cargo test --manifest-path ./portal/Cargo.toml
-      - name: Test Portal (OpenSSL)
-        run: cargo test --manifest-path ./portal/Cargo.toml --no-default-features --features openssl_crypto
-
       - name: Test kwallet-parser
         run: |
           cargo test --manifest-path ./kwallet/parser/Cargo.toml

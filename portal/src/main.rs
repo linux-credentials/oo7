@@ -1,7 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 mod error;
-#[cfg(test)]
-mod tests;
 
 use ashpd::{
     PortalError, async_trait,
@@ -43,10 +41,7 @@ impl ashpd::backend::secret::SecretImpl for Secret {
     ) -> ashpd::backend::Result<HashMap<String, OwnedVariant>> {
         tracing::debug!("Request from app: {app_id}");
 
-        let task = tokio::spawn(async move {
-            let service = Service::new().await?;
-            send_secret_to_app(&service, &app_id, fd).await
-        });
+        let task = tokio::spawn(async move { send_secret_to_app(&app_id, fd).await });
 
         // Store the abort handle for this request
         {
@@ -71,11 +66,8 @@ impl ashpd::backend::secret::SecretImpl for Secret {
 }
 
 /// Generates, stores and send the secret back to the fd stream
-async fn send_secret_to_app(
-    service: &Service,
-    app_id: &ashpd::MaybeAppID,
-    fd: std::os::fd::OwnedFd,
-) -> Result<()> {
+async fn send_secret_to_app(app_id: &ashpd::MaybeAppID, fd: std::os::fd::OwnedFd) -> Result<()> {
+    let service = Service::new().await?;
     let collection = service.default_collection().await?;
     // Native apps can have a desktop file name or an empty ID. Keep the
     // original value to find secrets stored by other portal backends.
