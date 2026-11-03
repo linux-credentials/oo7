@@ -441,7 +441,8 @@ mod tests {
 
     #[tokio::test]
     async fn keyfile_dump_load() -> Result<(), Error> {
-        let _silent = std::fs::remove_file("/tmp/test.keyring");
+        let path = std::env::temp_dir().join("oo7-test-keyring-dump.keyring");
+        let _silent = std::fs::remove_file(&path);
 
         let mut new_keyring = Keyring::new()?;
         let key = new_keyring.derive_key(&SECRET.to_vec().into())?;
@@ -450,9 +451,9 @@ mod tests {
             UnlockedItem::new("My Label", &[("my-tag", "my tag value")], "A Password")
                 .encrypt(Some(&key))?,
         );
-        new_keyring.dump("/tmp/test.keyring", None).await?;
+        new_keyring.dump(&path, None).await?;
 
-        let blob = tokio::fs::read("/tmp/test.keyring").await?;
+        let blob = tokio::fs::read(&path).await?;
 
         let loaded_keyring = Keyring::try_from(blob.as_slice())?;
         let loaded_items =
@@ -461,7 +462,8 @@ mod tests {
         assert_eq!(loaded_items[0].secret(), Secret::text("A Password"));
         assert_eq!(loaded_items[0].secret().content_type(), ContentType::Text);
 
-        let _silent = std::fs::remove_file("/tmp/test.keyring");
+        let path = std::env::temp_dir().join("oo7-test-keyring-dump.keyring");
+        let _silent = std::fs::remove_file(&path);
 
         Ok(())
     }
