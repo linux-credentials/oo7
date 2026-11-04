@@ -221,6 +221,15 @@ impl TestServiceSetup {
         pam_socket: Option<std::path::PathBuf>,
         secret: Option<Secret>,
     ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
+        Self::start_on_disk(data_dir, pam_socket, secret, false).await
+    }
+
+    async fn start_on_disk(
+        data_dir: std::path::PathBuf,
+        pam_socket: Option<std::path::PathBuf>,
+        secret: Option<Secret>,
+        auto_create_default: bool,
+    ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
         use zbus::proxy::Defaults;
 
         let (server_conn, client_conn) = create_p2p_connection().await?;
@@ -238,7 +247,7 @@ impl TestServiceSetup {
 
         let discovered = service.discover_keyrings(secret.clone()).await?;
         service
-            .initialize(server_conn, discovered, secret.clone(), false)
+            .initialize(server_conn, discovered, secret.clone(), auto_create_default)
             .await?;
         service.set_prompter_type(PrompterType::GNOME).await;
 
@@ -301,6 +310,16 @@ impl TestServiceSetup {
         let mut setup =
             Self::with_disk_keyrings(temp_dir.path().to_path_buf(), None, Some(secret)).await?;
         setup.temp_dir = temp_dir;
+        Ok(setup)
+    }
+
+    /// Start a new service on the keyrings of [`Self::with_login_keyring`],
+    /// creating the Login keyring when it is missing, as the daemon does
+    pub(crate) async fn restart(mut self) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
+        let data_dir = self.temp_dir.path().to_path_buf();
+        let secret = self.keyring_secret.clone();
+        let mut setup = Self::start_on_disk(data_dir, None, secret, true).await?;
+        std::mem::swap(&mut setup.temp_dir, &mut self.temp_dir);
         Ok(setup)
     }
 

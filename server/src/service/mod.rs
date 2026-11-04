@@ -16,7 +16,7 @@ use oo7::{
     },
     file::{Keyring, LockedKeyring, UnlockedKeyring},
 };
-use tokio::sync::Mutex;
+use tokio::{io::AsyncWriteExt, sync::Mutex};
 use tokio_stream::StreamExt;
 use zbus::{
     fdo::{RequestNameFlags, RequestNameReply},
@@ -25,6 +25,7 @@ use zbus::{
     proxy::Defaults,
     wire::{ObjectPath, Optional, OwnedObjectPath, OwnedVariant, Variant},
 };
+use zgvariant::serialized::{Context, Data};
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 pub use crate::gnome::internal::InternalInterface;
@@ -480,20 +481,27 @@ impl Service {
     ) -> Result<(), ServiceError> {
         let collections = self.collections.lock().await;
 
+        // "/" removes the alias
+        if collection.as_str() != "/" && !collections.contains_key(&collection) {
+            tracing::info!("Collection: {} does not exist.", collection);
+
+            return Err(ServiceError::NoSuchObject(format!(
+                "The collection: {collection} does not exist.",
+            )));
+        }
+
         for (path, other_collection) in collections.iter() {
             if *path == collection {
                 other_collection.set_alias(name).await;
-
-                tracing::info!("Collection: {} alias updated to {}.", collection, name);
-                return Ok(());
+            } else if other_collection.alias().await == name {
+                other_collection.set_alias("").await;
             }
         }
+        tracing::info!("Alias {} updated to collection: {}.", name, collection);
 
-        tracing::info!("Collection: {} does not exist.", collection);
-
-        Err(ServiceError::NoSuchObject(format!(
-            "The collection: {collection} does not exist.",
-        )))
+        self.write_collections_file(&collections)
+            .await
+            .map_err(|err| custom_service_error(&format!("Failed to save alias: {err}")))
     }
 
     #[zbus(property, name = "Collections")]
@@ -732,6 +740,84 @@ impl Service {
             }
             counter += 1;
         }
+    }
+
+    /// The keyring file has no field for the label and aliases of its
+    /// collection, so they are kept in this file, keyed by keyring name.
+    fn collections_file(&self) -> std::path::PathBuf {
+        self.data_dir.join("keyrings/v1/collections")
+    }
+
+    async fn read_collections_file(&self) -> HashMap<String, (String, Vec<String>)> {
+        let path = self.collections_file();
+        let bytes = match tokio::fs::read(&path).await {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return HashMap::new(),
+            Err(err) => {
+                tracing::warn!("Failed to read {}: {err}", path.display());
+                return HashMap::new();
+            }
+        };
+        let data = Data::new(&bytes, Context::new(zgvariant::LE, 0));
+        match data.deserialize() {
+            Ok((saved, _)) => saved,
+            Err(err) => {
+                tracing::warn!("Failed to parse {}: {err}", path.display());
+                HashMap::new()
+            }
+        }
+    }
+
+    /// Save the label and aliases of the collections stored on disk
+    pub(crate) async fn write_collections_file(
+        &self,
+        collections: &HashMap<OwnedObjectPath, Collection>,
+    ) -> Result<(), Error> {
+        let mut saved = HashMap::new();
+        for collection in collections.values() {
+            let on_disk = collection
+                .keyring
+                .read()
+                .await
+                .as_ref()
+                .and_then(|k| k.path())
+                .is_some();
+            if on_disk {
+                let alias = collection.alias().await;
+                let aliases = if alias.is_empty() {
+                    vec![]
+                } else {
+                    vec![alias]
+                };
+                saved.insert(
+                    collection.name().to_owned(),
+                    (collection.label().await, aliases),
+                );
+            }
+        }
+        let bytes = zgvariant::to_bytes(Context::new(zgvariant::LE, 0), &saved)
+            .map_err(std::io::Error::other)?;
+
+        let path = self.collections_file();
+        if let Some(parent) = path.parent() {
+            tokio::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(parent)
+                .await?;
+        }
+        let tmp_path = path.with_extension("tmp");
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp_path)
+            .await?;
+        file.write_all(&bytes).await?;
+        file.sync_all().await?;
+        tokio::fs::rename(&tmp_path, &path).await?;
+        Ok(())
     }
 
     /// Discover existing keyrings in the data directory
@@ -1064,9 +1150,20 @@ impl Service {
         let object_server = connection.object_server();
         let mut collections = self.collections.lock().await;
 
-        // Check if we have a default collection
-        let has_default = discovered_keyrings.iter().any(|(_, _, alias, _)| {
-            alias == oo7::dbus::Service::DEFAULT_COLLECTION || alias == Self::LOGIN_ALIAS
+        let saved = self.read_collections_file().await;
+        for (name, _, alias, _) in &mut discovered_keyrings {
+            if let Some((_, saved_aliases)) = saved.get(name) {
+                // A collection has a single alias for now
+                *alias = saved_aliases.first().cloned().unwrap_or_default();
+            }
+        }
+
+        // Check if we have a default collection, or a Login keyring that was
+        // given another alias
+        let has_default = discovered_keyrings.iter().any(|(name, _, alias, _)| {
+            alias == oo7::dbus::Service::DEFAULT_COLLECTION
+                || alias == Self::LOGIN_ALIAS
+                || name == Self::LOGIN_ALIAS
         });
 
         if !has_default && auto_create_default {
@@ -1111,6 +1208,10 @@ impl Service {
                 Self::make_unique_label_and_alias(&collections, &label, &alias);
             let collection =
                 Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
+            // The object path stays derived from the keyring name
+            if let Some((saved_label, _)) = saved.get(&name) {
+                collection.restore_label(saved_label).await;
+            }
             collections.insert(collection.path().to_owned().into(), collection.clone());
             built_collections.push((collection, unique_alias));
         }
@@ -1390,7 +1491,12 @@ impl Service {
     }
 
     pub async fn remove_collection(&self, path: &ObjectPath<'_>) {
-        self.collections.lock().await.remove(path);
+        let mut collections = self.collections.lock().await;
+        collections.remove(path);
+        if let Err(err) = self.write_collections_file(&collections).await {
+            tracing::warn!("Failed to remove label and alias of `{path}`: {err}");
+        }
+        drop(collections);
 
         if let Ok(signal_emitter) =
             self.signal_emitter(oo7::dbus::api::Service::PATH.as_deref().unwrap())
@@ -1464,10 +1570,12 @@ impl Service {
         collection.serve_alias_path(&unique_alias).await;
 
         // Add to collections
-        self.collections
-            .lock()
-            .await
-            .insert(collection_path.clone(), collection);
+        let mut collections = self.collections.lock().await;
+        collections.insert(collection_path.clone(), collection);
+        if let Err(err) = self.write_collections_file(&collections).await {
+            tracing::warn!("Failed to save label and alias of `{collection_path}`: {err}");
+        }
+        drop(collections);
 
         // Emit CollectionCreated signal
         let service_path = oo7::dbus::api::Service::PATH.as_ref().unwrap();
