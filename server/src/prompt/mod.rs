@@ -38,6 +38,8 @@ trait CliPrompter {
     ) -> zbus::Result<(zbus::wire::OwnedFd, bool)>;
 }
 
+pub const MAX_UNLOCK_ATTEMPTS: u32 = 5;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptRole {
     Unlock,
