@@ -25,8 +25,19 @@ pub static SOCKET_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
 });
 
 #[cfg(target_os = "linux")]
+fn init_logging() {
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    // Started by pam_oo7 with stdout/stderr on /dev/null, log to journald
+    match tracing_journald::layer() {
+        Ok(layer) => tracing_subscriber::registry().with(layer).init(),
+        Err(_) => tracing_subscriber::fmt::init(),
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn main() {
-    tracing_subscriber::fmt::init();
+    init_logging();
 
     let mut secret = vec![];
     io::stdin()

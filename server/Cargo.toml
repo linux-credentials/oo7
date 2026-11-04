@@ -45,6 +45,7 @@ tempfile = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-stream = "0.1"
 tracing.workspace = true
+tracing-journald.workspace = true
 tracing-subscriber.workspace = true
 zbus = { workspace = true, features = ["p2p"] }
 zeroize.workspace = true

@@ -232,6 +232,16 @@ fn start_login_helper(secret: &[u8]) -> Result<(), SocketError> {
             libc::setsid();
             libc::signal(libc::SIGHUP, libc::SIG_IGN);
 
+            // Don't inherit the caller's stdout/stderr, it may be a console
+            let devnull = libc::open(c"/dev/null".as_ptr(), libc::O_WRONLY);
+            if devnull >= 0 {
+                libc::dup2(devnull, libc::STDOUT_FILENO);
+                libc::dup2(devnull, libc::STDERR_FILENO);
+                if devnull > libc::STDERR_FILENO {
+                    libc::close(devnull);
+                }
+            }
+
             let path = std::ffi::CString::new(
                 option_env!("OO7_DAEMON_LOGIN_PATH").unwrap_or("/usr/libexec/oo7-daemon-login"),
             )

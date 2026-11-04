@@ -1088,6 +1088,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+ "tracing-journald",
  "tracing-subscriber",
  "zbus",
  "zeroize",
