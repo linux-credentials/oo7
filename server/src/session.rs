@@ -255,20 +255,33 @@ mod tests {
     /// Spawn a short-lived child process with a controlled environment, to
     /// exercise `SessionType::from_environ` against a real
     /// `/proc/<pid>/environ`.
-    fn spawn_with_env(vars: &[(&str, &str)]) -> std::process::Child {
+    async fn spawn_with_env(vars: &[(&str, &str)]) -> std::process::Child {
         let mut command = std::process::Command::new("sleep");
         command.arg("5").env_clear();
         for (key, value) in vars {
             command.env(key, value);
         }
-        command.spawn().expect("failed to spawn test child process")
+        let child = command.spawn().expect("failed to spawn test child process");
+        // Poll until /proc/<pid>/environ is non-empty (it can exist
+        // before the kernel populates it).
+        let path = format!("/proc/{}/environ", child.id());
+        for _ in 0..50 {
+            if tokio::fs::read(&path)
+                .await
+                .is_ok_and(|buf| !buf.is_empty())
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        child
     }
 
     // Reads `/proc/<pid>/environ`
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn from_environ_detects_wayland() {
-        let mut child = spawn_with_env(&[("WAYLAND_DISPLAY", "wayland-test")]);
+        let mut child = spawn_with_env(&[("WAYLAND_DISPLAY", "wayland-test")]).await;
 
         let session_type = SessionType::from_environ(child.id()).await;
 
@@ -282,7 +295,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn from_environ_detects_x11() {
-        let mut child = spawn_with_env(&[("DISPLAY", ":0")]);
+        let mut child = spawn_with_env(&[("DISPLAY", ":0")]).await;
 
         let session_type = SessionType::from_environ(child.id()).await;
 
@@ -294,7 +307,7 @@ mod tests {
 
     #[tokio::test]
     async fn from_environ_none_without_display() {
-        let mut child = spawn_with_env(&[]);
+        let mut child = spawn_with_env(&[]).await;
 
         let session_type = SessionType::from_environ(child.id()).await;
 
