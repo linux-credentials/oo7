@@ -1,7 +1,7 @@
 use oo7::dbus;
 
 use super::*;
-use crate::tests::TestServiceSetup;
+use crate::{prompt::MAX_UNLOCK_ATTEMPTS, tests::TestServiceSetup};
 
 #[tokio::test]
 async fn open_session_plain() -> Result<(), Box<dyn std::error::Error>> {
@@ -1747,6 +1747,60 @@ async fn concurrent_item_unlock_creates_single_prompt_impl(
     assert!(
         !collection.is_locked().await?,
         "Collection should be unlocked after concurrent item unlock requests"
+    );
+
+    Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_wrong_password_dismissed_gnome() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_wrong_password_dismissed_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_wrong_password_dismissed_plasma() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_wrong_password_dismissed_impl(PrompterType::Plasma).await
+}
+
+async fn unlock_wrong_password_dismissed_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
+
+    let collection = setup.default_collection().await?;
+    let dbus_secret = setup.create_dbus_secret("item-secret")?;
+    collection
+        .create_item(
+            "test-item",
+            &HashMap::from([("app", "test")]),
+            &dbus_secret,
+            false,
+            None,
+        )
+        .await?;
+
+    setup.lock_collection(collection).await?;
+    assert!(collection.is_locked().await?);
+
+    let wrong = oo7::Secret::from("wrong-password-intentionally");
+    setup
+        .set_password_queue(vec![wrong; MAX_UNLOCK_ATTEMPTS as usize + 1])
+        .await;
+
+    let collection_path = collection.inner().path().to_owned();
+    let result = setup.service_api.unlock(&[collection_path], None).await;
+
+    assert!(
+        matches!(result, Err(dbus::Error::Dismissed)),
+        "Expected Dismissed error after max failed attempts, got: {result:?}"
+    );
+
+    assert!(
+        collection.is_locked().await?,
+        "Collection should remain locked after failed unlock attempts"
     );
 
     Ok(())

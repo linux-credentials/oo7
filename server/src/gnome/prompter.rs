@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU32, Ordering},
+};
 
 use formatx::formatx;
 use gettextrs::gettext;
@@ -10,7 +13,7 @@ use zbus::wire::{self, ObjectPath, Optional, OwnedObjectPath, Type, Variant, as_
 use super::secret_exchange;
 use crate::{
     error::custom_service_error,
-    prompt::{Prompt, PromptRole},
+    prompt::{MAX_UNLOCK_ATTEMPTS, Prompt, PromptRole},
     service::Service,
 };
 
@@ -281,6 +284,7 @@ pub struct GNOMEPrompterCallback {
     service: Service,
     prompt_path: OwnedObjectPath,
     path: OwnedObjectPath,
+    failed_attempts: Arc<AtomicU32>,
 }
 
 #[zbus::interface(name = "org.gnome.keyring.internal.Prompter.Callback")]
@@ -352,6 +356,7 @@ impl GNOMEPrompterCallback {
             path: OwnedObjectPath::try_from(format!("/org/gnome/keyring/Prompt/p{index}")).unwrap(),
             service,
             prompt_path,
+            failed_attempts: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -419,28 +424,40 @@ impl GNOMEPrompterCallback {
                     let path = self.path.clone();
                     tokio::spawn(async move { prompter.stop_prompting(&path).await });
                 } else {
-                    let properties = Properties::for_unlock(
-                        prompt.label(),
-                        Some("The unlock password was incorrect"),
-                        self.window_id.as_ref(),
-                    );
-                    let server_exchange = self
-                        .exchange
-                        .get()
-                        .expect("Exchange cannot be empty at this stage")
-                        .clone();
-                    let path = self.path.clone();
+                    let attempts = self.failed_attempts.fetch_add(1, Ordering::Relaxed) + 1;
+                    if attempts >= MAX_UNLOCK_ATTEMPTS {
+                        tracing::warn!(
+                            "Maximum unlock attempts ({MAX_UNLOCK_ATTEMPTS}) reached, \
+                             dismissing prompt."
+                        );
+                        self.prompter_dismissed(prompt.path().clone().into())
+                            .await?;
+                        let path = self.path.clone();
+                        tokio::spawn(async move { prompter.stop_prompting(&path).await });
+                    } else {
+                        let properties = Properties::for_unlock(
+                            prompt.label(),
+                            Some("The unlock password was incorrect"),
+                            self.window_id.as_ref(),
+                        );
+                        let server_exchange = self
+                            .exchange
+                            .get()
+                            .expect("Exchange cannot be empty at this stage")
+                            .clone();
+                        let path = self.path.clone();
 
-                    tokio::spawn(async move {
-                        prompter
-                            .perform_prompt(
-                                &path,
-                                PromptType::Password,
-                                properties,
-                                &server_exchange,
-                            )
-                            .await
-                    });
+                        tokio::spawn(async move {
+                            prompter
+                                .perform_prompt(
+                                    &path,
+                                    PromptType::Password,
+                                    properties,
+                                    &server_exchange,
+                                )
+                                .await
+                        });
+                    }
                 }
             }
             PromptRole::CreateCollection => {
