@@ -235,9 +235,9 @@ fn start_login_helper(secret: &[u8]) -> Result<(), SocketError> {
             // Don't inherit the PAM application's stdout/stderr, it may be a console
             let devnull = libc::open(c"/dev/null".as_ptr(), libc::O_WRONLY);
             if devnull >= 0 {
-                libc::dup2(devnull, 1);
-                libc::dup2(devnull, 2);
-                if devnull > 2 {
+                libc::dup2(devnull, libc::STDOUT_FILENO);
+                libc::dup2(devnull, libc::STDERR_FILENO);
+                if devnull > libc::STDERR_FILENO {
                     libc::close(devnull);
                 }
             }
