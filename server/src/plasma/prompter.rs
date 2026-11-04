@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2025 Harald Sitter <sitter@kde.org>
 
-use std::os::fd::AsFd;
+use std::{
+    os::fd::AsFd,
+    sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    },
+};
 
 use ashpd::WindowIdentifierType;
 use gettextrs::gettext;
@@ -14,7 +20,7 @@ use zbus::{
 };
 
 use crate::{
-    prompt::{Prompt, PromptRole},
+    prompt::{MAX_UNLOCK_ATTEMPTS, Prompt, PromptRole},
     service::Service,
 };
 
@@ -81,6 +87,7 @@ pub struct PlasmaPrompterCallback {
     service: Service,
     prompt_path: OwnedObjectPath,
     path: OwnedObjectPath,
+    failed_attempts: Arc<AtomicU32>,
 }
 
 #[zbus::interface(name = "org.kde.secretprompter.request")]
@@ -159,6 +166,7 @@ impl PlasmaPrompterCallback {
                 .unwrap(),
             service,
             prompt_path,
+            failed_attempts: Arc::new(AtomicU32::new(0)),
         }
     }
 
@@ -219,18 +227,28 @@ impl PlasmaPrompterCallback {
                 if prompt.on_unlock_collection(secret).await? {
                     Ok(CallbackAction::Dismiss)
                 } else {
-                    tracing::debug!("Unlock failed, sending retry signal.");
-                    let emitter = SignalEmitter::from_parts(
-                        self.service.connection().clone(),
-                        self.path().clone(),
-                    );
-                    PlasmaPrompterCallback::retry(
-                        &emitter,
-                        &gettext("The unlock password was incorrect"),
-                    )
-                    .await?;
+                    let attempts = self.failed_attempts.fetch_add(1, Ordering::Relaxed) + 1;
+                    if attempts >= MAX_UNLOCK_ATTEMPTS {
+                        tracing::warn!(
+                            "Maximum unlock attempts ({MAX_UNLOCK_ATTEMPTS}) reached, \
+                             dismissing prompt."
+                        );
+                        self.prompter_dismissed(self.prompt_path.clone()).await?;
+                        Ok(CallbackAction::Dismiss)
+                    } else {
+                        tracing::debug!("Unlock failed, sending retry signal.");
+                        let emitter = SignalEmitter::from_parts(
+                            self.service.connection().clone(),
+                            self.path().clone(),
+                        );
+                        PlasmaPrompterCallback::retry(
+                            &emitter,
+                            &gettext("The unlock password was incorrect"),
+                        )
+                        .await?;
 
-                    Ok(CallbackAction::Keep) // we retry
+                        Ok(CallbackAction::Keep)
+                    }
                 }
             }
             PromptRole::CreateCollection => {
