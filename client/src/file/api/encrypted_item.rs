@@ -5,7 +5,9 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use zgvariant::Type;
 
 use super::{Error, UnlockedItem};
-use crate::{AsAttributes, CONTENT_TYPE_ATTRIBUTE, Key, Mac, crypto};
+use crate::{
+    AsAttributes, CONTENT_TYPE_ATTRIBUTE, GENERIC_SCHEMA, Key, Mac, XDG_SCHEMA_ATTRIBUTE, crypto,
+};
 
 #[derive(Deserialize, Serialize, Type, Debug, Clone, Zeroize, ZeroizeOnDrop)]
 pub(crate) struct EncryptedItem {
@@ -29,15 +31,29 @@ impl EncryptedItem {
     pub fn matches(&self, attributes: &impl AsAttributes, key: Option<&Key>) -> bool {
         match key {
             Some(key) => {
+                let generic_schema_mac =
+                    crypto::compute_mac(GENERIC_SCHEMA.as_bytes(), key);
                 let hashed = attributes.hash(key);
-                hashed
-                    .iter()
-                    .all(|(k, v)| v.as_ref().is_ok_and(|v| self.has_attribute(k.as_str(), v)))
+                hashed.iter().all(|(k, v)| {
+                    if k == XDG_SCHEMA_ATTRIBUTE
+                        && !self.hashed_attributes.contains_key(XDG_SCHEMA_ATTRIBUTE)
+                    {
+                        return v
+                            .as_ref()
+                            .is_ok_and(|v| generic_schema_mac.as_ref().is_ok_and(|g| v == g));
+                    }
+                    v.as_ref().is_ok_and(|v| self.has_attribute(k.as_str(), v))
+                })
             }
-            None => attributes
-                .search_attributes()
-                .iter()
-                .all(|(k, v)| self.has_plaintext_attribute(k.as_str(), v.as_str())),
+            None => attributes.search_attributes().iter().all(|(k, v)| {
+                if k == XDG_SCHEMA_ATTRIBUTE
+                    && !self.hashed_attributes.contains_key(XDG_SCHEMA_ATTRIBUTE)
+                    && v == GENERIC_SCHEMA
+                {
+                    return true;
+                }
+                self.has_plaintext_attribute(k.as_str(), v.as_str())
+            }),
         }
     }
 

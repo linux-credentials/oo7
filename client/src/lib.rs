@@ -55,6 +55,9 @@ pub use zbus;
 /// to map a Rust struct of simple types to an item attributes with type check.
 pub const XDG_SCHEMA_ATTRIBUTE: &str = "xdg:schema";
 
+/// The default schema for items without a specific schema.
+pub const GENERIC_SCHEMA: &str = "org.freedesktop.Secret.Generic";
+
 /// A content type attribute.
 ///
 /// Defines the type of the secret stored in the item.
