@@ -1882,3 +1882,33 @@ async fn concurrent_unlock_creates_single_prompt_impl(
 
     Ok(())
 }
+
+// Reproducer for https://github.com/linux-credentials/oo7/issues/586
+#[tokio::test]
+async fn search_items_missing_xdg_schema() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+
+    // Item without xdg:schema, as found in old gnome-keyring migrations.
+    setup
+        .create_item(
+            "Unlock password for: user@example.com",
+            &[("unique", "ssh-store:/home/user/.ssh/id_rsa")],
+            "my-ssh-passphrase",
+            false,
+        )
+        .await?;
+
+    // gcr searches with xdg:schema via libsecret's SECRET_SCHEMA_NONE.
+    let (unlocked, locked) = setup
+        .service_api
+        .search_items(&[
+            ("unique", "ssh-store:/home/user/.ssh/id_rsa"),
+            (oo7::XDG_SCHEMA_ATTRIBUTE, oo7::GENERIC_SCHEMA),
+        ])
+        .await?;
+
+    assert_eq!(unlocked.len(), 1);
+    assert!(locked.is_empty());
+
+    Ok(())
+}
