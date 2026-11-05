@@ -18,10 +18,6 @@ allow = [
   "Apache-2.0 WITH LLVM-exception", # target-lexicon -> pyo3
 ]
 
-[sources]
-allow-git = [
-  "https://github.com/bilelmoussaoui/ashpd", # pending a release with zbus 6 support
-]
 
 [bans]
 multiple-versions = "deny"

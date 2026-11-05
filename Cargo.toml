@@ -28,8 +28,7 @@ rust-version = "1.95"
 exclude = ["org.freedesktop.Secrets.xml"]
 
 [workspace.dependencies]
-# Temporary until ashpd's zbus 6 support is released.
-ashpd = { version = "0.13", git = "https://github.com/bilelmoussaoui/ashpd", branch = "main", default-features = false }
+ashpd = { version = "0.14", default-features = false }
 base64 = "0.23"
 cbc = "0.2"
 clap = { version = "4.5", features = ["cargo", "derive"] }
@@ -56,5 +55,5 @@ tracing = "0.1"
 tracing-journald = "0.3"
 tracing-subscriber = "0.3"
 zbus = { version = "6.0", default-features = false, features = ["proxy", "service", "object-manager", "tracing"] }
-zgvariant = { version = "1.0", features = ["serde_bytes"] }
+zgvariant = { version = "2.0", features = ["serde_bytes"] }
 zeroize = { version = "1", features = ["zeroize_derive"] }
