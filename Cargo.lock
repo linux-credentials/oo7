@@ -271,7 +271,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-credential-oo7"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "cargo-credential",
  "oo7",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "git-credential-oo7"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "oo7",
  "tokio",
@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "kwallet-cli"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "clap",
  "kwallet-parser",
@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "kwallet-parser"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "base64",
  "blowfish",
@@ -1010,7 +1010,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "oo7"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "aes",
  "ashpd",
@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-cli"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "anstyle",
  "clap",
@@ -1066,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-daemon"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "ashpd",
  "base64",
@@ -1098,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-macros"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-pam"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "libc",
  "serde",
@@ -1123,7 +1123,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-portal"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "ashpd",
  "clap",
@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "oo7-python"
-version = "0.7.0-beta"
+version = "0.7.0"
 dependencies = [
  "oo7",
  "pyo3",
