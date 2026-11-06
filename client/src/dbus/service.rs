@@ -63,12 +63,12 @@ impl Service {
     pub async fn new_with_connection(cnx: &zbus::Connection) -> Result<Self, Error> {
         let service = match Self::encrypted_with_connection(cnx).await {
             Ok(service) => Ok(service),
-            Err(Error::ZBus(zbus::Error::MethodError(..))) => {
-                Self::plain_with_connection(cnx).await
-            }
-            Err(Error::Service(ServiceError::ZBus(zbus::Error::MethodError(..)))) => {
-                Self::plain_with_connection(cnx).await
-            }
+            Err(
+                Error::ZBus(zbus::Error::MethodError(..) | zbus::Error::FDO(_))
+                | Error::Service(ServiceError::ZBus(
+                    zbus::Error::MethodError(..) | zbus::Error::FDO(_),
+                )),
+            ) => Self::plain_with_connection(cnx).await,
             Err(e) => Err(e),
         }?;
         Ok(service)

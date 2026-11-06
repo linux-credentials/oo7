@@ -1,6 +1,65 @@
 use futures_util::StreamExt;
 use oo7::dbus::Service;
 
+// https://github.com/linux-credentials/oo7/issues/643
+#[tokio::test]
+#[cfg(feature = "tokio")]
+async fn encrypted_not_supported_falls_back_to_plain() {
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session_no_encrypted()
+        .await
+        .unwrap();
+
+    // new_with_connection tries encrypted first, should fall back to plain.
+    let service = Service::new_with_connection(&setup.client_conn).await;
+    assert!(
+        service.is_ok(),
+        "Should fall back to plain session, got: {service:?}"
+    );
+}
+
+#[tokio::test]
+#[cfg(feature = "tokio")]
+async fn encrypted_on_plain_only_server_errors() {
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session_no_encrypted()
+        .await
+        .unwrap();
+
+    let result = Service::encrypted_with_connection(&setup.client_conn).await;
+    assert!(
+        result.is_err(),
+        "encrypted_with_connection should fail on a plain-only server"
+    );
+}
+
+#[tokio::test]
+#[cfg(feature = "tokio")]
+async fn plain_on_plain_only_server() {
+    let setup = oo7_daemon::tests::TestServiceSetup::plain_session_no_encrypted()
+        .await
+        .unwrap();
+
+    let service = Service::plain_with_connection(&setup.client_conn).await;
+    assert!(
+        service.is_ok(),
+        "plain_with_connection should work on a plain-only server, got: {service:?}"
+    );
+}
+
+#[tokio::test]
+#[cfg(feature = "tokio")]
+async fn new_with_connection_on_full_server() {
+    let setup = oo7_daemon::tests::TestServiceSetup::encrypted_session(true)
+        .await
+        .unwrap();
+
+    // Should succeed with encrypted (no fallback needed).
+    let service = Service::new_with_connection(&setup.client_conn).await;
+    assert!(
+        service.is_ok(),
+        "new_with_connection should work on a full server, got: {service:?}"
+    );
+}
+
 #[tokio::test]
 #[cfg(feature = "tokio")]
 async fn create_collection() {

@@ -14,7 +14,7 @@ use crate::gnome::{
 use crate::service::{PrompterType, Service};
 
 /// Helper to create a peer-to-peer connection pair using Unix socket
-async fn create_p2p_connection()
+pub(crate) async fn create_p2p_connection()
 -> Result<(zbus::Connection, zbus::Connection), Box<dyn std::error::Error>> {
     let guid = zbus::Guid::generate();
     let (p0, p1) = UnixStream::pair()?;
@@ -30,6 +30,17 @@ async fn create_p2p_connection()
     )?;
 
     Ok((server_conn, client_conn))
+}
+
+struct ServerSetup {
+    server: Service,
+    client_conn: zbus::Connection,
+    service_api: dbus::api::Service,
+    #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+    mock_prompter: MockPrompterService,
+    #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+    mock_prompter_plasma: MockPrompterServicePlasma,
+    temp_dir: tempfile::TempDir,
 }
 
 pub struct TestServiceSetup {
@@ -69,28 +80,23 @@ impl TestServiceSetup {
         Err("Default collection not found".into())
     }
 
-    pub async fn plain_session(
-        with_default_collection: bool,
-    ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
+    async fn setup_server(
+        secret: Option<Secret>,
+        encrypted_supported: bool,
+    ) -> Result<ServerSetup, Box<dyn std::error::Error>> {
         let (server_conn, client_conn) = create_p2p_connection().await?;
-
-        let secret = if with_default_collection {
-            Some(Secret::from("test-password-long-enough"))
-        } else {
-            None
-        };
 
         let temp_dir = tempfile::TempDir::new()?;
         let server = Service::run_with_connection(
             server_conn.clone(),
             temp_dir.path().to_path_buf(),
             None,
-            secret.clone(),
+            secret,
+            encrypted_supported,
         )
         .await?;
         server.set_prompter_type(PrompterType::GNOME).await;
 
-        // Create and serve the mock prompter
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
         let mock_prompter = {
             let mock_prompter = MockPrompterService::new();
@@ -110,25 +116,14 @@ impl TestServiceSetup {
             mock_prompter_plasma
         };
 
-        // Give the server a moment to fully initialize
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
         let service_api = dbus::api::Service::new(&client_conn).await?;
 
-        let (server_public_key, session) = service_api.open_session(None).await?;
-        let session = Arc::new(session);
-
-        let collections = service_api.collections().await?;
-
-        Ok(TestServiceSetup {
+        Ok(ServerSetup {
             server,
-            keyring_secret: secret,
             client_conn,
             service_api,
-            session,
-            collections,
-            server_public_key,
-            aes_key: None,
             #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
             mock_prompter,
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
@@ -137,80 +132,100 @@ impl TestServiceSetup {
         })
     }
 
-    pub async fn encrypted_session(
+    pub async fn plain_session(
         with_default_collection: bool,
     ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
-        let (server_conn, client_conn) = create_p2p_connection().await?;
-
         let secret = if with_default_collection {
             Some(Secret::from("test-password-long-enough"))
         } else {
             None
         };
 
-        let temp_dir = tempfile::TempDir::new()?;
-        let server = Service::run_with_connection(
-            server_conn.clone(),
-            temp_dir.path().to_path_buf(),
-            None,
-            secret.clone(),
-        )
-        .await?;
-        server.set_prompter_type(PrompterType::GNOME).await;
+        let s = Self::setup_server(secret.clone(), true).await?;
 
-        // Create and serve the mock prompter
-        #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-        let mock_prompter = {
-            let mock_prompter = MockPrompterService::new();
-            client_conn
-                .object_server()
-                .at("/org/gnome/keyring/Prompter", mock_prompter.clone())
-                .await?;
-            mock_prompter
+        let (server_public_key, session) = s.service_api.open_session(None).await?;
+        let collections = s.service_api.collections().await?;
+
+        Ok(TestServiceSetup {
+            server: s.server,
+            keyring_secret: secret,
+            client_conn: s.client_conn,
+            service_api: s.service_api,
+            session: Arc::new(session),
+            collections,
+            server_public_key,
+            aes_key: None,
+            #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+            mock_prompter: s.mock_prompter,
+            #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+            mock_prompter_plasma: s.mock_prompter_plasma,
+            temp_dir: s.temp_dir,
+        })
+    }
+
+    #[allow(unused)]
+    pub async fn plain_session_no_encrypted() -> Result<TestServiceSetup, Box<dyn std::error::Error>>
+    {
+        let secret = Some(Secret::from("test-password-long-enough"));
+
+        let s = Self::setup_server(secret.clone(), false).await?;
+
+        let (server_public_key, session) = s.service_api.open_session(None).await?;
+        let collections = s.service_api.collections().await?;
+
+        Ok(TestServiceSetup {
+            server: s.server,
+            keyring_secret: secret,
+            client_conn: s.client_conn,
+            service_api: s.service_api,
+            session: Arc::new(session),
+            collections,
+            server_public_key,
+            aes_key: None,
+            #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+            mock_prompter: s.mock_prompter,
+            #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+            mock_prompter_plasma: s.mock_prompter_plasma,
+            temp_dir: s.temp_dir,
+        })
+    }
+
+    pub async fn encrypted_session(
+        with_default_collection: bool,
+    ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
+        let secret = if with_default_collection {
+            Some(Secret::from("test-password-long-enough"))
+        } else {
+            None
         };
 
-        #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-        let mock_prompter_plasma = {
-            let mock_prompter_plasma = MockPrompterServicePlasma::new();
-            client_conn
-                .object_server()
-                .at("/SecretPrompter", mock_prompter_plasma.clone())
-                .await?;
-            mock_prompter_plasma
-        };
+        let s = Self::setup_server(secret.clone(), true).await?;
 
-        // Give the server a moment to fully initialize
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-
-        let service_api = dbus::api::Service::new(&client_conn).await?;
-
-        // Generate client key pair for encrypted session
         let client_private_key = oo7::Key::generate_private_key()?;
         let client_public_key = oo7::Key::generate_public_key(&client_private_key)?;
 
         let (server_public_key, session) =
-            service_api.open_session(Some(client_public_key)).await?;
-        let session = Arc::new(session);
+            s.service_api.open_session(Some(client_public_key)).await?;
 
         let aes_key =
             oo7::Key::generate_aes_key(&client_private_key, server_public_key.as_ref().unwrap())?;
 
-        let collections = service_api.collections().await?;
+        let collections = s.service_api.collections().await?;
 
         Ok(Self {
-            server,
+            server: s.server,
             keyring_secret: secret,
-            client_conn,
-            service_api,
-            session,
+            client_conn: s.client_conn,
+            service_api: s.service_api,
+            session: Arc::new(session),
             collections,
             server_public_key,
             aes_key: Some(Arc::new(aes_key)),
             #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-            mock_prompter,
+            mock_prompter: s.mock_prompter,
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-            mock_prompter_plasma,
-            temp_dir,
+            mock_prompter_plasma: s.mock_prompter_plasma,
+            temp_dir: s.temp_dir,
         })
     }
 
@@ -226,7 +241,7 @@ impl TestServiceSetup {
         let (server_conn, client_conn) = create_p2p_connection().await?;
 
         let temp_dir = tempfile::TempDir::new()?;
-        let service = crate::Service::new(data_dir, pam_socket);
+        let service = crate::Service::new(data_dir, pam_socket, true);
 
         server_conn
             .object_server()

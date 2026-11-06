@@ -71,6 +71,8 @@ pub struct Service {
     pub(crate) pam_socket: Option<std::path::PathBuf>,
     // Override for prompter type (mainly for tests)
     pub(crate) prompter_type_override: Arc<Mutex<Option<PrompterType>>>,
+    // Whether encrypted sessions are supported
+    encrypted_supported: bool,
 }
 
 #[zbus::interface(name = "org.freedesktop.Secret.Service")]
@@ -85,6 +87,14 @@ impl Service {
     ) -> Result<(OwnedVariant, OwnedObjectPath), ServiceError> {
         let (public_key, aes_key) = match algorithm {
             Algorithm::Plain => (None, None),
+            Algorithm::Encrypted if !self.encrypted_supported => {
+                return Err(ServiceError::ZBus(zbus::Error::FDO(Box::new(
+                    zbus::fdo::Error::NotSupported(
+                        "Algorithm dh-ietf1024-sha256-aes128-cbc-pkcs7 is not supported"
+                            .to_string(),
+                    ),
+                ))));
+            }
             Algorithm::Encrypted => {
                 let client_public_key = Key::try_from(input).map_err(|err| {
                     custom_service_error(&format!(
@@ -598,6 +608,7 @@ impl Service {
     pub(crate) fn new(
         data_dir: std::path::PathBuf,
         pam_socket: Option<std::path::PathBuf>,
+        encrypted_supported: bool,
     ) -> Self {
         Self {
             collections: Arc::new(Mutex::new(HashMap::new())),
@@ -612,6 +623,7 @@ impl Service {
             data_dir,
             pam_socket,
             prompter_type_override: Arc::new(Mutex::new(None)),
+            encrypted_supported,
         }
     }
 
@@ -640,7 +652,7 @@ impl Service {
         // Compute PAM socket path from environment variable
         let pam_socket = std::env::var_os("OO7_PAM_SOCKET").map(std::path::PathBuf::from);
 
-        let service = Self::new(data_dir, pam_socket);
+        let service = Self::new(data_dir, pam_socket, true);
 
         // Start PAM listener early so it can buffer secrets arriving before
         // D-Bus is ready (e.g. during PAM-initiated login startup).
@@ -709,8 +721,9 @@ impl Service {
         data_dir: std::path::PathBuf,
         pam_socket: Option<std::path::PathBuf>,
         secret: Option<Secret>,
+        encrypted_supported: bool,
     ) -> Result<Self, Error> {
-        let service = Self::new(data_dir, pam_socket);
+        let service = Self::new(data_dir, pam_socket, encrypted_supported);
 
         // Serve the service at the standard path
         connection
