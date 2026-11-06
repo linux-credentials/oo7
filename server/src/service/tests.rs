@@ -1086,7 +1086,7 @@ async fn complete_collection_creation_no_pending() -> Result<(), Box<dyn std::er
 async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     // Set up a temporary data directory
     let temp_dir = tempfile::tempdir()?;
-    let service = Service::new(temp_dir.path().to_path_buf(), None);
+    let service = Service::new(temp_dir.path().to_path_buf(), None, true);
 
     // Create v1 keyrings directory
     let v1_dir = temp_dir.path().join("keyrings/v1");
@@ -1314,7 +1314,7 @@ async fn unlock_pending_v0_migration_impl(
 #[tokio::test]
 async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
-    let service = Service::new(temp_dir.path().to_path_buf(), None);
+    let service = Service::new(temp_dir.path().to_path_buf(), None, true);
 
     let keyrings_dir = temp_dir.path().join("keyrings");
     let v1_dir = keyrings_dir.join("v1");
@@ -1401,7 +1401,7 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 async fn discover_plain_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
-    let service = Service::new(temp_dir.path().to_path_buf(), None);
+    let service = Service::new(temp_dir.path().to_path_buf(), None, true);
 
     let keyrings_dir = temp_dir.path().join("keyrings");
     tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
@@ -1434,7 +1434,7 @@ async fn discover_plain_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> 
 #[tokio::test]
 async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
-    let service = Service::new(temp_dir.path().to_path_buf(), None);
+    let service = Service::new(temp_dir.path().to_path_buf(), None, true);
 
     let kwallet_dir = temp_dir.path().join("kwalletd");
     let v1_dir = temp_dir.path().join("keyrings/v1");
