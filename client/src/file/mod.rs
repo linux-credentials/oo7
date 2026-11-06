@@ -35,7 +35,7 @@ pub use locked_keyring::LockedKeyring;
 pub use unlocked_item::UnlockedItem;
 pub use unlocked_keyring::{ItemDefinition, UnlockedKeyring};
 
-use crate::{AsAttributes, Key, Secret};
+use crate::{AsAttributes, GENERIC_SCHEMA, Key, Secret, XDG_SCHEMA_ATTRIBUTE};
 
 #[derive(Debug)]
 pub enum Item {
@@ -87,6 +87,12 @@ impl Item {
             Self::Unlocked(unlocked) => {
                 let item_attrs = unlocked.attributes();
                 attributes.search_attributes().iter().all(|(k, value)| {
+                    if k == XDG_SCHEMA_ATTRIBUTE
+                        && !item_attrs.contains_key(XDG_SCHEMA_ATTRIBUTE)
+                        && value == GENERIC_SCHEMA
+                    {
+                        return true;
+                    }
                     item_attrs.get(k.as_str()).map(|v| v.as_ref()) == Some(value.as_str())
                 })
             }
