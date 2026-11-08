@@ -59,8 +59,14 @@ impl EncryptedItem {
     pub fn matches_exact(&self, attributes: &impl AsAttributes, key: Option<&Key>) -> bool {
         // The secret's content type does not identify the item.
         let attributes = attributes.as_search_attributes();
-        let count = self.hashed_attributes.len()
+        let mut count = self.hashed_attributes.len()
             - usize::from(self.hashed_attributes.contains_key(CONTENT_TYPE_ATTRIBUTE));
+        // Items without a schema are implicitly generic, see `matches`
+        if !self.hashed_attributes.contains_key(XDG_SCHEMA_ATTRIBUTE)
+            && attributes.get(XDG_SCHEMA_ATTRIBUTE).map(String::as_str) == Some(GENERIC_SCHEMA)
+        {
+            count += 1;
+        }
         count == attributes.len() && self.matches(&attributes, key)
     }
 
