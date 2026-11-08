@@ -16,6 +16,21 @@ use crate::{
 const FILE_HEADER: &[u8] = b"GnomeKeyring\n\r\0\n";
 const FILE_HEADER_LEN: usize = FILE_HEADER.len();
 
+/// The schema gnome-keyring exposes for items without an `xdg:schema`
+/// attribute, derived from their type (`gkm_secret_compat_format_item_type`).
+/// Adding it keeps schema based lookups matching the migrated items.
+fn item_type_schema(item_type: u32) -> Option<&'static str> {
+    match item_type & 0xffff {
+        0 => Some(crate::GENERIC_SCHEMA),
+        1 => Some("org.gnome.keyring.NetworkPassword"),
+        2 => Some("org.gnome.keyring.Note"),
+        3 => Some("org.gnome.keyring.ChainedKeyring"),
+        4 => Some("org.gnome.keyring.EncryptionKey"),
+        0x100 => Some("org.gnome.keyring.PkStorage"),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 pub enum Keyring {
     Encrypted(encrypted::Keyring),

@@ -8,9 +8,9 @@ use std::{
 use endi::{Endian, ReadBytes};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use super::{FILE_HEADER, FILE_HEADER_LEN};
+use super::{FILE_HEADER, FILE_HEADER_LEN, item_type_schema};
 use crate::{
-    AsAttributes, Secret, crypto,
+    Secret, XDG_SCHEMA_ATTRIBUTE, crypto,
     file::{Error, UnlockedItem},
 };
 
@@ -22,7 +22,8 @@ pub struct Keyring {
     salt: Vec<u8>,
     iteration_count: u32,
     encrypted_content: Vec<u8>,
-    item_count: usize,
+    // In the same order as the encrypted items
+    item_types: Vec<u32>,
 }
 
 impl Keyring {
@@ -43,7 +44,7 @@ impl Keyring {
     fn read_attributes<'a>(
         cursor: &mut Cursor<&'a [u8]>,
         count: usize,
-    ) -> Result<impl AsAttributes + 'a, Error> {
+    ) -> Result<HashMap<&'a str, String>, Error> {
         let mut result = HashMap::new();
         for _ in 0..count {
             let name = Self::read_string(cursor)?.ok_or_else(|| {
@@ -71,8 +72,8 @@ impl Keyring {
 
     fn read_items(self, decrypted: &[u8]) -> Result<Vec<UnlockedItem>, Error> {
         let mut cursor = Cursor::new(decrypted);
-        let mut items = Vec::with_capacity(self.item_count);
-        for _ in 0..self.item_count {
+        let mut items = Vec::with_capacity(self.item_types.len());
+        for &item_type in &self.item_types {
             let display_name = Self::read_string(&mut cursor)?.unwrap_or_else(|| {
                 #[cfg(feature = "tracing")]
                 tracing::warn!("Item has no label, defaulting to empty");
@@ -90,7 +91,12 @@ impl Keyring {
                 let _ = cursor.read_u32(Endian::Big)?;
             }
             let attribute_count = cursor.read_u32(Endian::Big)? as usize;
-            let attributes = Self::read_attributes(&mut cursor, attribute_count)?;
+            let mut attributes = Self::read_attributes(&mut cursor, attribute_count)?;
+            if !attributes.contains_key(XDG_SCHEMA_ATTRIBUTE)
+                && let Some(schema) = item_type_schema(item_type)
+            {
+                attributes.insert(XDG_SCHEMA_ATTRIBUTE, schema.to_owned());
+            }
             items.push(UnlockedItem::new(display_name, &attributes, secret));
             let acl_count = cursor.read_u32(Endian::Big)? as usize;
             Self::skip_acls(&mut cursor, acl_count)?;
@@ -128,10 +134,11 @@ impl Keyring {
         Ok((hi << 32) | lo)
     }
 
-    fn skip_hashed_items(cursor: &mut Cursor<&[u8]>, count: usize) -> Result<(), Error> {
+    fn read_hashed_item_types(cursor: &mut Cursor<&[u8]>, count: usize) -> Result<Vec<u32>, Error> {
+        let mut item_types = Vec::new();
         for _ in 0..count {
             let _id = cursor.read_u32(Endian::Big)?;
-            let _type = cursor.read_u32(Endian::Big)?;
+            item_types.push(cursor.read_u32(Endian::Big)?);
             let num_attributes = cursor.read_u32(Endian::Big)?;
             for _ in 0..num_attributes {
                 let _name = Self::read_string(cursor)?;
@@ -152,7 +159,7 @@ impl Keyring {
                 }
             }
         }
-        Ok(())
+        Ok(item_types)
     }
 
     fn skip_acls(cursor: &mut Cursor<&[u8]>, count: usize) -> Result<(), Error> {
@@ -188,7 +195,7 @@ impl Keyring {
             let _ = cursor.read_u32(Endian::Big)?;
         }
         let item_count = cursor.read_u32(Endian::Big)? as usize;
-        Self::skip_hashed_items(&mut cursor, item_count)?;
+        let item_types = Self::read_hashed_item_types(&mut cursor, item_count)?;
         let mut size = cursor.read_u32(Endian::Big)? as usize;
         let pos = cursor.position() as usize;
         if size > cursor.get_ref()[pos..].len() {
@@ -203,7 +210,7 @@ impl Keyring {
             salt,
             iteration_count,
             encrypted_content,
-            item_count,
+            item_types,
         })
     }
 }
@@ -258,6 +265,35 @@ mod tests {
                 .get(crate::XDG_SCHEMA_ATTRIBUTE)
                 .map(|v| v.as_ref()),
             Some("org.gnome.keyring.Note")
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_decrypt_schema_from_item_type() -> Result<(), Error> {
+        // Written by gnome-keyring 48 for an item stored without a schema
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("legacy-no-schema.keyring");
+        let blob = std::fs::read(path)?;
+        let keyring = Keyring::try_from(blob.as_slice())?;
+        let items = keyring.decrypt_items(&Secret::blob("test"))?;
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label(), "Unlock password for: user@example.com");
+        assert_eq!(items[0].secret(), Secret::blob("my-ssh-passphrase"));
+        let attributes = items[0].attributes();
+        assert_eq!(attributes.len(), 3); // also content-type
+        assert_eq!(
+            attributes.get("unique").map(|v| v.as_ref()),
+            Some("ssh-store:/fake/id_rsa")
+        );
+        assert_eq!(
+            attributes
+                .get(crate::XDG_SCHEMA_ATTRIBUTE)
+                .map(|v| v.as_ref()),
+            Some(crate::GENERIC_SCHEMA)
         );
 
         Ok(())

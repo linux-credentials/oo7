@@ -1429,6 +1429,39 @@ async fn discover_plain_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
+// https://github.com/linux-credentials/oo7/issues/586
+#[tokio::test]
+async fn migrate_v0_items_without_schema() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+    let service = Service::new(temp_dir.path().to_path_buf(), None, true);
+
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    // Its item only has a `unique` attribute and the generic secret type
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy-no-schema.keyring");
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("login.keyring")).await?;
+
+    let secret = Secret::from("test");
+    service.discover_keyrings(Some(secret.clone())).await?;
+
+    let keyring = UnlockedKeyring::open_at(temp_dir.path(), "login", Some(secret)).await?;
+    let items = keyring.items().await?;
+    assert_eq!(items.len(), 1);
+    let attributes = items[0].attributes();
+    assert_eq!(
+        attributes
+            .get(oo7::XDG_SCHEMA_ATTRIBUTE)
+            .map(|v| v.as_ref()),
+        Some(oo7::GENERIC_SCHEMA)
+    );
+
+    Ok(())
+}
+
 #[cfg(feature = "kwallet_migration")]
 #[cfg(target_endian = "little")]
 #[tokio::test]
