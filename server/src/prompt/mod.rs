@@ -110,12 +110,8 @@ impl Prompt {
         #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> Result<(), ServiceError> {
         let window_id = (*window_id).and_then(|w| ashpd::WindowIdentifierType::from_str(w).ok());
-        let peer_info = match header.sender() {
-            Some(sender) => self
-                .service
-                .session_from_sender(sender)
-                .await
-                .and_then(|s| s.peer_info().cloned()),
+        let peer_info = match Service::sender(&header) {
+            Some(sender) => self.service.peer_info(&sender).await,
             None => None,
         };
 
