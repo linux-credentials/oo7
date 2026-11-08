@@ -16,6 +16,45 @@
 //! #   Ok(())
 //! # }
 //! ```
+//!
+//! # File format
+//!
+//! Keyrings use the format of libsecret's file backend. A file starts with
+//! the `GnomeKeyring\n\r\0\n` header, the major and minor versions as two
+//! bytes (`1`, `0`), and a little-endian
+//! [GVariant](https://docs.gtk.org/glib/struct.Variant.html) of type
+//! `(uayutua(a{say}ay))`:
+//!
+//! | Type          | Field                                         |
+//! | ------------- | --------------------------------------------- |
+//! | `u`           | salt size                                     |
+//! | `ay`          | salt                                          |
+//! | `u`           | PBKDF2 iteration count                        |
+//! | `t`           | modification time, in seconds since the epoch |
+//! | `u`           | usage count                                   |
+//! | `a(a{say}ay)` | items                                         |
+//!
+//! Each item is a pair of:
+//!
+//! - `a{say}`: its attributes, mapping each name to the HMAC of its value, so
+//!   items can be searched without decrypting them.
+//! - `ay`: the encrypted item, `ciphertext ‖ IV ‖ HMAC(ciphertext ‖ IV)`.
+//!
+//! Decrypted, an item is a `(a{ss}sttay)` GVariant holding its attributes,
+//! label, creation and modification times, and secret.
+//!
+//! The key is derived from the password with PBKDF2-HMAC-SHA256, using at
+//! least 100000 iterations and a 32 bytes salt. Items are encrypted with
+//! AES-128-CBC, with PKCS#7 padding and a random IV, and the same key is used
+//! for HMAC-SHA256. These algorithms were chosen for being FIPS 140-3
+//! approved.
+//!
+//! oo7 also supports keyrings without a password, which store attribute
+//! values and items in plain text.
+//!
+//! gnome-keyring keyrings, in either its encrypted binary format or the plain
+//! text one used for keyrings without a password, are migrated to this
+//! format.
 
 #[cfg(feature = "unstable")]
 #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
