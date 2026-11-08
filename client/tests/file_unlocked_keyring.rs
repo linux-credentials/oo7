@@ -1409,3 +1409,43 @@ async fn set_attributes() -> Result<(), Error> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn replace_item_without_schema() -> Result<(), Error> {
+    let keyring = UnlockedKeyring::temporary(Secret::blob("test_password")).await?;
+    let unique = ("unique", "ssh-store:/home/user/.ssh/id_rsa");
+    keyring
+        .create_item("Migrated", &[unique], "old", false)
+        .await?;
+
+    // Another schema doesn't replace it
+    keyring
+        .create_item(
+            "Other",
+            &[unique, (XDG_SCHEMA_ATTRIBUTE, "org.example.Other")],
+            "other",
+            true,
+        )
+        .await?;
+    assert_eq!(keyring.n_items().await, 2);
+
+    // Items without a schema are implicitly generic
+    keyring
+        .create_item(
+            "New",
+            &[unique, (XDG_SCHEMA_ATTRIBUTE, oo7::GENERIC_SCHEMA)],
+            "new",
+            true,
+        )
+        .await?;
+    let labels = keyring
+        .items()
+        .await?
+        .iter()
+        .map(|item| item.label().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(labels.len(), 2);
+    assert!(labels.contains(&"New".to_owned()) && labels.contains(&"Other".to_owned()));
+
+    Ok(())
+}

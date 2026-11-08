@@ -1945,3 +1945,40 @@ async fn search_items_missing_xdg_schema() -> Result<(), Box<dyn std::error::Err
 
     Ok(())
 }
+
+// gcr stores the passphrase again with its schema, which must replace the
+// item migrated without one instead of duplicating it.
+#[tokio::test]
+async fn replace_item_missing_xdg_schema() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let unique = ("unique", "ssh-store:/home/user/.ssh/id_rsa");
+
+    setup
+        .create_item("Unlock password", &[unique], "old-passphrase", false)
+        .await?;
+    setup
+        .create_item(
+            "Unlock password",
+            &[unique, (oo7::XDG_SCHEMA_ATTRIBUTE, oo7::GENERIC_SCHEMA)],
+            "new-passphrase",
+            true,
+        )
+        .await?;
+
+    let items = setup.collections[0].items().await?;
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].attributes().await?.get(oo7::XDG_SCHEMA_ATTRIBUTE),
+        Some(&oo7::GENERIC_SCHEMA.to_owned())
+    );
+
+    let server_collection = setup
+        .server
+        .collection_from_path(setup.collections[0].inner().path())
+        .await
+        .unwrap();
+    let keyring = server_collection.keyring.read().await;
+    assert_eq!(keyring.as_ref().unwrap().items().await?.len(), 1);
+
+    Ok(())
+}
