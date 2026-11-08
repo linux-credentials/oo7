@@ -1,7 +1,11 @@
 use std::{
-    io,
-    os::unix::fs::{FileTypeExt, MetadataExt},
+    io::{self, Write as _},
+    os::unix::{
+        fs::{FileTypeExt, MetadataExt},
+        process::CommandExt,
+    },
     path::PathBuf,
+    process::{Command, Stdio},
     time::Duration,
 };
 
@@ -199,82 +203,35 @@ pub fn send_secret_to_daemon(
 fn start_login_helper(secret: &[u8]) -> Result<(), SocketError> {
     tracing::info!("Starting oo7-daemon-login helper");
 
-    let mut pipe_fds = [0 as libc::c_int; 2];
-    if unsafe { libc::pipe(pipe_fds.as_mut_ptr()) } < 0 {
-        return Err(SocketError::Connect(io::Error::last_os_error()));
-    }
-    let pipe_read = pipe_fds[0];
-    let pipe_write = pipe_fds[1];
-
+    let (pipe_read, mut pipe_write) = io::pipe().map_err(SocketError::Connect)?;
     let saved_signals = SavedSignals::new();
 
-    match unsafe { libc::fork() } {
-        -1 => {
-            drop(saved_signals);
-            unsafe {
-                libc::close(pipe_read);
-                libc::close(pipe_write);
-            }
-            Err(SocketError::Connect(io::Error::last_os_error()))
-        }
-        0 => unsafe {
-            libc::close(pipe_write);
-
-            libc::dup2(pipe_read, 0);
-            if pipe_read > 0 {
-                libc::close(pipe_read);
-            }
-
+    let mut helper = Command::new(
+        option_env!("OO7_DAEMON_LOGIN_PATH").unwrap_or("/usr/libexec/oo7-daemon-login"),
+    );
+    helper
+        .stdin(pipe_read)
+        // Don't inherit the caller's stdout/stderr, it may be a console
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    unsafe {
+        helper.pre_exec(|| {
             // Leave the login's session and its controlling terminal. On a
             // text console, the terminal is hung up when the session moves on
             // to the user's shell, and the SIGHUP would kill the helper before
             // oo7-daemon has picked up the secret.
             libc::setsid();
             libc::signal(libc::SIGHUP, libc::SIG_IGN);
-
-            // Don't inherit the caller's stdout/stderr, it may be a console
-            let devnull = libc::open(c"/dev/null".as_ptr(), libc::O_WRONLY);
-            if devnull >= 0 {
-                libc::dup2(devnull, libc::STDOUT_FILENO);
-                libc::dup2(devnull, libc::STDERR_FILENO);
-                if devnull > libc::STDERR_FILENO {
-                    libc::close(devnull);
-                }
-            }
-
-            let path = std::ffi::CString::new(
-                option_env!("OO7_DAEMON_LOGIN_PATH").unwrap_or("/usr/libexec/oo7-daemon-login"),
-            )
-            .unwrap();
-            let args = [path.as_ptr(), std::ptr::null()];
-            libc::execv(path.as_ptr(), args.as_ptr());
-
-            libc::_exit(1);
-        },
-        child_pid => {
-            unsafe {
-                libc::close(pipe_read);
-
-                let mut written = 0;
-                while written < secret.len() {
-                    let n = libc::write(
-                        pipe_write,
-                        secret.as_ptr().add(written) as *const libc::c_void,
-                        secret.len() - written,
-                    );
-                    if n <= 0 {
-                        break;
-                    }
-                    written += n as usize;
-                }
-                libc::close(pipe_write);
-            }
-
-            drop(saved_signals);
-            tracing::info!("Started oo7-daemon-login with PID {child_pid}");
             Ok(())
-        }
-    }
+        })
+    };
+    let child = helper.spawn().map_err(SocketError::Connect)?;
+    drop(helper); // drops `pipe_read`
+    pipe_write.write_all(secret).map_err(SocketError::Send)?;
+    drop(pipe_write);
+    drop(saved_signals);
+    tracing::info!("Started oo7-daemon-login with PID {}", child.id());
+    Ok(())
 }
 
 async fn send_secret_to_daemon_async(
