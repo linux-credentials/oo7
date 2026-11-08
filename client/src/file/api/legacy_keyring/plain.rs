@@ -25,9 +25,9 @@ use std::{collections::HashMap, io};
 
 use zeroize::Zeroizing;
 
-use super::FILE_HEADER_LEN;
+use super::{FILE_HEADER_LEN, item_type_schema};
 use crate::{
-    Secret,
+    Secret, XDG_SCHEMA_ATTRIBUTE,
     file::{Error, UnlockedItem},
 };
 
@@ -83,6 +83,16 @@ impl Keyring {
             };
             if let Some(value) = value {
                 attributes.insert(name, value);
+            }
+        }
+        if !attributes.contains_key(XDG_SCHEMA_ATTRIBUTE) {
+            // Like g_key_file_get_integer, defaulting to a generic secret
+            let item_type = group
+                .value("item-type")
+                .and_then(|v| v.trim_end().parse::<i32>().ok())
+                .unwrap_or_default();
+            if let Some(schema) = item_type_schema(item_type as u32) {
+                attributes.insert(XDG_SCHEMA_ATTRIBUTE.to_owned(), schema.to_owned());
             }
         }
 
@@ -261,9 +271,21 @@ mod tests {
         assert!(!attributes.contains_key("bad-number"));
         assert!(!attributes.contains_key("missing-number"));
         assert!(!attributes.contains_key("bad-escape"));
+        // Derived from item-type=2
+        assert_eq!(
+            attributes.get(XDG_SCHEMA_ATTRIBUTE).map(|v| v.as_ref()),
+            Some("org.gnome.keyring.Note")
+        );
 
         assert_eq!(items[2].label(), "");
         assert_eq!(items[2].secret(), Secret::blob([]));
+        assert_eq!(
+            items[2]
+                .attributes()
+                .get(XDG_SCHEMA_ATTRIBUTE)
+                .map(|v| v.as_ref()),
+            Some(crate::GENERIC_SCHEMA)
+        );
 
         Ok(())
     }
