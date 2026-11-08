@@ -38,6 +38,9 @@ use crate::{
     session::{PeerInfo, Session, SessionType},
 };
 
+#[cfg(any(test, feature = "test-util"))]
+const P2P_TEST_SENDER: &str = ":p2p.test";
+
 /// Prompter type
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PrompterType {
@@ -117,38 +120,9 @@ impl Service {
             }
         };
 
-        let sender = if let Some(s) = header.sender() {
-            s.to_owned()
-        } else {
-            #[cfg(any(test, feature = "test-util"))]
-            {
-                // For p2p test connections, use a dummy sender since p2p
-                // connections don't have a bus to assign unique
-                // names
-                UniqueName::try_from(":p2p.test").unwrap()
-            }
-            #[cfg(not(any(test, feature = "test-util")))]
-            {
-                return Err(custom_service_error("Failed to get sender from header."));
-            }
-        };
-
-        let peer_info = async {
-            let proxy = zbus::fdo::DBusProxy::new(&self.connection()).await.ok()?;
-            let pid = proxy
-                .get_connection_unix_process_id(sender.as_ref().into())
-                .await
-                .ok()?;
-            let cmdline = tokio::fs::read(format!("/proc/{pid}/cmdline")).await.ok()?;
-            let name = cmdline.split(|&b| b == 0).next()?;
-            let name = std::path::Path::new(std::str::from_utf8(name).ok()?)
-                .file_name()?
-                .to_str()?
-                .to_owned();
-            let session_type = SessionType::detect(pid).await;
-            Some(PeerInfo::new(pid, name, session_type))
-        }
-        .await;
+        let sender = Self::sender(&header)
+            .ok_or_else(|| custom_service_error("Failed to get sender from header."))?;
+        let peer_info = self.lookup_peer_info(&sender).await;
         let session = Session::new(
             aes_key.map(Arc::new),
             self.clone(),
@@ -583,15 +557,15 @@ impl Service {
 
     /// Get the prompter type to use based on the caller's session type
     pub(crate) async fn prompter_type(&self, peer_info: Option<&PeerInfo>) -> PrompterType {
-        if let Some(override_type) = self.prompter_type_override.lock().await.as_ref() {
-            return *override_type;
-        }
-
         let is_graphical = peer_info
             .map(|p| p.session_type().is_graphical())
             .unwrap_or_default();
 
         if is_graphical {
+            if let Some(override_type) = self.prompter_type_override.lock().await.as_ref() {
+                return *override_type;
+            }
+
             #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
             {
                 if in_plasma_environment(&self.connection()).await {
@@ -1417,6 +1391,53 @@ impl Service {
 
     pub fn session_index(&self) -> u32 {
         self.session_index.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// The sender of a method call
+    pub(crate) fn sender(header: &zbus::message::Header<'_>) -> Option<UniqueName<'static>> {
+        match header.sender() {
+            Some(sender) => Some(sender.to_owned()),
+            // p2p test connections don't have a bus to assign unique names
+            #[cfg(any(test, feature = "test-util"))]
+            None => Some(UniqueName::from_static_str_unchecked(P2P_TEST_SENDER)),
+            #[cfg(not(any(test, feature = "test-util")))]
+            None => None,
+        }
+    }
+
+    /// The caller's process, even when it never opened a session
+    pub(crate) async fn peer_info(&self, sender: &UniqueName<'_>) -> Option<PeerInfo> {
+        match self.session_from_sender(sender).await {
+            Some(session) => session.peer_info().cloned(),
+            None => self.lookup_peer_info(sender).await,
+        }
+    }
+
+    /// Look up the process behind a sender, and the session it runs in
+    async fn lookup_peer_info(&self, sender: &UniqueName<'_>) -> Option<PeerInfo> {
+        // p2p test clients stand for a graphical application
+        #[cfg(any(test, feature = "test-util"))]
+        if sender.as_str() == P2P_TEST_SENDER {
+            return Some(PeerInfo::new(
+                std::process::id(),
+                "test".to_owned(),
+                SessionType::Wayland,
+            ));
+        }
+
+        let proxy = zbus::fdo::DBusProxy::new(&self.connection()).await.ok()?;
+        let pid = proxy
+            .get_connection_unix_process_id(sender.into())
+            .await
+            .ok()?;
+        let cmdline = tokio::fs::read(format!("/proc/{pid}/cmdline")).await.ok()?;
+        let name = cmdline.split(|&b| b == 0).next()?;
+        let name = std::path::Path::new(std::str::from_utf8(name).ok()?)
+            .file_name()?
+            .to_str()?
+            .to_owned();
+        let session_type = SessionType::detect(pid).await;
+        Some(PeerInfo::new(pid, name, session_type))
     }
 
     pub(crate) async fn session_from_sender(&self, sender: &UniqueName<'_>) -> Option<Session> {

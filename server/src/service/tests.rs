@@ -647,6 +647,43 @@ async fn unlock_collection_prompt_plasma() -> Result<(), Box<dyn std::error::Err
     unlock_collection_prompt_impl(PrompterType::Plasma).await
 }
 
+/// Clients like Chromium call Unlock and Prompt without opening a session.
+async fn unlock_collection_prompt_without_session_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    setup.server.set_prompter_type(prompter_type).await;
+    setup.lock_collection(&setup.collections[0]).await?;
+    setup.session.close().await?;
+
+    let unlocked = setup
+        .service_api
+        .unlock(&[setup.collections[0].inner().path()], None)
+        .await?;
+
+    assert_eq!(unlocked.len(), 1, "Should have unlocked 1 collection");
+    assert!(
+        !setup.collections[0].is_locked().await?,
+        "Collection should be unlocked after accepting prompt"
+    );
+
+    Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_collection_prompt_without_session_gnome() -> Result<(), Box<dyn std::error::Error>>
+{
+    unlock_collection_prompt_without_session_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_collection_prompt_without_session_plasma() -> Result<(), Box<dyn std::error::Error>>
+{
+    unlock_collection_prompt_without_session_impl(PrompterType::Plasma).await
+}
+
 async fn unlock_item_prompt_impl(
     prompter_type: PrompterType,
 ) -> Result<(), Box<dyn std::error::Error>> {
