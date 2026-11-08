@@ -7,7 +7,10 @@ use super::{
     Error, LockedItem,
     api::{EncryptedItem, GVARIANT_ENCODING},
 };
-use crate::{AsAttributes, CONTENT_TYPE_ATTRIBUTE, Key, Mac, Secret, crypto, secret::ContentType};
+use crate::{
+    AsAttributes, CONTENT_TYPE_ATTRIBUTE, GENERIC_SCHEMA, Key, Mac, Secret, XDG_SCHEMA_ATTRIBUTE,
+    crypto, secret::ContentType,
+};
 
 /// An item stored in the file backend.
 #[derive(
@@ -66,12 +69,19 @@ impl UnlockedItem {
     pub fn matches_exact(&self, attributes: &impl AsAttributes) -> bool {
         // The secret's content type does not identify the item.
         let requested = attributes.as_search_attributes();
-        let count = self.attributes.len()
+        let mut count = self.attributes.len()
             - usize::from(self.attributes.contains_key(CONTENT_TYPE_ATTRIBUTE));
+        // Items without a schema are implicitly generic
+        let implicit_schema = !self.attributes.contains_key(XDG_SCHEMA_ATTRIBUTE)
+            && requested.get(XDG_SCHEMA_ATTRIBUTE).map(String::as_str) == Some(GENERIC_SCHEMA);
+        if implicit_schema {
+            count += 1;
+        }
         count == requested.len()
-            && requested
-                .iter()
-                .all(|(key, value)| self.attributes.get(key) == Some(value))
+            && requested.iter().all(|(key, value)| {
+                (implicit_schema && key == XDG_SCHEMA_ATTRIBUTE)
+                    || self.attributes.get(key) == Some(value)
+            })
     }
 
     /// Retrieve the item attributes as a typed schema.
