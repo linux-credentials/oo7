@@ -30,6 +30,17 @@ encrypted home with [systemd-homed](https://systemd.io/HOME_DIRECTORY/).
 
 See the manual page `systemd.exec(5)` for more details.
 
+## Storage
+
+Keyrings are stored in `$XDG_DATA_HOME/keyrings/v1/`, using libsecret's file
+format, see the [`oo7::file`][file-format] documentation. Keyrings left by
+gnome-keyring in `$XDG_DATA_HOME/keyrings/` are migrated to it.
+
+The format relies on PBKDF2-HMAC-SHA256, AES-128-CBC and HMAC-SHA256, which
+were chosen for being FIPS 140-3 approved.
+
+[file-format]: https://docs.rs/oo7/latest/oo7/file/index.html#file-format
+
 ## Debugging and Logs
 
 When running `oo7-daemon` as a systemd user service, logs can be viewed using `journalctl`:
