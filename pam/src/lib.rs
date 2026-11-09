@@ -241,8 +241,14 @@ pub unsafe extern "C" fn pam_sm_open_session(
     let ret = unsafe { ffi::pam_get_data(pamh, STASHED_PASSWORD_KEY.as_ptr(), &mut password_ptr) };
 
     if ret != PAM_SUCCESS || password_ptr.is_null() {
-        tracing::debug!("No stashed password found in session");
-        return PAM_SUCCESS;
+        // Try to fall back to PAM_AUTHTOK, it may have been set by a previous
+        // module.
+        password_ptr = std::ptr::null();
+        let ret = unsafe { ffi::pam_get_item(pamh, PAM_AUTHTOK, &mut password_ptr) };
+        if ret != PAM_SUCCESS || password_ptr.is_null() {
+            tracing::debug!("No stashed password found in session");
+            return PAM_SUCCESS;
+        }
     }
 
     let password = unsafe { &*(password_ptr as *const Zeroizing<Vec<u8>>) };
