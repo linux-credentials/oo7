@@ -3,7 +3,7 @@
 use std::{
     collections::HashMap,
     fmt,
-    io::{BufRead, IsTerminal, Write},
+    io::{IsTerminal, Read, Write},
     path::PathBuf,
     process::{ExitCode, Termination},
     time::Duration,
@@ -657,16 +657,21 @@ impl Commands {
             },
             Commands::Store { label, attributes } => {
                 let mut stdin = std::io::stdin().lock();
-                let secret = if stdin.is_terminal() {
+                let secret: oo7::Secret = if stdin.is_terminal() {
                     print!("Type a secret: ");
                     std::io::stdout()
                         .flush()
                         .map_err(|_| Error::new("Could not flush stdout"))?;
-                    rpassword::read_password().map_err(|_| Error::new("Can't read password"))?
+                    rpassword::read_password()
+                        .map_err(|_| Error::new("Can't read password"))?
+                        .into()
                 } else {
-                    let mut secret = String::new();
-                    stdin.read_line(&mut secret)?;
-                    secret
+                    let mut buf = Vec::new();
+                    stdin.read_to_end(&mut buf)?;
+                    match String::from_utf8(buf) {
+                        Ok(s) => oo7::Secret::text(s),
+                        Err(e) => oo7::Secret::blob(e.into_bytes()),
+                    }
                 };
 
                 match keyring {
