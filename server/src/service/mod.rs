@@ -1505,6 +1505,44 @@ impl Service {
             .cloned()
     }
 
+    /// Build a new collection with a unique label/alias, register it on the
+    /// object server, insert it into the collections map, and emit D-Bus
+    /// signals.
+    async fn register_collection(
+        &self,
+        name: &str,
+        label: &str,
+        alias: &str,
+        keyring: Keyring,
+    ) -> Result<(OwnedObjectPath, Collection), ServiceError> {
+        let (unique_label, unique_alias) = {
+            let collections = self.collections.lock().await;
+            Self::make_unique_label_and_alias(&collections, label, alias)
+        };
+        let collection =
+            Collection::new(name, &unique_label, &unique_alias, self.clone(), keyring).await;
+        let collection_path: OwnedObjectPath = collection.path().to_owned().into();
+
+        self.object_server()
+            .at(collection.path(), collection.clone())
+            .await?;
+        collection.serve_alias_path(&unique_alias).await;
+
+        self.collections
+            .lock()
+            .await
+            .insert(collection_path.clone(), collection.clone());
+
+        let service_path = oo7::dbus::api::Service::PATH.as_ref().unwrap();
+        let signal_emitter = self.signal_emitter(service_path)?;
+        Service::collection_created(&signal_emitter, &collection_path).await?;
+        self.collections_changed(&signal_emitter).await?;
+
+        tracing::info!("Collection `{collection_path}` created with label '{label}'");
+
+        Ok((collection_path, collection))
+    }
+
     pub async fn create_collection_with_secret(
         &self,
         label: &str,
@@ -1522,46 +1560,11 @@ impl Service {
             .await
             .map_err(|err| custom_service_error(&format!("Failed to write keyring file: {err}")))?;
 
-        let keyring = Keyring::Unlocked(keyring);
         let name = label.to_lowercase();
-
-        // Create the collection with unique label and alias
-        let (unique_label, unique_alias) = {
-            let collections = self.collections.lock().await;
-            Self::make_unique_label_and_alias(&collections, label, alias)
-        };
-        let collection =
-            Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
-        let collection_path: OwnedObjectPath = collection.path().to_owned().into();
-
-        // Register with object server
-        self.object_server()
-            .at(collection.path(), collection.clone())
+        let (path, _) = self
+            .register_collection(&name, label, alias, Keyring::Unlocked(keyring))
             .await?;
-        collection.serve_alias_path(&unique_alias).await;
-
-        // Add to collections
-        self.collections
-            .lock()
-            .await
-            .insert(collection_path.clone(), collection);
-
-        // Emit CollectionCreated signal
-        let service_path = oo7::dbus::api::Service::PATH.as_ref().unwrap();
-        let signal_emitter = self.signal_emitter(service_path)?;
-        Service::collection_created(&signal_emitter, &collection_path).await?;
-
-        // Emit PropertiesChanged for Collections property to invalidate client
-        // cache
-        self.collections_changed(&signal_emitter).await?;
-
-        tracing::info!(
-            "Collection `{}` created with label '{}'",
-            collection_path,
-            label
-        );
-
-        Ok(collection_path)
+        Ok(path)
     }
 
     pub async fn complete_collection_creation(
@@ -1666,55 +1669,56 @@ impl Service {
 
             match migration.migrate(&self.data_dir, Some(secret)).await {
                 Ok(unlocked) => {
-                    let label = migration.label();
-                    let alias = migration.alias();
-
-                    // Create a collection for this migrated keyring with unique
-                    // label and alias
-                    let (unique_label, unique_alias) = {
+                    // Look for the placeholder collection that was registered
+                    // at startup.
+                    let placeholder = {
                         let collections = self.collections.lock().await;
-                        Self::make_unique_label_and_alias(&collections, label, alias)
+                        collections.values().find(|c| c.name() == name).cloned()
                     };
-                    let keyring = Keyring::Unlocked(unlocked);
-                    let collection =
-                        Collection::new(name, &unique_label, &unique_alias, self.clone(), keyring)
-                            .await;
-                    let collection_path: OwnedObjectPath = collection.path().to_owned().into();
 
-                    // Dispatch items
-                    if let Err(e) = collection.dispatch_items().await {
-                        tracing::error!(
-                            "Failed to dispatch items for migrated keyring '{name}': {e}",
+                    if let Some(collection) = placeholder {
+                        *collection.keyring.write().await = Some(Keyring::Unlocked(unlocked));
+
+                        if let Err(e) = collection.dispatch_items().await {
+                            tracing::error!(
+                                "Failed to dispatch items for migrated keyring '{name}': {e}",
+                            );
+                            continue;
+                        }
+
+                        if let Ok(signal_emitter) =
+                            self.signal_emitter(oo7::dbus::api::Service::PATH.as_ref().unwrap())
+                        {
+                            let _ = self.collections_changed(&signal_emitter).await;
+                        }
+
+                        tracing::info!(
+                            "Replaced placeholder for keyring '{name}' with migrated data",
                         );
-                        continue;
+                    } else {
+                        let label = migration.label();
+                        let alias = migration.alias();
+
+                        let collection = match self
+                            .register_collection(name, label, alias, Keyring::Unlocked(unlocked))
+                            .await
+                        {
+                            Ok((_, collection)) => collection,
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to register migrated collection '{name}': {e}",
+                                );
+                                continue;
+                            }
+                        };
+
+                        if let Err(e) = collection.dispatch_items().await {
+                            tracing::error!(
+                                "Failed to dispatch items for migrated collection '{name}': {e}",
+                            );
+                        }
                     }
 
-                    if let Err(e) = self
-                        .object_server()
-                        .at(collection.path(), collection.clone())
-                        .await
-                    {
-                        tracing::error!(
-                            "Failed to register migrated collection '{name}' with object server: {e}",
-                        );
-                        continue;
-                    }
-
-                    collection.serve_alias_path(&unique_alias).await;
-                    self.collections
-                        .lock()
-                        .await
-                        .insert(collection_path.clone(), collection);
-
-                    if let Ok(signal_emitter) =
-                        self.signal_emitter(oo7::dbus::api::Service::PATH.as_ref().unwrap())
-                    {
-                        let _ =
-                            Service::collection_created(&signal_emitter, &collection_path).await;
-                        let _ = self.collections_changed(&signal_emitter).await;
-                    }
-
-                    tracing::info!("Migrated keyring '{name}' added as collection",);
                     migrated.push(name.clone());
                     to_remove.push(name.clone());
                 }

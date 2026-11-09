@@ -145,6 +145,83 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// https://github.com/linux-credentials/oo7/issues/651
+#[tokio::test]
+async fn pam_migration_then_write_to_default_alias() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    let v1_dir = keyrings_dir.join("v1");
+    tokio::fs::create_dir_all(&v1_dir).await?;
+
+    let v0_secret = Secret::from("test");
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    // Named "login" so it maps to the "default" alias.
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("login.keyring")).await?;
+
+    let pam_socket_path = temp_dir.path().join("pam.sock");
+    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(
+        temp_dir.path().to_path_buf(),
+        Some(pam_socket_path),
+        None,
+    )
+    .await?;
+
+    assert_eq!(setup.server.pending_migrations.lock().await.len(), 1);
+
+    let pam_listener = PamListener::new(setup.server.clone());
+    let socket_path = pam_listener.socket_path.clone();
+    tokio::spawn(async move {
+        let _ = pam_listener.start().await;
+    });
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    let message = create_pam_message(PamOperation::Unlock, "testuser", &[], v0_secret.as_bytes());
+    send_pam_message(&socket_path, &message).await?;
+
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        0,
+        "V0 keyring should be migrated"
+    );
+
+    // The default alias must point to the migrated collection, not an empty
+    // placeholder.
+    let default = setup
+        .service_api
+        .read_alias("default")
+        .await?
+        .expect("default alias should exist");
+
+    let dbus_secret = setup.create_dbus_secret("token")?;
+    default
+        .create_item(
+            "Test item",
+            &[("service", "test")],
+            &dbus_secret,
+            true,
+            None,
+        )
+        .await
+        .expect("Writing to default alias should succeed after migration");
+
+    // Only one collection should hold the "Login" label (no "Login2").
+    let collections = setup.server.collections.lock().await;
+    let mut login_count = 0;
+    for collection in collections.values() {
+        if collection.label().await.starts_with("Login") {
+            login_count += 1;
+        }
+    }
+    assert_eq!(login_count, 1, "Should have exactly one Login collection");
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
