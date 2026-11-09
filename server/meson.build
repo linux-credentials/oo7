@@ -34,10 +34,15 @@ if systemduserunitdir == ''
   endif
 endif
 
+cap_ipc_lock = get_option('cap_ipc_lock')
+
 libexecdir_conf = configuration_data()
 libexecdir_conf.set('binary', meson.project_name())
 libexecdir_conf.set('libexecdir', prefix / libexecdir)
 libexecdir_conf.set('dbus_known_name', dbus_known_name)
+libexecdir_conf.set('no_new_privileges', cap_ipc_lock ? 'false' : 'true')
+libexecdir_conf.set('private_users', cap_ipc_lock ? 'no' : 'yes')
+libexecdir_conf.set('memory_deny_write_execute', cap_ipc_lock ? 'false' : 'true')
 
 summary({
   'prefix': prefix,

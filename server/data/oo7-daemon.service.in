@@ -12,11 +12,11 @@ TimeoutStopSec=30s
 ImportCredential=oo7.keyring-encryption-password
 
 # Prevent privilege escalation (blocks suid, new caps, etc.)
-NoNewPrivileges=true
+NoNewPrivileges=@no_new_privileges@
 
 # Clear supplementary groups
 SupplementaryGroups=
-PrivateUsers=yes
+PrivateUsers=@private_users@
 
 # Restrict filesystem access
 ProtectSystem=full
@@ -29,7 +29,7 @@ PrivateNetwork=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
-MemoryDenyWriteExecute=yes
+MemoryDenyWriteExecute=@memory_deny_write_execute@
 ProtectClock=yes
 
 [Install]

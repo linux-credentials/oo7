@@ -14,6 +14,12 @@ option('systemduserunitdir',
   description: 'Directory for systemd user service files'
 )
 
+option('cap_ipc_lock',
+  type: 'boolean',
+  value: false,
+  description: 'Allow CAP_IPC_LOCK from file capabilities by relaxing NoNewPrivileges, PrivateUsers and MemoryDenyWriteExecute in the systemd unit'
+)
+
 option (
   'profile',
   type: 'combo',
