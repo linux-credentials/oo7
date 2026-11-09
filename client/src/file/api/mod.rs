@@ -161,28 +161,37 @@ impl Keyring {
             .as_secs();
         self.usage_count += 1;
 
-        let blob = self.as_bytes()?;
+        let result = async {
+            let blob = self.as_bytes()?;
 
-        tmpfile.write_all(&blob).await?;
-        tmpfile.sync_all().await?;
+            tmpfile.write_all(&blob).await?;
+            tmpfile.sync_all().await?;
 
-        let target_file = fs::File::open(path.as_ref()).await;
+            let target_file = fs::File::open(path.as_ref()).await;
 
-        let target_mtime = match target_file {
-            Err(err) if err.kind() == io::ErrorKind::NotFound => None,
-            Err(err) => return Err(err.into()),
-            Ok(file) => file.metadata().await?.modified().ok(),
-        };
+            let target_mtime = match target_file {
+                Err(err) if err.kind() == io::ErrorKind::NotFound => None,
+                Err(err) => return Err(err.into()),
+                Ok(file) => file.metadata().await?.modified().ok(),
+            };
 
-        if mtime != target_mtime {
-            return Err(Error::TargetFileChanged(
-                path.as_ref().display().to_string(),
-            ));
+            if mtime != target_mtime {
+                return Err(Error::TargetFileChanged(
+                    path.as_ref().display().to_string(),
+                ));
+            }
+
+            fs::rename(&tmp_path, path.as_ref()).await?;
+
+            Ok(())
+        }
+        .await;
+
+        if result.is_err() {
+            let _ = fs::remove_file(&tmp_path).await;
         }
 
-        fs::rename(tmp_path, path.as_ref()).await?;
-
-        Ok(())
+        result
     }
 
     pub fn search_items(
