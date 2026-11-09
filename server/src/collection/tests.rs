@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU32, Ordering},
+};
 
 use oo7::dbus;
 use tokio_stream::StreamExt;
@@ -804,6 +807,137 @@ async fn locked_collection_operations() -> Result<(), Box<dyn std::error::Error>
     assert!(
         items.is_empty(),
         "Should be able to read items (empty) from locked collection"
+    );
+
+    Ok(())
+}
+
+// https://github.com/linux-credentials/oo7/issues/652
+#[tokio::test]
+async fn concurrent_replace_and_lookup() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let conn = &setup.client_conn;
+    let default_collection = setup.default_collection().await?;
+    let collection_path = default_collection.inner().path().to_owned();
+
+    // Seed both items.
+    let dbus_secret = setup.create_dbus_secret("initial")?;
+    default_collection
+        .create_item(
+            "race item",
+            &[("test", "oo7-race-repro")],
+            &dbus_secret,
+            false,
+            None,
+        )
+        .await?;
+    let dbus_secret = setup.create_dbus_secret("other-value")?;
+    default_collection
+        .create_item(
+            "other item",
+            &[("test", "oo7-race-other")],
+            &dbus_secret,
+            false,
+            None,
+        )
+        .await?;
+
+    let failures = Arc::new(AtomicU32::new(0));
+    const ROUNDS: u32 = 100;
+
+    for _ in 0..ROUNDS {
+        // Each task gets its own proxy to avoid lifetime issues.
+        let conn_a = conn.clone();
+        let conn_b = conn.clone();
+        let conn_c = conn.clone();
+        let conn_d = conn.clone();
+        let path = collection_path.clone();
+        let session = Arc::clone(&setup.session);
+        let session_b = Arc::clone(&setup.session);
+        let failures_a = Arc::clone(&failures);
+        let failures_b = Arc::clone(&failures);
+
+        // Case A: replace the same item while looking it up.
+        let lookup_a = tokio::spawn({
+            let path = path.clone();
+            async move {
+                let coll = dbus::api::Collection::new(&conn_a, path).await.unwrap();
+                let found = coll
+                    .search_items(&[("test", "oo7-race-repro")])
+                    .await
+                    .unwrap();
+                if found.is_empty() {
+                    failures_a.fetch_add(1, Ordering::Relaxed);
+                    return;
+                }
+                if found[0].secret(&session).await.is_err() {
+                    failures_a.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        });
+
+        let dbus_secret = setup.create_dbus_secret("dummy")?;
+        let store_a = tokio::spawn({
+            let path = path.clone();
+            async move {
+                let coll = dbus::api::Collection::new(&conn_b, path).await.unwrap();
+                let _ = coll
+                    .create_item(
+                        "race item",
+                        &[("test", "oo7-race-repro")],
+                        &dbus_secret,
+                        true,
+                        None,
+                    )
+                    .await;
+            }
+        });
+
+        // Case B: replace an unrelated item while looking up the race item.
+        let lookup_b = tokio::spawn({
+            let path = path.clone();
+            async move {
+                let coll = dbus::api::Collection::new(&conn_c, path).await.unwrap();
+                let found = coll
+                    .search_items(&[("test", "oo7-race-repro")])
+                    .await
+                    .unwrap();
+                if found.is_empty() {
+                    failures_b.fetch_add(1, Ordering::Relaxed);
+                    return;
+                }
+                if found[0].secret(&session_b).await.is_err() {
+                    failures_b.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        });
+
+        let dbus_secret_other = setup.create_dbus_secret("other")?;
+        let store_b = tokio::spawn({
+            let path = path.clone();
+            async move {
+                let coll = dbus::api::Collection::new(&conn_d, path).await.unwrap();
+                let _ = coll
+                    .create_item(
+                        "other item",
+                        &[("test", "oo7-race-other")],
+                        &dbus_secret_other,
+                        true,
+                        None,
+                    )
+                    .await;
+            }
+        });
+
+        let _ = tokio::join!(lookup_a, store_a, lookup_b, store_b);
+    }
+
+    let total_failures = failures.load(Ordering::Relaxed);
+    assert_eq!(
+        total_failures,
+        0,
+        "Concurrent lookups should never miss an item ({total_failures}/{} failed)",
+        ROUNDS * 2
     );
 
     Ok(())
