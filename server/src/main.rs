@@ -141,6 +141,10 @@ async fn read_secret_from_credentials_directory() -> Option<oo7::Secret> {
         Ok(mut cred_file) => {
             let mut contents = Vec::new();
             match tokio::io::AsyncReadExt::read_to_end(&mut cred_file, &mut contents).await {
+                Ok(_) if contents.is_empty() => {
+                    tracing::info!("Empty systemd credential, treating as unencrypted");
+                    None
+                }
                 Ok(_) => {
                     tracing::info!("Unlocking session keyring with systemd credential");
                     Some(oo7::Secret::from(contents))
@@ -175,7 +179,11 @@ async fn inner_main(args: Args) -> Result<(), Error> {
         } else {
             let mut buff = vec![];
             stdin.read_to_end(&mut buff)?;
-            Some(oo7::Secret::from(buff))
+            if buff.is_empty() {
+                None
+            } else {
+                Some(oo7::Secret::from(buff))
+            }
         }
     } else {
         match read_secret_from_login_helper().await {
