@@ -106,6 +106,15 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     drop(pending);
 
     let collections = setup.server.collections.lock().await;
+    let non_session: Vec<_> = collections
+        .values()
+        .filter(|c| c.name() != "session")
+        .collect();
+    assert_eq!(
+        non_session.len(),
+        1,
+        "Should have exactly one non-session collection (placeholder replaced in place, not duplicated)"
+    );
     let mut legacy_collection = None;
     for collection in collections.values() {
         if collection.label().await == "Legacy" {

@@ -1046,7 +1046,7 @@ impl Service {
                     name
                 );
 
-                let locked = LockedKeyring::open(name).await?;
+                let locked = LockedKeyring::open_at(&self.data_dir, name).await?;
                 self.pending_migrations
                     .lock()
                     .await
