@@ -281,58 +281,70 @@ impl Collection {
             );
         }
 
-        let item = keyring
-            .create_item(label, &attributes, secret, replace)
-            .await
-            .map_err(|err| custom_service_error(&format!("Failed to create a new item {err}.")))?;
-
         let key = keyring
             .key()
             .await
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
-        drop(keyring_guard);
 
-        let n_items = *self.item_index.read().await;
-        let item_path = OwnedObjectPath::try_from(format!("{}/{n_items}", self.path)).unwrap();
-
-        let item = item::Item::new(
-            item.into(),
-            self.service.clone(),
-            self.path.clone(),
-            item_path.clone(),
-        );
-        *self.item_index.write().await = n_items + 1;
-
-        let object_server = self.service.object_server();
-        let signal_emitter = self.service.signal_emitter(&self.path)?;
-
-        // Remove any existing items with the same attributes
-        if replace {
-            let existing_items = self
+        // When replacing, find existing items that match so we can update the
+        // first one in place, keeping its D-Bus object path valid for any
+        // concurrent GetSecret callers.
+        let existing_items = if replace {
+            let items = self
                 .search_items_exact_with_key(&attributes, key.as_deref())
                 .await?;
-            if !existing_items.is_empty() {
+            if items.is_empty() { None } else { Some(items) }
+        } else {
+            None
+        };
+
+        let new_file_item = keyring
+            .create_item(label, &attributes, secret, existing_items.is_some())
+            .await
+            .map_err(|err| custom_service_error(&format!("Failed to create a new item {err}.")))?;
+        drop(keyring_guard);
+
+        let signal_emitter = self.service.signal_emitter(&self.path)?;
+        let object_server = self.service.object_server();
+
+        let item_path = if let Some(existing_items) = existing_items {
+            let kept = &existing_items[0];
+            let kept_path: OwnedObjectPath = kept.path().to_owned().into();
+            *kept.inner.lock().await = Some(new_file_item.into());
+
+            // Remove any duplicate matches beyond the first.
+            if existing_items.len() > 1 {
                 let mut items = self.items.lock().await;
-                for existing in &existing_items {
-                    let existing_path = existing.path();
-
-                    items.retain(|i| i.path() != existing_path);
-                    object_server.remove::<item::Item, _>(existing_path).await?;
-                    Self::item_deleted(&signal_emitter, existing_path).await?;
-
-                    tracing::debug!("Replaced item `{}`", existing_path);
+                for dup in &existing_items[1..] {
+                    let dup_path = dup.path();
+                    items.retain(|i| i.path() != dup_path);
+                    object_server.remove::<item::Item, _>(dup_path).await?;
+                    Self::item_deleted(&signal_emitter, dup_path).await?;
                 }
-                drop(items);
             }
-        }
 
-        self.items.lock().await.push(item.clone());
+            Self::item_changed(&signal_emitter, &kept_path).await?;
+            kept_path
+        } else {
+            let n_items = *self.item_index.read().await;
+            let new_path = OwnedObjectPath::try_from(format!("{}/{n_items}", self.path)).unwrap();
 
-        object_server.at(&item_path, item).await?;
+            let item = item::Item::new(
+                new_file_item.into(),
+                self.service.clone(),
+                self.path.clone(),
+                new_path.clone(),
+            );
+            *self.item_index.write().await = n_items + 1;
+
+            self.items.lock().await.push(item.clone());
+            object_server.at(&new_path, item).await?;
+
+            Self::item_created(&signal_emitter, &new_path).await?;
+            new_path
+        };
 
         self.update_modified().await?;
-
-        Self::item_created(&signal_emitter, &item_path).await?;
         self.items_changed(&signal_emitter).await?;
 
         match session.peer_info() {
