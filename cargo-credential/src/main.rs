@@ -3,7 +3,7 @@ use cargo_credential::{Action, CredentialResponse, Error, RegistryInfo, Secret};
 pub struct SecretServiceCredential;
 
 impl SecretServiceCredential {
-    async fn preform_future(
+    async fn perform_future(
         &self,
         registry: &RegistryInfo<'_>,
         action: &Action<'_>,
@@ -90,7 +90,7 @@ impl cargo_credential::Credential for SecretServiceCredential {
         _args: &[&str],
     ) -> Result<CredentialResponse, Error> {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move { self.preform_future(registry, action).await })
+        rt.block_on(async move { self.perform_future(registry, action).await })
     }
 }
 
