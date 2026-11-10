@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicU32, Ordering},
+    atomic::{AtomicBool, AtomicU32, Ordering},
 };
 
 use formatx::formatx;
@@ -149,10 +149,42 @@ pub struct Properties {
 }
 
 impl Properties {
-    fn for_change_password(keyring: &str, window_id: Option<&WindowIdentifierType>) -> Self {
+    fn for_change_password_old(
+        keyring: &str,
+        warning: Option<&str>,
+        window_id: Option<&WindowIdentifierType>,
+    ) -> Self {
         Self {
             title: Some(gettext("Change Keyring Password")),
-            message: Some(formatx!(gettext("Choose a new password for the “{}” keyring"), keyring).expect("Wrong format in translatable string")),
+            message: Some(
+                formatx!(gettext("Enter the old password for the “{}” keyring"), keyring)
+                    .expect("Wrong format in translatable string"),
+            ),
+            description: Some(
+                formatx!(
+                    gettext("An application wants to change the password for the “{}” keyring. Enter the old password for it."),
+                    keyring,
+                )
+                .expect("Wrong format in translatable string"),
+            ),
+            warning: warning.map(ToOwned::to_owned),
+            password_new: None,
+            password_strength: None,
+            choice_label: None,
+            choice_chosen: None,
+            caller_window: window_id.map(ToOwned::to_owned),
+            continue_label: Some(gettext("Continue")),
+            cancel_label: Some(gettext("Cancel")),
+        }
+    }
+
+    fn for_change_password_new(keyring: &str, window_id: Option<&WindowIdentifierType>) -> Self {
+        Self {
+            title: Some(gettext("Change Keyring Password")),
+            message: Some(
+                formatx!(gettext("Choose a new password for the “{}” keyring"), keyring)
+                    .expect("Wrong format in translatable string"),
+            ),
             description: Some(
                 formatx!(
                     gettext("An application wants to change the password for the “{}” keyring. Choose the new password you want to use for it."),
@@ -285,6 +317,7 @@ pub struct GNOMEPrompterCallback {
     prompt_path: OwnedObjectPath,
     path: OwnedObjectPath,
     failed_attempts: Arc<AtomicU32>,
+    change_password_unlocked: Arc<AtomicBool>,
 }
 
 #[zbus::interface(name = "org.gnome.keyring.internal.Prompter.Callback")]
@@ -357,6 +390,7 @@ impl GNOMEPrompterCallback {
             service,
             prompt_path,
             failed_attempts: Arc::new(AtomicU32::new(0)),
+            change_password_unlocked: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -379,10 +413,25 @@ impl GNOMEPrompterCallback {
                 Properties::for_create_collection(label, self.window_id.as_ref()),
                 PromptType::Password,
             ),
-            PromptRole::ChangePassword => (
-                Properties::for_change_password(label, self.window_id.as_ref()),
-                PromptType::Password,
-            ),
+            PromptRole::ChangePassword => {
+                let is_locked = if let Some(collection) = prompt.collection() {
+                    collection.is_locked().await
+                } else {
+                    false
+                };
+                if is_locked {
+                    (
+                        Properties::for_change_password_old(label, None, self.window_id.as_ref()),
+                        PromptType::Password,
+                    )
+                } else {
+                    self.change_password_unlocked.store(true, Ordering::Relaxed);
+                    (
+                        Properties::for_change_password_new(label, self.window_id.as_ref()),
+                        PromptType::Password,
+                    )
+                }
+            }
         };
 
         let prompter = GNOMEPrompterProxy::new(&connection).await?;
@@ -467,10 +516,46 @@ impl GNOMEPrompterCallback {
                 tokio::spawn(async move { prompter.stop_prompting(&path).await });
             }
             PromptRole::ChangePassword => {
-                prompt.on_change_password(secret).await?;
+                if self.change_password_unlocked.load(Ordering::Relaxed) {
+                    prompt.on_change_password(secret).await?;
 
-                let path = self.path.clone();
-                tokio::spawn(async move { prompter.stop_prompting(&path).await });
+                    let path = self.path.clone();
+                    tokio::spawn(async move { prompter.stop_prompting(&path).await });
+                } else {
+                    let collection = prompt
+                        .collection()
+                        .expect("ChangePassword requires a collection");
+                    let properties = match collection.set_locked(false, secret).await {
+                        Ok(()) => {
+                            self.change_password_unlocked.store(true, Ordering::Relaxed);
+                            Properties::for_change_password_new(
+                                prompt.label(),
+                                self.window_id.as_ref(),
+                            )
+                        }
+                        Err(_) => Properties::for_change_password_old(
+                            prompt.label(),
+                            Some(&gettext("The original password was incorrect")),
+                            self.window_id.as_ref(),
+                        ),
+                    };
+                    let server_exchange = self
+                        .exchange
+                        .get()
+                        .expect("Exchange cannot be empty at this stage")
+                        .clone();
+                    let path = self.path.clone();
+                    tokio::spawn(async move {
+                        prompter
+                            .perform_prompt(
+                                &path,
+                                PromptType::Password,
+                                properties,
+                                &server_exchange,
+                            )
+                            .await
+                    });
+                }
             }
         }
         Ok(())

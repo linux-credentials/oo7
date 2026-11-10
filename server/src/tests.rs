@@ -251,6 +251,15 @@ impl TestServiceSetup {
             )
             .await?;
 
+        #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+        server_conn
+            .object_server()
+            .at(
+                oo7::dbus::api::Service::PATH.as_deref().unwrap(),
+                crate::gnome::internal::InternalInterface::new(service.clone()),
+            )
+            .await?;
+
         let discovered = service.discover_keyrings(secret.clone()).await?;
         service
             .initialize(server_conn, discovered, secret.clone(), false)
