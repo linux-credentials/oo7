@@ -156,7 +156,7 @@ impl InternalInterface {
             self.service.clone(),
             PromptRole::ChangePassword,
             label,
-            None,
+            Some(collection_obj.clone()),
         )
         .await;
         let prompt_path: OwnedObjectPath = prompt.path().to_owned().into();
@@ -448,6 +448,200 @@ mod tests {
         assert!(
             !default_collection.is_locked().await?,
             "Collection should be unlocked with new password"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_change_with_prompt_locked_collection() -> Result<(), Box<dyn std::error::Error>> {
+        let setup = TestServiceSetup::plain_session(true).await?;
+        setup.set_password_accept(true).await;
+
+        let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
+            .build()
+            .await?;
+
+        let default_collection = setup.default_collection().await?;
+        let collection_path: zbus::wire::OwnedObjectPath =
+            default_collection.inner().path().to_owned().into();
+
+        // Create an item so that unlock validation has something to check
+        let dbus_secret = setup.create_dbus_secret("item-secret")?;
+        default_collection
+            .create_item(
+                "Test Item",
+                &[("test-change", "locked")],
+                &dbus_secret,
+                false,
+                None,
+            )
+            .await?;
+
+        // Lock the collection
+        setup
+            .service_api
+            .lock(std::slice::from_ref(&collection_path), None)
+            .await?;
+        assert!(
+            default_collection.is_locked().await?,
+            "Collection should be locked"
+        );
+
+        // Queue: old password first (to unlock), then new password (to change
+        // to)
+        let old_password = setup.keyring_secret.clone().unwrap();
+        let new_password = Secret::text("changed-via-locked-prompt");
+        setup
+            .set_password_queue(vec![old_password, new_password.clone()])
+            .await;
+
+        // Call ChangeWithPrompt on the locked collection
+        let prompt_path = internal_proxy
+            .change_with_prompt(&collection_path.as_ref())
+            .await?;
+
+        let prompt_proxy = dbus::api::Prompt::new(&setup.client_conn, prompt_path)
+            .await?
+            .unwrap();
+
+        // Wait for the multi-step prompt to complete via the Completed signal
+        prompt_proxy.receive_completed(None).await?;
+
+        // Collection should now be unlocked (old password step unlocked it)
+        assert!(
+            !default_collection.is_locked().await?,
+            "Collection should be unlocked after prompt"
+        );
+
+        // Verify the password was changed: lock, then unlock with new password
+        setup
+            .service_api
+            .lock(std::slice::from_ref(&collection_path), None)
+            .await?;
+        assert!(
+            default_collection.is_locked().await?,
+            "Collection should be locked"
+        );
+
+        let unlock_dbus = setup.create_dbus_secret(new_password)?;
+        internal_proxy
+            .unlock_with_master_password(&collection_path.as_ref(), unlock_dbus.into())
+            .await?;
+
+        assert!(
+            !default_collection.is_locked().await?,
+            "Collection should be unlocked with new password"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_change_with_prompt_wrong_old_password() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let old_password = Secret::text("test-password-long-enough");
+        let setup = TestServiceSetup::with_login_keyring(old_password.clone()).await?;
+        setup.set_password_accept(true).await;
+
+        let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
+            .build()
+            .await?;
+
+        let default_collection = setup.default_collection().await?;
+        let collection_path: zbus::wire::OwnedObjectPath =
+            default_collection.inner().path().to_owned().into();
+
+        // Create an item so that unlock validation has something to check
+        let dbus_secret = setup.create_dbus_secret("item-secret")?;
+        default_collection
+            .create_item(
+                "Test Item",
+                &[("test-change", "retry")],
+                &dbus_secret,
+                false,
+                None,
+            )
+            .await?;
+
+        // Lock the collection (disk-backed so wrong password retries work)
+        setup
+            .service_api
+            .lock(std::slice::from_ref(&collection_path), None)
+            .await?;
+
+        // Queue: wrong password first, then correct old password, then new
+        // password
+        let new_password = Secret::text("changed-after-retry");
+        setup
+            .set_password_queue(vec![
+                Secret::text("wrong-password"),
+                old_password,
+                new_password.clone(),
+            ])
+            .await;
+
+        let prompt_path = internal_proxy
+            .change_with_prompt(&collection_path.as_ref())
+            .await?;
+
+        let prompt_proxy = dbus::api::Prompt::new(&setup.client_conn, prompt_path)
+            .await?
+            .unwrap();
+
+        // Wait for multi-step prompt with retry to complete
+        prompt_proxy.receive_completed(None).await?;
+
+        // Verify the password was changed
+        setup
+            .service_api
+            .lock(std::slice::from_ref(&collection_path), None)
+            .await?;
+
+        let unlock_dbus = setup.create_dbus_secret(new_password)?;
+        internal_proxy
+            .unlock_with_master_password(&collection_path.as_ref(), unlock_dbus.into())
+            .await?;
+
+        assert!(
+            !default_collection.is_locked().await?,
+            "Collection should be unlocked with new password after retry"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_change_with_prompt_error_emits_dismissed()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let setup = TestServiceSetup::encrypted_session(true).await?;
+        setup.set_password_accept(true).await;
+
+        let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
+            .build()
+            .await?;
+
+        let default_collection = setup.default_collection().await?;
+        let collection_path: zbus::wire::OwnedObjectPath =
+            default_collection.inner().path().to_owned().into();
+
+        // Queue an empty password — the action rejects empty passwords
+        setup.set_password_queue(vec![Secret::from("")]).await;
+
+        let prompt_path = internal_proxy
+            .change_with_prompt(&collection_path.as_ref())
+            .await?;
+
+        let prompt_proxy = dbus::api::Prompt::new(&setup.client_conn, prompt_path)
+            .await?
+            .unwrap();
+
+        // The action will fail, which should emit Completed(dismissed=true).
+        let result = prompt_proxy.receive_completed(None).await;
+
+        assert!(
+            matches!(result, Err(dbus::Error::Dismissed)),
+            "Failed prompt action should emit Completed(dismissed=true), got: {result:?}"
         );
 
         Ok(())

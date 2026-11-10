@@ -207,7 +207,7 @@ impl Prompt {
         &self.label
     }
 
-    fn collection(&self) -> Option<&crate::collection::Collection> {
+    pub(crate) fn collection(&self) -> Option<&crate::collection::Collection> {
         self.collection.as_ref()
     }
 
