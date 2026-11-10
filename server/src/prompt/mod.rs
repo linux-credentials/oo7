@@ -308,9 +308,7 @@ impl Prompt {
                 });
                 Ok(())
             }
-            Err(err) => Err(custom_service_error(&format!(
-                "Failed to create collection: {err}."
-            ))),
+            Err(err) => Err(err),
         }
     }
 
@@ -336,9 +334,7 @@ impl Prompt {
                 });
                 Ok(())
             }
-            Err(err) => Err(custom_service_error(&format!(
-                "Failed to change password: {err}."
-            ))),
+            Err(err) => Err(err),
         }
     }
 
