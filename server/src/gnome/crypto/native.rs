@@ -27,9 +27,8 @@ pub fn generate_aes_key_for_secret_exchange(
     let private_key_uint = BigUint::from_bytes_be(private_key.as_ref());
     let common_secret = powm_for_secret_exchange(&server_public_key_uint, private_key_uint);
 
-    let mut common_secret_bytes = common_secret.to_bytes_be();
-    let mut common_secret_padded = vec![0; 192 - common_secret_bytes.len()];
-    // inefficient, but ok for now
+    let mut common_secret_bytes = Zeroizing::new(common_secret.to_bytes_be());
+    let mut common_secret_padded = Zeroizing::new(vec![0; 192 - common_secret_bytes.len()]);
     common_secret_padded.append(&mut common_secret_bytes);
 
     // hkdf
