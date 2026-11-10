@@ -308,7 +308,10 @@ impl Prompt {
                 });
                 Ok(())
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                self.emit_dismissed().await;
+                Err(err)
+            }
         }
     }
 
@@ -334,7 +337,19 @@ impl Prompt {
                 });
                 Ok(())
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                self.emit_dismissed().await;
+                Err(err)
+            }
+        }
+    }
+
+    async fn emit_dismissed(&self) {
+        if let Ok(signal_emitter) = self.service.signal_emitter(self.path().to_owned()) {
+            let result = zbus::wire::Variant::new::<Vec<OwnedObjectPath>>(vec![])
+                .try_into_owned()
+                .unwrap();
+            let _ = Prompt::completed(&signal_emitter, true, result).await;
         }
     }
 
