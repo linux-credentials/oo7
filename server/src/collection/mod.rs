@@ -291,7 +291,7 @@ impl Collection {
         // concurrent GetSecret callers.
         let existing_items = if replace {
             let items = self
-                .search_items_exact_with_key(&attributes, key.as_deref())
+                .search_items_with_key(&attributes, key.as_deref(), true)
                 .await?;
             if items.is_empty() { None } else { Some(items) }
         } else {
@@ -374,16 +374,20 @@ impl Collection {
     }
 
     #[zbus(property, name = "Label")]
-    pub async fn set_label(&self, label: &str) -> Result<(), zbus::Error> {
+    pub async fn set_label(&self, label: &str) -> Result<(), ServiceError> {
         if self.is_locked().await {
-            tracing::error!("Cannot set label of a locked collection `{}`", self.path);
-            return Err(zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(
-                format!("Cannot set label of a locked collection `{}`.", self.path),
-            ))));
+            return Err(ServiceError::IsLocked(format!(
+                "Collection `{}` is locked.",
+                self.path
+            )));
         }
 
-        let old_label = self.label.lock().await.clone();
-        *self.label.lock().await = label.to_owned();
+        let old_label = {
+            let mut guard = self.label.lock().await;
+            let old = guard.clone();
+            *guard = label.to_owned();
+            old
+        };
         tracing::info!(
             "Collection `{}` label changed from \"{}\" to \"{}\".",
             self.path,
@@ -391,21 +395,13 @@ impl Collection {
             label
         );
 
-        self.update_modified()
-            .await
-            .map_err(|err| zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(err.to_string()))))?;
+        self.update_modified().await?;
 
         let service_path = oo7::dbus::api::Service::PATH.as_ref().unwrap();
-        let signal_emitter = self
-            .service
-            .signal_emitter(service_path)
-            .map_err(|err| zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(err.to_string()))))?;
+        let signal_emitter = self.service.signal_emitter(service_path)?;
         Service::collection_changed(&signal_emitter, &self.path).await?;
 
-        let signal_emitter = self
-            .service
-            .signal_emitter(&self.path)
-            .map_err(|err| zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(err.to_string()))))?;
+        let signal_emitter = self.service.signal_emitter(&self.path)?;
         self.label_changed(&signal_emitter).await?;
 
         Ok(())
@@ -557,34 +553,15 @@ impl Collection {
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
         drop(keyring_guard);
 
-        self.search_items_with_key(attributes, key.as_deref()).await
+        self.search_items_with_key(attributes, key.as_deref(), false)
+            .await
     }
 
     async fn search_items_with_key(
         &self,
         attributes: &HashMap<String, String>,
         key: Option<&oo7::Key>,
-    ) -> Result<Vec<item::Item>, ServiceError> {
-        let mut matching_items = Vec::new();
-        let items = self.items.lock().await;
-
-        for item_wrapper in items.iter() {
-            let inner = item_wrapper.inner.lock().await;
-            let file_item = inner.as_ref().unwrap();
-
-            // Use the oo7::file::Item's matches_attributes method
-            if file_item.matches_attributes(attributes, key) {
-                matching_items.push(item_wrapper.clone());
-            }
-        }
-
-        Ok(matching_items)
-    }
-
-    async fn search_items_exact_with_key(
-        &self,
-        attributes: &HashMap<String, String>,
-        key: Option<&oo7::Key>,
+        exact: bool,
     ) -> Result<Vec<item::Item>, ServiceError> {
         let mut matching_items = Vec::new();
         let items = self.items.lock().await;
@@ -595,7 +572,12 @@ impl Collection {
                 continue;
             };
 
-            if file_item.matches_attributes_exact(attributes, key) {
+            let matches = if exact {
+                file_item.matches_attributes_exact(attributes, key)
+            } else {
+                file_item.matches_attributes(attributes, key)
+            };
+            if matches {
                 matching_items.push(item_wrapper.clone());
             }
         }
