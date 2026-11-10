@@ -489,7 +489,8 @@ async fn locked_item_operations() -> Result<(), Box<dyn std::error::Error>> {
         result
     );
 
-    // Test 3: set_attributes should fail with IsLocked
+    // Property setters go through org.freedesktop.DBus.Properties.Set,
+    // so the error is wrapped in FDO rather than deserialized as ServiceError.
     let result = item.set_attributes(&[("app", "new-app")]).await;
     assert!(
         matches!(result, Err(oo7::dbus::Error::ZBus(zbus::Error::FDO(_)))),
@@ -497,7 +498,6 @@ async fn locked_item_operations() -> Result<(), Box<dyn std::error::Error>> {
         result
     );
 
-    // Test 4: set_label should fail with IsLocked
     let result = item.set_label("New Label").await;
     assert!(
         matches!(result, Err(oo7::dbus::Error::ZBus(zbus::Error::FDO(_)))),
@@ -505,31 +505,44 @@ async fn locked_item_operations() -> Result<(), Box<dyn std::error::Error>> {
         result
     );
 
-    // Test 5: Reading properties should also fail on locked items
+    // Property getters go through org.freedesktop.DBus.Properties.Get,
+    // arriving as a MethodError with the IsLocked error name.
     let result = item.label().await;
     assert!(
-        matches!(result, Err(oo7::dbus::Error::ZBus(zbus::Error::FDO(_)))),
+        matches!(
+            result,
+            Err(oo7::dbus::Error::ZBus(zbus::Error::MethodError(..)))
+        ),
         "label should fail on locked item, got: {:?}",
         result
     );
 
     let result = item.attributes().await;
     assert!(
-        matches!(result, Err(oo7::dbus::Error::ZBus(zbus::Error::FDO(_)))),
+        matches!(
+            result,
+            Err(oo7::dbus::Error::ZBus(zbus::Error::MethodError(..)))
+        ),
         "attributes should fail on locked item, got: {:?}",
         result
     );
 
     let result = item.created().await;
     assert!(
-        matches!(result, Err(oo7::dbus::Error::ZBus(zbus::Error::FDO(_)))),
+        matches!(
+            result,
+            Err(oo7::dbus::Error::ZBus(zbus::Error::MethodError(..)))
+        ),
         "created should fail on locked item, got: {:?}",
         result
     );
 
     let result = item.modified().await;
     assert!(
-        matches!(result, Err(oo7::dbus::Error::ZBus(zbus::Error::FDO(_)))),
+        matches!(
+            result,
+            Err(oo7::dbus::Error::ZBus(zbus::Error::MethodError(..)))
+        ),
         "modified should fail on locked item, got: {:?}",
         result
     );
