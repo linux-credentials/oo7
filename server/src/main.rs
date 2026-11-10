@@ -27,6 +27,7 @@ use std::{
 use clap::Parser;
 use rustix::net::{RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags};
 use service::Service;
+use zeroize::Zeroizing;
 
 use crate::error::Error;
 
@@ -119,11 +120,11 @@ async fn read_secret_from_login_helper() -> Option<oo7::Secret> {
                 if rustix::fs::seek(&fd, rustix::fs::SeekFrom::Start(0)).is_err() {
                     continue;
                 }
-                let mut secret = Vec::new();
+                let mut secret = Zeroizing::new(Vec::new());
                 let mut file = std::fs::File::from(fd);
                 if file.read_to_end(&mut secret).is_ok() && !secret.is_empty() {
                     tracing::info!("Received login secret from helper");
-                    return Some(oo7::Secret::from(secret));
+                    return Some(oo7::Secret::from(secret.as_slice()));
                 }
             }
         }
@@ -139,7 +140,7 @@ async fn read_secret_from_credentials_directory() -> Option<oo7::Secret> {
 
     match tokio::fs::File::open(&cred_path).await {
         Ok(mut cred_file) => {
-            let mut contents = Vec::new();
+            let mut contents = Zeroizing::new(Vec::new());
             match tokio::io::AsyncReadExt::read_to_end(&mut cred_file, &mut contents).await {
                 Ok(_) if contents.is_empty() => {
                     tracing::info!("Empty systemd credential, treating as unencrypted");
@@ -147,7 +148,7 @@ async fn read_secret_from_credentials_directory() -> Option<oo7::Secret> {
                 }
                 Ok(_) => {
                     tracing::info!("Unlocking session keyring with systemd credential");
-                    Some(oo7::Secret::from(contents))
+                    Some(oo7::Secret::from(contents.as_slice()))
                 }
                 Err(e) => {
                     tracing::error!("Failed to read credential: {e}");
@@ -177,12 +178,12 @@ async fn inner_main(args: Args) -> Result<(), Error> {
             }
             Some(oo7::Secret::text(password))
         } else {
-            let mut buff = vec![];
+            let mut buff = Zeroizing::new(vec![]);
             stdin.read_to_end(&mut buff)?;
             if buff.is_empty() {
                 None
             } else {
-                Some(oo7::Secret::from(buff))
+                Some(oo7::Secret::from(buff.as_slice()))
             }
         }
     } else {

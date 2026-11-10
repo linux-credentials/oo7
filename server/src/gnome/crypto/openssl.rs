@@ -24,12 +24,12 @@ pub fn generate_aes_key_for_secret_exchange(
         None,
         BigNum::from_u32(2).unwrap(),
     )?;
-    let mut common_secret_bytes = dh
-        .set_private_key(private_key_bn)?
-        .compute_key(&server_public_key_bn)?;
+    let mut common_secret_bytes = Zeroizing::new(
+        dh.set_private_key(private_key_bn)?
+            .compute_key(&server_public_key_bn)?,
+    );
 
-    let mut common_secret_padded = vec![0; 192 - common_secret_bytes.len()];
-    // inefficient, but ok for now
+    let mut common_secret_padded = Zeroizing::new(vec![0; 192 - common_secret_bytes.len()]);
     common_secret_padded.append(&mut common_secret_bytes);
 
     // hkdf
