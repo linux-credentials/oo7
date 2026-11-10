@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-07-15 08:28+0000\n"
-"PO-Revision-Date: 2026-07-15 15:03+0200\n"
+"POT-Creation-Date: 2026-11-10 18:10+0000\n"
+"PO-Revision-Date: 2026-11-10 23:09+0100\n"
 "Last-Translator: Martin Srebotnjak <miles@filmsi.net>\n"
 "Language-Team: Slovenian GNOME Translation Team <gnome-si@googlegroups.com>\n"
 "Language: sl\n"
@@ -20,16 +20,38 @@ msgstr ""
 "X-Generator: Poedit 3.8\n"
 "X-Poedit-SourceCharset: UTF-8\n"
 
-#: ../src/gnome/prompter.rs:151
+#: ../src/gnome/prompter.rs:158 ../src/gnome/prompter.rs:183
 msgid "Change Keyring Password"
 msgstr "Zamenjaj zbirko ključev"
 
-#: ../src/gnome/prompter.rs:152
+#: ../src/gnome/prompter.rs:160
+#, rust-format
+msgid "Enter the old password for the “{}” keyring"
+msgstr "Vnesite staro geslo za zbirko ključev »{}«"
+
+#: ../src/gnome/prompter.rs:165
+#, rust-format
+msgid ""
+"An application wants to change the password for the “{}” keyring. Enter the "
+"old password for it."
+msgstr ""
+"Program želi spremeniti geslo zbirko ključev »{}«. Vnesite staro geslo zanjo."
+
+#: ../src/gnome/prompter.rs:176 ../src/gnome/prompter.rs:201
+msgid "Continue"
+msgstr "Nadaljuj"
+
+#: ../src/gnome/prompter.rs:177 ../src/gnome/prompter.rs:202
+#: ../src/gnome/prompter.rs:228 ../src/gnome/prompter.rs:250
+msgid "Cancel"
+msgstr "Prekliči"
+
+#: ../src/gnome/prompter.rs:185
 #, rust-format
 msgid "Choose a new password for the “{}” keyring"
 msgstr "Izberite novo geslo za zbirko ključev »{}«"
 
-#: ../src/gnome/prompter.rs:155 ../src/prompt/mod.rs:396
+#: ../src/gnome/prompter.rs:190 ../src/prompt/mod.rs:424
 #, rust-format
 msgid ""
 "An application wants to change the password for the “{}” keyring. Choose the "
@@ -38,45 +60,36 @@ msgstr ""
 "Program želi spremeniti geslo zbirko ključev »{}«. Izberite novo geslo, ki "
 "ga želite zanjo uporabljati."
 
-#: ../src/gnome/prompter.rs:160
+#: ../src/gnome/prompter.rs:195
 msgid "This operation cannot be reverted"
 msgstr "Tega dejanja ni možno povrniti"
 
-#: ../src/gnome/prompter.rs:166
-msgid "Continue"
-msgstr "Nadaljuj"
-
-#: ../src/gnome/prompter.rs:167 ../src/gnome/prompter.rs:193
-#: ../src/gnome/prompter.rs:215
-msgid "Cancel"
-msgstr "Prekliči"
-
-#: ../src/gnome/prompter.rs:177
+#: ../src/gnome/prompter.rs:212
 msgid "Unlock Keyring"
 msgstr "Odkleni zbirko ključev"
 
-#: ../src/gnome/prompter.rs:178
+#: ../src/gnome/prompter.rs:213
 msgid "Authentication required"
 msgstr "Zahtevana je overitev"
 
-#: ../src/gnome/prompter.rs:181 ../src/prompt/mod.rs:386
+#: ../src/gnome/prompter.rs:216 ../src/prompt/mod.rs:414
 #, rust-format
 msgid "An application wants access to the keyring “{}”, but it is locked"
 msgstr "Program želi dostopati do zbirke ključev »{}«, vendar je zaklenjena"
 
-#: ../src/gnome/prompter.rs:192
+#: ../src/gnome/prompter.rs:227
 msgid "Unlock"
 msgstr "Odkleni"
 
-#: ../src/gnome/prompter.rs:199
+#: ../src/gnome/prompter.rs:234
 msgid "New Keyring Password"
 msgstr "Geslo za novo zbirko ključev"
 
-#: ../src/gnome/prompter.rs:200
+#: ../src/gnome/prompter.rs:235
 msgid "Choose password for new keyring"
 msgstr "Izberite geslo za novo zbirko ključev"
 
-#: ../src/gnome/prompter.rs:203 ../src/prompt/mod.rs:391
+#: ../src/gnome/prompter.rs:238 ../src/prompt/mod.rs:419
 #, rust-format
 msgid ""
 "An application wants to create a new keyring called “{}”. Choose the "
@@ -85,6 +98,10 @@ msgstr ""
 "Program želi ustvariti novo zbirko ključev z imenom »{}«. Izberite geslo, ki "
 "ga želite zanjo uporabljati."
 
-#: ../src/gnome/prompter.rs:214
+#: ../src/gnome/prompter.rs:249
 msgid "Create"
 msgstr "Ustvari"
+
+#: ../src/gnome/prompter.rs:538
+msgid "The original password was incorrect"
+msgstr "Izvorno geslo ni bilo pravilno"
