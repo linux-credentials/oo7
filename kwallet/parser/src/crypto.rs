@@ -121,15 +121,15 @@ fn hash_block_2000(block: &[u8]) -> [u8; 20] {
 
 /// Legacy key derivation: split password into 16-byte blocks, hash each 2000
 /// times with SHA1
-pub fn derive_key_legacy(password: &[u8]) -> Vec<u8> {
+pub fn derive_key_legacy(password: &[u8]) -> Zeroizing<Vec<u8>> {
     if password.is_empty() {
-        return hash_block_2000(&[]).to_vec();
+        return Zeroizing::new(hash_block_2000(&[]).to_vec());
     }
 
     let blocks: Vec<&[u8]> = password.chunks(16).collect();
     let hashed_blocks: Vec<[u8; 20]> = blocks.iter().map(|b| hash_block_2000(b)).collect();
 
-    match password.len() {
+    Zeroizing::new(match password.len() {
         0..=16 => hashed_blocks[0].to_vec(),
         17..=32 => {
             let mut key = Vec::with_capacity(40);
@@ -151,7 +151,7 @@ pub fn derive_key_legacy(password: &[u8]) -> Vec<u8> {
             }
             key
         }
-    }
+    })
 }
 
 /// Switch endianness (swap every 4 bytes) for legacy Blowfish-ECB

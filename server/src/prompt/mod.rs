@@ -437,14 +437,14 @@ impl Prompt {
                 })?;
                 let mut stream = tokio::net::UnixStream::from_std(std_stream)
                     .expect("Failed to create Tokio UnixStream");
-                let mut buffer = String::new();
-                stream.read_to_string(&mut buffer).await.map_err(|e| {
+                let mut buffer = zeroize::Zeroizing::new(Vec::new());
+                stream.read_to_end(&mut buffer).await.map_err(|e| {
                     custom_service_error(&format!("Failed to read secret from CLI prompter: {e}"))
                 })?;
                 let secret = if buffer.is_empty() {
                     None
                 } else {
-                    Some(Secret::from(buffer))
+                    Some(Secret::from(buffer.as_slice()))
                 };
 
                 match self.role {

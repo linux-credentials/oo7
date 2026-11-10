@@ -108,7 +108,7 @@ impl KWalletFile {
                     return Err(Error::InvalidSalt);
                 }
 
-                crypto::derive_key_pbkdf2_sha512(password, &salt).to_vec()
+                zeroize::Zeroizing::new(crypto::derive_key_pbkdf2_sha512(password, &salt).to_vec())
             }
             HashType::SHA1 => crypto::derive_key_legacy(password),
             HashType::MD5 => return Err(Error::UnsupportedHash(header.hash_type())),

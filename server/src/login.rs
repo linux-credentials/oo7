@@ -39,7 +39,7 @@ fn init_logging() {
 fn main() {
     init_logging();
 
-    let mut secret = vec![];
+    let mut secret = zeroize::Zeroizing::new(vec![]);
     io::stdin()
         .lock()
         .read_to_end(&mut secret)
@@ -139,8 +139,6 @@ fn main() {
         let _ = std::fs::remove_file(socket_path);
         std::process::exit(1);
     });
-
-    zeroize::Zeroize::zeroize(&mut secret);
 
     rustix::fs::fcntl_add_seals(
         &memfd,
