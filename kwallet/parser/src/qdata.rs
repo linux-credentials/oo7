@@ -58,6 +58,12 @@ impl<R: Read> QDataStreamReader<R> {
             return Ok(Vec::new());
         }
 
+        // Reject unreasonably large allocations from malformed files
+        const MAX_BYTE_ARRAY_LEN: usize = 64 * 1024 * 1024; // 64 MiB
+        if byte_length > MAX_BYTE_ARRAY_LEN {
+            return Err(Error::InvalidDataStructure);
+        }
+
         let mut buf = vec![0u8; byte_length];
         self.reader.read_exact(&mut buf)?;
         Ok(buf)
