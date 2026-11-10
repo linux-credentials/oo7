@@ -16,7 +16,7 @@ name = "oo7"
 crate-type = ["cdylib"]
 
 [dependencies]
-oo7_rs = { package = "oo7", path = "../client", version = "0.7.0" }
+oo7_rs = { package = "oo7", path = "../client", version = "0.7.1" }
 pyo3 = { version = "0.30", features = ["extension-module", "abi3-py39"] }
 pyo3-async-runtimes = { version = "0.30", features = ["tokio-runtime"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }

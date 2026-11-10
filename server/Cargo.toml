@@ -30,7 +30,7 @@ clap.workspace = true
 formatx = "0.4"
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 hkdf = { workspace = true, optional = true }
-kwallet-parser = { version = "0.7.0", path = "../kwallet/parser", optional = true }
+kwallet-parser = { version = "0.7.1", path = "../kwallet/parser", optional = true }
 libc.workspace = true
 num.workspace = true
 num-bigint-dig.workspace = true
