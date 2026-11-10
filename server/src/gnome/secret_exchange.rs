@@ -27,15 +27,13 @@ pub fn begin(public_key: &Key) -> String {
 
 // Creates the shared secret: an AES key
 pub fn handshake(private_key: &Key, exchange: &str) -> Result<Key, crypto::Error> {
-    let decoded =
-        decode(exchange).expect("SecretExchange decode error: failed to decode exchange string");
-    let public_key = Key::new(
-        decoded
-            .get(PUBLIC)
-            .expect("SecretExchange decode error: PUBLIC parameter is empty")
-            .to_vec(),
-    );
-    // Above two calls should never fail during SecretExchange
+    let decoded = decode(exchange).ok_or(crypto::Error::Other(
+        "SecretExchange: failed to decode exchange string".into(),
+    ))?;
+    let public_key_bytes = decoded.get(PUBLIC).ok_or(crypto::Error::Other(
+        "SecretExchange: PUBLIC parameter is missing".into(),
+    ))?;
+    let public_key = Key::new(public_key_bytes.to_vec());
     let aes_key = crate::gnome::crypto::generate_aes_key(private_key, &public_key)?;
 
     Ok(aes_key)
