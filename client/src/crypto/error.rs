@@ -9,6 +9,7 @@ pub enum Error {
     #[cfg(feature = "native_crypto")]
     PadError(cipher::inout::PadError),
     Getrandom(getrandom::Error),
+    Other(String),
 }
 
 #[cfg(feature = "openssl_crypto")]
@@ -39,6 +40,7 @@ impl std::error::Error for Error {
             #[cfg(feature = "native_crypto")]
             Self::PadError(_) => None,
             Self::Getrandom(_) => None,
+            Self::Other(_) => None,
         }
     }
 }
@@ -51,6 +53,7 @@ impl std::fmt::Display for Error {
             #[cfg(feature = "native_crypto")]
             Self::PadError(e) => f.write_fmt(format_args!("Wrong padding error: {e}")),
             Self::Getrandom(e) => f.write_fmt(format_args!("Random number generation error: {e}")),
+            Self::Other(e) => f.write_str(e),
         }
     }
 }
