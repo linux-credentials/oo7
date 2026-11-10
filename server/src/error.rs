@@ -55,7 +55,7 @@ impl From<kwallet_parser::Error> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::File(err) => write!(f, "Portal error {err}"),
+            Self::File(err) => write!(f, "File error {err}"),
             Self::Zbus(err) => write!(f, "Zbus error {err}"),
             Self::IO(err) => write!(f, "IO error {err}"),
             Self::EmptyPassword => write!(f, "Login password can't be empty"),
