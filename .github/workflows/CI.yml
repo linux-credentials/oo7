@@ -96,7 +96,9 @@ jobs:
         env:
           OO7_PAM_PRIVILEGED_TESTS: "1"
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -n --preserve-env=OO7_PAM_PRIVILEGED_TESTS
-        run: cargo test --manifest-path ./pam/Cargo.toml -- --ignored
+        run: |
+          sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict 2>&1 || true
+          cargo test --manifest-path ./pam/Cargo.toml -- --ignored
 
   cargo-deny:
       runs-on: ubuntu-latest
