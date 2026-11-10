@@ -1752,6 +1752,55 @@ async fn alias_paths_served_at_startup() -> Result<(), Box<dyn std::error::Error
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 #[tokio::test]
+async fn duplicate_default_alias_resolved() -> Result<(), Box<dyn std::error::Error>> {
+    let secret = Secret::from("test-password-long-enough");
+    let data_dir = tempfile::tempdir()?;
+
+    // Create a "login" keyring
+    let login_kr = UnlockedKeyring::open_at(data_dir.path(), "login", Some(secret.clone())).await?;
+    login_kr
+        .create_item("Login Item", &[("src", "login")], Secret::text("s"), false)
+        .await?;
+    login_kr.write().await?;
+
+    // Create a "default" keyring
+    let default_kr =
+        UnlockedKeyring::open_at(data_dir.path(), "default", Some(secret.clone())).await?;
+    default_kr
+        .create_item(
+            "Default Item",
+            &[("src", "default")],
+            Secret::text("s"),
+            false,
+        )
+        .await?;
+    default_kr.write().await?;
+
+    let setup =
+        TestServiceSetup::with_disk_keyrings(data_dir.path().to_path_buf(), None, Some(secret))
+            .await?;
+
+    // ReadAlias("default") must return the login collection
+    let default_collection = setup.service_api.read_alias("default").await?.unwrap();
+    assert_eq!(
+        default_collection.label().await?,
+        "Login",
+        "ReadAlias(\"default\") should return the Login collection, not Default"
+    );
+
+    // Both keyrings plus the session collection should be present
+    let collections = setup.service_api.collections().await?;
+    assert_eq!(
+        collections.len(),
+        3,
+        "Both keyrings + session should be registered"
+    );
+
+    Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
 async fn concurrent_unlock_creates_single_prompt_gnome() -> Result<(), Box<dyn std::error::Error>> {
     concurrent_unlock_creates_single_prompt_impl(PrompterType::GNOME).await
 }
