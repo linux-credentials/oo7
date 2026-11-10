@@ -212,9 +212,9 @@ impl Service {
     ) -> Result<(Vec<OwnedObjectPath>, Vec<OwnedObjectPath>), ServiceError> {
         let mut unlocked = Vec::new();
         let mut locked = Vec::new();
-        let collections = self.collections.lock().await;
+        let snapshot: Vec<Collection> = self.collections.lock().await.values().cloned().collect();
 
-        for collection in collections.values() {
+        for collection in &snapshot {
             let items = collection.search_inner_items(&attributes).await?;
             for item in items {
                 if item.is_locked().await {
@@ -441,17 +441,17 @@ impl Service {
             session
         );
         let mut secrets = HashMap::new();
-        let collections = self.collections.lock().await;
+        let snapshot: Vec<Collection> = self.collections.lock().await.values().cloned().collect();
 
-        'outer: for collection in collections.values() {
+        'outer: for collection in &snapshot {
             for item in &items {
                 if let Some(item) = collection.item_from_path(item).await {
                     match item.get_secret(session.clone()).await {
                         Ok((secret,)) => {
                             secrets.insert(item.path().clone().into(), secret);
                             // To avoid iterating through all the remaining
-                            // collections, if the
-                            // items secrets are already retrieved.
+                            // collections, if the items secrets are already
+                            // retrieved.
                             if secrets.len() == items.len() {
                                 break 'outer;
                             }
@@ -1279,14 +1279,14 @@ impl Service {
     ) -> Result<(Vec<OwnedObjectPath>, Vec<OwnedObjectPath>), ServiceError> {
         let mut without_prompt = Vec::new();
         let mut with_prompt = Vec::new();
-        let collections = self.collections.lock().await;
+        let snapshot: HashMap<OwnedObjectPath, Collection> = self.collections.lock().await.clone();
 
         for object in objects {
-            let resolved = Self::resolve_alias(&collections, object)
+            let resolved = Self::resolve_alias(&snapshot, object)
                 .await
                 .unwrap_or_else(|| object.clone());
             let mut found = false;
-            for (path, collection) in collections.iter() {
+            for (path, collection) in snapshot.iter() {
                 let collection_locked = collection.is_locked().await;
                 if resolved == *path {
                     found = true;
