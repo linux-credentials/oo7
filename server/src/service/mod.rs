@@ -737,7 +737,7 @@ impl Service {
     /// Generate a unique label and alias by checking registered
     /// collections and appending a counter if needed. Returns a tuple of
     /// (label, alias).
-    fn make_unique_label_and_alias(
+    async fn make_unique_label_and_alias(
         collections: &HashMap<OwnedObjectPath, Collection>,
         label: &str,
         alias: &str,
@@ -745,23 +745,35 @@ impl Service {
         // Sanitize the label to create the path (for checking uniqueness)
         let base_path = crate::collection::collection_path(label)
             .expect("Sanitized label should always produce valid object path");
-        if !collections.contains_key(&base_path) {
+        if !collections.contains_key(&base_path) && !Self::has_alias(collections, alias).await {
             return (label.to_owned(), alias.to_owned());
         }
 
         // Append counter until we find a unique one
         let mut counter = 2;
         loop {
-            let path = crate::collection::collection_path(&format!("{label}{counter}"))
+            let new_label = format!("{label}{counter}");
+            let path = crate::collection::collection_path(&new_label)
                 .expect("Sanitized label should always produce valid object path");
-            let new_label = format!("{}{}", label, counter);
-            let new_alias = format!("{}{}", alias, counter);
+            let new_alias = format!("{alias}{counter}");
 
-            if !collections.contains_key(&path) {
+            if !collections.contains_key(&path) && !Self::has_alias(collections, &new_alias).await {
                 return (new_label, new_alias);
             }
             counter += 1;
         }
+    }
+
+    async fn has_alias(collections: &HashMap<OwnedObjectPath, Collection>, alias: &str) -> bool {
+        if alias.is_empty() {
+            return false;
+        }
+        for collection in collections.values() {
+            if collection.alias().await == alias {
+                return true;
+            }
+        }
+        false
     }
 
     /// Discover existing keyrings in the data directory
@@ -1131,6 +1143,13 @@ impl Service {
             tracing::info!("Created default 'Login' collection ({})", is_locked);
         }
 
+        // Sort so the login keyring is processed first
+        discovered_keyrings.sort_by(|(name_a, ..), (name_b, ..)| {
+            let a_is_login = name_a.eq_ignore_ascii_case(Self::LOGIN_ALIAS);
+            let b_is_login = name_b.eq_ignore_ascii_case(Self::LOGIN_ALIAS);
+            b_is_login.cmp(&a_is_login)
+        });
+
         // Build all collections under the lock, then register on D-Bus after
         // releasing it to avoid deadlocks with incoming calls.
         let mut built_collections: Vec<(Collection, String)> = Vec::new();
@@ -1138,7 +1157,7 @@ impl Service {
         for (name, label, alias, keyring) in discovered_keyrings {
             tracing::info!("Setting up collection '{name}' (alias: {alias}).");
             let (unique_label, unique_alias) =
-                Self::make_unique_label_and_alias(&collections, &label, &alias);
+                Self::make_unique_label_and_alias(&collections, &label, &alias).await;
             let collection =
                 Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
             collections.insert(collection.path().to_owned().into(), collection.clone());
@@ -1517,7 +1536,7 @@ impl Service {
     ) -> Result<(OwnedObjectPath, Collection), ServiceError> {
         let (unique_label, unique_alias) = {
             let collections = self.collections.lock().await;
-            Self::make_unique_label_and_alias(&collections, label, alias)
+            Self::make_unique_label_and_alias(&collections, label, alias).await
         };
         let collection =
             Collection::new(name, &unique_label, &unique_alias, self.clone(), keyring).await;
