@@ -1,4 +1,5 @@
 use oo7::dbus;
+use tokio_stream::StreamExt;
 
 use super::*;
 use crate::{prompt::MAX_UNLOCK_ATTEMPTS, tests::TestServiceSetup};
