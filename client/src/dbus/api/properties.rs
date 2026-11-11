@@ -75,19 +75,26 @@ impl<'de> Deserialize<'de> for Properties {
     where
         D: serde::Deserializer<'de>,
     {
+        use serde::de::Error as _;
+
         let map: HashMap<&str, Variant<'_>> = HashMap::deserialize(deserializer)?;
         if map.contains_key(COLLECTION_PROPERTY_LABEL) {
-            let label = wire::Str::try_from(map.get(COLLECTION_PROPERTY_LABEL).unwrap()).unwrap();
+            let variant = map
+                .get(COLLECTION_PROPERTY_LABEL)
+                .ok_or_else(|| D::Error::missing_field(COLLECTION_PROPERTY_LABEL))?;
+            let label = wire::Str::try_from(variant).map_err(D::Error::custom)?;
             Ok(Self::for_collection(&label))
         } else {
-            let label = wire::Str::try_from(map.get(ITEM_PROPERTY_LABEL).unwrap()).unwrap();
-            let attributes = HashMap::<String, String>::try_from(
-                map.get(ITEM_PROPERTY_ATTRIBUTES)
-                    .unwrap()
-                    .try_clone()
-                    .unwrap(),
-            )
-            .unwrap();
+            let label_variant = map
+                .get(ITEM_PROPERTY_LABEL)
+                .ok_or_else(|| D::Error::missing_field(ITEM_PROPERTY_LABEL))?;
+            let label = wire::Str::try_from(label_variant).map_err(D::Error::custom)?;
+            let attrs_variant = map
+                .get(ITEM_PROPERTY_ATTRIBUTES)
+                .ok_or_else(|| D::Error::missing_field(ITEM_PROPERTY_ATTRIBUTES))?;
+            let attrs_owned = attrs_variant.try_clone().map_err(D::Error::custom)?;
+            let attributes =
+                HashMap::<String, String>::try_from(attrs_owned).map_err(D::Error::custom)?;
             Ok(Self::for_item(&label, &attributes))
         }
     }
@@ -185,5 +192,27 @@ mod tests {
         assert_eq!(attributes.get("key1"), Some(&"value1".to_string()));
         assert_eq!(attributes.get("key2"), Some(&"value2".to_string()));
         assert_eq!(attributes.len(), 2);
+    }
+
+    #[test]
+    fn deserialize_malformed_properties_returns_error() {
+        let ctxt = Context::new(Endian::Little, 0);
+
+        let cases: &[HashMap<&str, Variant<'_>>] = &[
+            // Label with wrong type
+            HashMap::from([(COLLECTION_PROPERTY_LABEL, Variant::from(42u32))]),
+            // Item label without attributes
+            HashMap::from([(ITEM_PROPERTY_LABEL, Variant::from("test_item"))]),
+            // Attributes with wrong type
+            HashMap::from([
+                (ITEM_PROPERTY_LABEL, Variant::from("test_item")),
+                (ITEM_PROPERTY_ATTRIBUTES, Variant::from(42u32)),
+            ]),
+        ];
+
+        for case in cases {
+            let encoded = to_bytes(ctxt, case).unwrap();
+            assert!(encoded.deserialize::<Properties>().is_err());
+        }
     }
 }
