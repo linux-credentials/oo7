@@ -3,6 +3,16 @@ use zgvariant::serialized::Context;
 
 use super::*;
 
+async fn spawn_pam_listener(server: &crate::Service) -> std::path::PathBuf {
+    let pam_listener = PamListener::new(server.clone());
+    let socket_path = pam_listener.socket_path.clone();
+    tokio::spawn(async move {
+        let _ = pam_listener.start().await;
+    });
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    socket_path
+}
+
 fn create_pam_message(
     operation: PamOperation,
     username: &str,
@@ -84,13 +94,7 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
         "V0 keyring should be pending migration"
     );
 
-    let pam_listener = PamListener::new(setup.server.clone());
-    let socket_path = pam_listener.socket_path.clone();
-    tokio::spawn(async move {
-        let _ = pam_listener.start().await;
-    });
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    let socket_path = spawn_pam_listener(&setup.server).await;
 
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], v0_secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
@@ -175,13 +179,7 @@ async fn pam_migration_then_write_to_default_alias() -> Result<(), Box<dyn std::
 
     assert_eq!(setup.server.pending_migrations.lock().await.len(), 1);
 
-    let pam_listener = PamListener::new(setup.server.clone());
-    let socket_path = pam_listener.socket_path.clone();
-    tokio::spawn(async move {
-        let _ = pam_listener.start().await;
-    });
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    let socket_path = spawn_pam_listener(&setup.server).await;
 
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], v0_secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
@@ -264,13 +262,7 @@ async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Erro
         "Work collection should be locked"
     );
 
-    let pam_listener = PamListener::new(setup.server.clone());
-    let socket_path = pam_listener.socket_path.clone();
-    tokio::spawn(async move {
-        let _ = pam_listener.start().await;
-    });
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    let socket_path = spawn_pam_listener(&setup.server).await;
 
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
@@ -324,13 +316,7 @@ async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
         "Work collection should be locked"
     );
 
-    let pam_listener = PamListener::new(setup.server.clone());
-    let socket_path = pam_listener.socket_path.clone();
-    tokio::spawn(async move {
-        let _ = pam_listener.start().await;
-    });
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    let socket_path = spawn_pam_listener(&setup.server).await;
 
     let new_secret = Secret::from("new-password");
     let message = create_pam_message(
