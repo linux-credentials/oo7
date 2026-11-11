@@ -937,18 +937,7 @@ async fn create_collection_signal_impl(
         .create_collection("TestKeyring", None, None)
         .await?;
 
-    // Wait for signal with timeout
-    let signal_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(1), signal_stream.next()).await;
-
-    assert!(
-        signal_result.is_ok(),
-        "Should receive CollectionCreated signal"
-    );
-    let signal = signal_result.unwrap();
-    assert!(signal.is_some(), "Signal should not be None");
-
-    let signal_collection = signal.unwrap();
+    let signal_collection = crate::tests::assert_next_signal(&mut signal_stream).await;
     assert_eq!(
         signal_collection.inner().path().as_str(),
         collection.inner().path().as_str(),
