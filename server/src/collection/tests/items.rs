@@ -214,6 +214,63 @@ async fn create_item_with_replace_matches_attributes() -> Result<(), Box<dyn std
 }
 
 #[tokio::test]
+async fn create_item_with_replace_removes_multiple_duplicates()
+-> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let attrs = &[("application", "dup-app"), ("username", "same-user")];
+
+    // Create 3 items with identical attributes (replace=false)
+    let item1 = setup
+        .create_item("Dup 1", attrs, "password-1", false)
+        .await?;
+    let item2 = setup
+        .create_item("Dup 2", attrs, "password-2", false)
+        .await?;
+    let item3 = setup
+        .create_item("Dup 3", attrs, "password-3", false)
+        .await?;
+
+    assert_eq!(setup.collections[0].items().await?.len(), 3);
+
+    let first_path = item1.inner().path().to_owned();
+
+    // Replace with a 4th
+    let replacement = setup
+        .create_item("Replacement", attrs, "password-final", true)
+        .await?;
+
+    let items = setup.collections[0].items().await?;
+    assert_eq!(
+        items.len(),
+        1,
+        "Should have exactly one item after replace dedup"
+    );
+
+    // The kept item should be at the first match's path
+    assert_eq!(
+        replacement.inner().path().as_str(),
+        first_path.as_str(),
+        "Replacement should reuse the first duplicate's D-Bus path"
+    );
+
+    // The removed items' D-Bus objects should be gone
+    assert!(
+        item2.secret(&setup.session).await.is_err(),
+        "Removed dup should not be accessible"
+    );
+    assert!(
+        item3.secret(&setup.session).await.is_err(),
+        "Removed dup should not be accessible"
+    );
+
+    // Verify the secret is correct
+    let secret = replacement.secret(&setup.session).await?;
+    assert_eq!(secret.value(), b"password-final");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn create_item_invalid_session() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
