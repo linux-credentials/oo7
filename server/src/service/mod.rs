@@ -483,25 +483,14 @@ impl Service {
 
     #[zbus(out_args("collection"))]
     pub async fn read_alias(&self, name: &str) -> Result<OwnedObjectPath, ServiceError> {
-        // Map "login" alias to "default" for compatibility with gnome-keyring
-        let alias_to_find = if name == Self::LOGIN_ALIAS {
-            oo7::dbus::Service::DEFAULT_COLLECTION
-        } else {
-            name
-        };
-
         let collections = self.collections.lock().await;
-
-        for (path, collection) in collections.iter() {
-            if collection.alias().await == alias_to_find {
-                tracing::debug!("Collection: {} found for alias: {}.", path, name);
-                return Ok(path.to_owned());
-            }
+        if let Some(path) = Self::find_by_alias(&collections, name).await {
+            tracing::debug!("Collection: {} found for alias: {}.", path, name);
+            Ok(path)
+        } else {
+            tracing::info!("Collection with alias {} does not exist.", name);
+            Ok(OwnedObjectPath::default())
         }
-
-        tracing::info!("Collection with alias {} does not exist.", name);
-
-        Ok(OwnedObjectPath::default())
     }
 
     pub async fn set_alias(
@@ -1097,14 +1086,21 @@ impl Service {
         path: &ObjectPath<'_>,
     ) -> Option<OwnedObjectPath> {
         let alias = path.strip_prefix("/org/freedesktop/secrets/aliases/")?;
+        Self::find_by_alias(collections, alias).await
+    }
+
+    async fn find_by_alias(
+        collections: &HashMap<OwnedObjectPath, Collection>,
+        alias: &str,
+    ) -> Option<OwnedObjectPath> {
         let alias_to_find = if alias == Self::LOGIN_ALIAS {
             oo7::dbus::Service::DEFAULT_COLLECTION
         } else {
             alias
         };
-        for (real_path, collection) in collections.iter() {
+        for (path, collection) in collections.iter() {
             if collection.alias().await == alias_to_find {
-                return Some(real_path.clone());
+                return Some(path.clone());
             }
         }
         None
