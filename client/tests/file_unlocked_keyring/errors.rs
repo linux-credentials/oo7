@@ -72,6 +72,54 @@ async fn delete_broken_items() -> Result<(), Error> {
 }
 
 #[tokio::test]
+async fn create_item_write_failure_leaves_item_in_memory() -> Result<(), Error> {
+    let temp_dir = tempdir()?;
+    let keyring_path = temp_dir.path().join("write_fail.keyring");
+
+    let keyring = UnlockedKeyring::load(&keyring_path, Some(Secret::blob("test"))).await?;
+    keyring
+        .create_item("Initial", &[("app", "test")], "secret", false)
+        .await?;
+    assert_eq!(keyring.n_items().await, 1);
+
+    // Make the parent directory unwritable so the temp-file creation fails
+    let dir = temp_dir.path();
+    let mut perms = std::fs::metadata(dir)?.permissions();
+    perms.set_readonly(true);
+    std::fs::set_permissions(dir, perms)?;
+
+    // create_item should fail on write
+    let result = keyring
+        .create_item("Ghost", &[("app", "ghost")], "ghost-secret", false)
+        .await;
+    assert!(result.is_err(), "create_item should fail when write fails");
+
+    // The failed item must not remain in memory
+    let items = keyring.items().await?;
+    assert_eq!(
+        items.len(),
+        1,
+        "Failed create_item should not leave a ghost item in memory"
+    );
+
+    // Restore permissions for cleanup
+    let mut perms = std::fs::metadata(dir)?.permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    perms.set_readonly(false);
+    std::fs::set_permissions(dir, perms)?;
+
+    // Reload from disk
+    let reloaded = UnlockedKeyring::load(&keyring_path, Some(Secret::blob("test"))).await?;
+    assert_eq!(
+        reloaded.n_items().await,
+        1,
+        "On-disk keyring should only have the initial item"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn partially_corrupted_keyring_error() -> Result<(), Error> {
     let temp_dir = tempdir().unwrap();
     let keyring_path = temp_dir.path().join("partially_corrupted.keyring");
