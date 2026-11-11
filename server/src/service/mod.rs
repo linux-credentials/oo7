@@ -535,6 +535,17 @@ impl Service {
         None
     }
 
+    #[cfg(test)]
+    pub async fn collection_by_label(&self, label: &str) -> Option<Collection> {
+        let collections = self.collections.lock().await;
+        for collection in collections.values() {
+            if collection.label().await == label {
+                return Some(collection.clone());
+            }
+        }
+        None
+    }
+
     pub async fn collection_from_path(&self, path: &ObjectPath<'_>) -> Option<Collection> {
         let collections = self.collections.lock().await;
         if let Some(collection) = collections.get(path).cloned() {

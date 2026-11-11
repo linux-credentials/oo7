@@ -26,20 +26,15 @@ async fn discover_unencrypted_keyrings() -> Result<(), Box<dyn std::error::Error
     let setup =
         TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
 
-    let collections = setup.server.collections.lock().await;
-    let mut nopass_collection = None;
-    for collection in collections.values() {
-        if collection.label().await == "Nopass" {
-            nopass_collection = Some(collection.clone());
-            break;
-        }
-    }
-    let nopass_collection = nopass_collection.expect("nopass collection should be discovered");
+    let nopass_collection = setup
+        .server
+        .collection_by_label("Nopass")
+        .await
+        .expect("nopass collection should be discovered");
     assert!(
         nopass_collection.is_locked().await,
         "Should be locked initially"
     );
-    drop(collections);
 
     // Unlock with None (unencrypted)
     nopass_collection.set_locked(false, None).await?;
