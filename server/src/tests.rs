@@ -13,6 +13,16 @@ use crate::gnome::{
 };
 use crate::service::{PrompterType, Service};
 
+pub(crate) async fn assert_next_signal<T>(
+    stream: &mut (impl tokio_stream::Stream<Item = T> + Unpin),
+) -> T {
+    let result = tokio::time::timeout(tokio::time::Duration::from_secs(1), stream.next()).await;
+    assert!(result.is_ok(), "Signal not received within timeout");
+    let signal = result.unwrap();
+    assert!(signal.is_some(), "Signal stream ended unexpectedly");
+    signal.unwrap()
+}
+
 /// Helper to create a peer-to-peer connection pair using Unix socket
 pub(crate) async fn create_p2p_connection()
 -> Result<(zbus::Connection, zbus::Connection), Box<dyn std::error::Error>> {
