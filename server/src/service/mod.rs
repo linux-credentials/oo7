@@ -288,118 +288,12 @@ impl Service {
             );
             let path = OwnedObjectPath::from(prompt.path().clone());
 
-            // Create the unlock action
             let service = self.clone();
             let not_unlocked_for_action = not_unlocked.clone();
             let action = PromptAction::new(move |secret: Option<Secret>| async move {
-                // The prompter will handle secret validation
-                // Here we just perform the unlock operation
-
-                // First, check for pending migrations (without holding
-                // collections lock)
-                for object in &not_unlocked_for_action {
-                    let collection = {
-                        let collections = service.collections.lock().await;
-                        collections.get(object).cloned()
-                    };
-
-                    if let Some(collection) = collection {
-                        // Check if this collection has a pending migration by
-                        // name
-                        let migration_opt = {
-                            let pending = service.pending_migrations.lock().await;
-                            pending.get(collection.name()).cloned()
-                        };
-
-                        if let Some(migration) = migration_opt {
-                            let migration_name = migration.name();
-                            tracing::debug!(
-                                "Attempting migration for '{}' during unlock",
-                                migration_name
-                            );
-
-                            // Attempt migration with the provided secret (no
-                            // locks held)
-                            match migration.migrate(&service.data_dir, secret.as_ref()).await {
-                                Ok(unlocked_keyring) => {
-                                    tracing::info!(
-                                        "Successfully migrated '{}' during unlock",
-                                        migration_name
-                                    );
-
-                                    // Replace the keyring in the collection
-                                    let mut keyring_guard = collection.keyring.write().await;
-                                    *keyring_guard = Some(Keyring::Unlocked(unlocked_keyring));
-                                    drop(keyring_guard);
-
-                                    // Dispatch items from the migrated keyring
-                                    if let Err(e) = collection.dispatch_items().await {
-                                        tracing::error!(
-                                            "Failed to dispatch items after migration: {}",
-                                            e
-                                        );
-                                    }
-
-                                    // Remove from pending migrations
-                                    service
-                                        .pending_migrations
-                                        .lock()
-                                        .await
-                                        .remove(migration_name);
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to migrate '{}' during unlock: {}",
-                                        migration_name,
-                                        e
-                                    );
-                                    let _ = collection.set_locked(false, secret.clone()).await;
-                                }
-                            }
-                        } else {
-                            // Normal unlock
-                            let _ = collection.set_locked(false, secret.clone()).await;
-                        }
-                    } else {
-                        // Try to find as item within collections
-                        let collections = service.collections.lock().await;
-                        let mut found_collection = None;
-                        for collection in collections.values() {
-                            if let Some(item) = collection.item_from_path(object).await {
-                                found_collection = Some((
-                                    collection.clone(),
-                                    item.clone(),
-                                    collection.is_locked().await,
-                                ));
-                                break;
-                            }
-                        }
-                        drop(collections);
-
-                        if let Some((collection, item, is_locked)) = found_collection {
-                            if is_locked {
-                                let _ = collection.set_locked(false, secret.clone()).await;
-                            } else {
-                                let keyring = collection.keyring.read().await;
-                                match keyring.as_ref() {
-                                    Some(k) if !k.is_locked() => {
-                                        let _ = item.set_locked(false, k.as_unlocked()).await;
-                                    }
-                                    _ => {
-                                        drop(keyring);
-                                        let _ = collection.set_locked(false, secret.clone()).await;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                {
-                    let mut pending = service.pending_unlocks.lock().await;
-                    for obj in &not_unlocked_for_action {
-                        pending.remove(obj);
-                    }
-                }
+                service
+                    .perform_unlock(&not_unlocked_for_action, secret)
+                    .await;
                 Ok(Variant::new(not_unlocked_for_action)
                     .try_into_owned()
                     .unwrap())
@@ -1310,6 +1204,105 @@ impl Service {
         let parent = objects.first()?.as_str().rsplit_once('/')?.0;
         self.collection_from_path(&ObjectPath::try_from(parent).ok()?)
             .await
+    }
+
+    async fn perform_unlock(&self, objects: &[OwnedObjectPath], secret: Option<Secret>) {
+        // First, check for pending migrations (without holding collections
+        // lock)
+        for object in objects {
+            let collection = {
+                let collections = self.collections.lock().await;
+                collections.get(object).cloned()
+            };
+
+            if let Some(collection) = collection {
+                // Check if this collection has a pending migration by name
+                let migration_opt = {
+                    let pending = self.pending_migrations.lock().await;
+                    pending.get(collection.name()).cloned()
+                };
+
+                if let Some(migration) = migration_opt {
+                    let migration_name = migration.name();
+                    tracing::debug!(
+                        "Attempting migration for '{}' during unlock",
+                        migration_name
+                    );
+
+                    // Attempt migration with the provided secret (no locks
+                    // held)
+                    match migration.migrate(&self.data_dir, secret.as_ref()).await {
+                        Ok(unlocked_keyring) => {
+                            tracing::info!(
+                                "Successfully migrated '{}' during unlock",
+                                migration_name
+                            );
+
+                            // Replace the keyring in the collection
+                            let mut keyring_guard = collection.keyring.write().await;
+                            *keyring_guard = Some(Keyring::Unlocked(unlocked_keyring));
+                            drop(keyring_guard);
+
+                            // Dispatch items from the migrated keyring
+                            if let Err(e) = collection.dispatch_items().await {
+                                tracing::error!("Failed to dispatch items after migration: {}", e);
+                            }
+
+                            // Remove from pending migrations
+                            self.pending_migrations.lock().await.remove(migration_name);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to migrate '{}' during unlock: {}",
+                                migration_name,
+                                e
+                            );
+                            let _ = collection.set_locked(false, secret.clone()).await;
+                        }
+                    }
+                } else {
+                    // Normal unlock
+                    let _ = collection.set_locked(false, secret.clone()).await;
+                }
+            } else {
+                // Try to find as item within collections
+                let collections = self.collections.lock().await;
+                let mut found_collection = None;
+                for collection in collections.values() {
+                    if let Some(item) = collection.item_from_path(object).await {
+                        found_collection = Some((
+                            collection.clone(),
+                            item.clone(),
+                            collection.is_locked().await,
+                        ));
+                        break;
+                    }
+                }
+                drop(collections);
+
+                if let Some((collection, item, is_locked)) = found_collection {
+                    if is_locked {
+                        let _ = collection.set_locked(false, secret.clone()).await;
+                    } else {
+                        let keyring = collection.keyring.read().await;
+                        match keyring.as_ref() {
+                            Some(k) if !k.is_locked() => {
+                                let _ = item.set_locked(false, k.as_unlocked()).await;
+                            }
+                            _ => {
+                                drop(keyring);
+                                let _ = collection.set_locked(false, secret.clone()).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut pending = self.pending_unlocks.lock().await;
+        for obj in objects {
+            pending.remove(obj);
+        }
     }
 
     /// Attempt to migrate pending keyrings with the provided secret
