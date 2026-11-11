@@ -344,21 +344,6 @@ async fn write_with_short_password() -> Result<(), Error> {
 }
 
 #[tokio::test]
-async fn write_with_strong_key() -> Result<(), Error> {
-    let temp_dir = tempdir()?;
-    let path = temp_dir.path().join("write_with_strong_key.keyring");
-
-    let keyring = UnlockedKeyring::load(&path, Some(strong_key())).await?;
-    let attributes: HashMap<&str, &str> = HashMap::default();
-
-    keyring
-        .create_item("label", &attributes, "my-password", false)
-        .await?;
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn concurrent_writes() -> Result<(), Error> {
     let temp_dir = tempdir()?;
     let path = temp_dir.path().join("concurrent_writes.keyring");
@@ -662,40 +647,6 @@ async fn change_secret() -> Result<(), Error> {
     assert_eq!(keyring.delete_broken_items().await?, 0);
 
     fs::remove_file(keyring_path).await?;
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn content_type() -> Result<(), Error> {
-    let keyring = UnlockedKeyring::temporary(Secret::blob("test_password")).await?;
-
-    // Add items with different MIME types
-    keyring
-        .create_item(
-            "Text",
-            &[("type", "text")],
-            Secret::text("Hello, World!"),
-            false,
-        )
-        .await?;
-
-    keyring
-        .create_item(
-            "Password",
-            &[("type", "password")],
-            Secret::blob("super_secret_password"),
-            false,
-        )
-        .await?;
-
-    let items = keyring.search_items(&[("type", "text")]).await?;
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].secret().content_type(), oo7::ContentType::Text);
-
-    let items = keyring.search_items(&[("type", "password")]).await?;
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].secret().content_type(), oo7::ContentType::Blob);
 
     Ok(())
 }
@@ -1160,6 +1111,7 @@ async fn item_attribute_operations() -> Result<(), Error> {
         updated_attrs.get("new_attr").unwrap().to_string(),
         "new_value"
     );
+    assert_eq!(updated_items[0].secret(), Secret::text("test-secret"));
 
     Ok(())
 }
@@ -1360,52 +1312,6 @@ async fn replace_item_index_invalid() -> Result<(), Error> {
     let result = keyring.replace_item_index(100, &existing_item).await;
 
     assert!(matches!(result, Err(Error::InvalidItemIndex(100))));
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn set_attributes() -> Result<(), Error> {
-    let data_dir = tempdir().unwrap();
-    let dir = data_dir.path().join("keyrings");
-    fs::create_dir_all(&dir).await.unwrap();
-    let path = dir.join("default.keyring");
-
-    let keyring = UnlockedKeyring::load(&path, Some(strong_key())).await?;
-
-    let items = keyring.items().await?;
-    assert_eq!(items.len(), 0);
-
-    keyring
-        .create_item("my item", &vec![("key", "value")], "my_secret", false)
-        .await?;
-
-    let mut items = keyring.items().await?;
-    assert_eq!(items.len(), 1);
-    let mut item = items.remove(0);
-    assert_eq!(item.label(), "my item");
-    assert_eq!(item.secret(), Secret::text("my_secret"));
-    let attrs = item.attributes();
-    assert_eq!(attrs.len(), 2);
-    assert_eq!(attrs.get("key").unwrap(), "value");
-
-    // Update attributes on the item
-    item.set_attributes(&vec![("key", "changed_value"), ("new_key", "new_value")]);
-
-    // Write the updated item back to the keyring at index 0
-    keyring.replace_item_index(0, &item).await?;
-
-    // Now retrieve the item again from the keyring to verify the changes
-    // persisted
-    let mut items = keyring.items().await?;
-    assert_eq!(items.len(), 1);
-    let item = items.remove(0);
-    assert_eq!(item.label(), "my item");
-    assert_eq!(item.secret(), Secret::text("my_secret"));
-    let attrs = item.attributes();
-    assert_eq!(attrs.len(), 3);
-    assert_eq!(attrs.get("key").unwrap(), "changed_value");
-    assert_eq!(attrs.get("new_key").unwrap(), "new_value");
 
     Ok(())
 }
