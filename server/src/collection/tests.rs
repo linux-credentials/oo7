@@ -20,6 +20,10 @@ async fn create_item_plain() -> Result<(), Box<dyn std::error::Error>> {
     // Wait to ensure timestamp will be different
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
+    // Subscribe to ItemCreated signal before creating
+    let signal_stream = setup.collections[0].receive_item_created().await?;
+    tokio::pin!(signal_stream);
+
     // Create an item
     let item = setup
         .create_item(
@@ -29,6 +33,14 @@ async fn create_item_plain() -> Result<(), Box<dyn std::error::Error>> {
             false,
         )
         .await?;
+
+    // Verify ItemCreated signal was emitted
+    let signal_item = assert_next_signal(&mut signal_stream).await;
+    assert_eq!(
+        signal_item.inner().path().as_str(),
+        item.inner().path().as_str(),
+        "Signal should contain the created item path"
+    );
 
     // Verify item exists in collection
     let items = setup.collections[0].items().await?;
@@ -337,8 +349,20 @@ async fn label_property() -> Result<(), Box<dyn std::error::Error>> {
     // Wait to ensure timestamp will be different
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
+    // Subscribe to CollectionChanged signal before changing label
+    let signal_stream = setup.service_api.receive_collection_changed().await?;
+    tokio::pin!(signal_stream);
+
     // Set new label
     login_collection.set_label("My Custom Collection").await?;
+
+    // Verify CollectionChanged signal was emitted
+    let signal_collection = assert_next_signal(&mut signal_stream).await;
+    assert_eq!(
+        signal_collection.inner().path().as_str(),
+        login_collection.inner().path().as_str(),
+        "Signal should contain the changed collection path"
+    );
 
     // Verify new label
     let label = login_collection.label().await?;
@@ -411,29 +435,6 @@ async fn create_item_invalid_session() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[tokio::test]
-async fn item_created_signal() -> Result<(), Box<dyn std::error::Error>> {
-    let setup = TestServiceSetup::plain_session(true).await?;
-
-    // Subscribe to ItemCreated signal
-    let signal_stream = setup.collections[0].receive_item_created().await?;
-    tokio::pin!(signal_stream);
-
-    // Create an item
-    let item = setup
-        .create_item("Test Item", &[("app", "test")], "test-secret", false)
-        .await?;
-
-    let signal_item = assert_next_signal(&mut signal_stream).await;
-    assert_eq!(
-        signal_item.inner().path().as_str(),
-        item.inner().path().as_str(),
-        "Signal should contain the created item path"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn item_deleted_signal() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
@@ -456,29 +457,6 @@ async fn item_deleted_signal() -> Result<(), Box<dyn std::error::Error>> {
         signal_item.as_str(),
         item_path.as_str(),
         "Signal should contain the deleted item path"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn collection_changed_signal() -> Result<(), Box<dyn std::error::Error>> {
-    let setup = TestServiceSetup::plain_session(true).await?;
-
-    // Subscribe to CollectionChanged signal
-    let signal_stream = setup.service_api.receive_collection_changed().await?;
-    tokio::pin!(signal_stream);
-
-    // Change the collection label
-    setup.collections[0]
-        .set_label("Updated Collection Label")
-        .await?;
-
-    let signal_collection = assert_next_signal(&mut signal_stream).await;
-    assert_eq!(
-        signal_collection.inner().path().as_str(),
-        setup.collections[0].inner().path().as_str(),
-        "Signal should contain the changed collection path"
     );
 
     Ok(())
@@ -508,8 +486,20 @@ async fn delete_collection() -> Result<(), Box<dyn std::error::Error>> {
     let collections_before = setup.service_api.collections().await?;
     let initial_count = collections_before.len();
 
+    // Subscribe to CollectionDeleted signal before deleting
+    let signal_stream = setup.service_api.receive_collection_deleted().await?;
+    tokio::pin!(signal_stream);
+
     // Delete the collection
     setup.collections[0].delete(None).await?;
+
+    // Verify CollectionDeleted signal was emitted
+    let signal_collection = assert_next_signal(&mut signal_stream).await;
+    assert_eq!(
+        signal_collection.as_str(),
+        collection_path.as_str(),
+        "Signal should contain the deleted collection path"
+    );
 
     // Give the system a moment to process the deletion
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -530,29 +520,6 @@ async fn delete_collection() -> Result<(), Box<dyn std::error::Error>> {
     assert!(
         !collection_paths.contains(&collection_path.as_str()),
         "Deleted collection should not be in service collections list"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn collection_deleted_signal() -> Result<(), Box<dyn std::error::Error>> {
-    let setup = TestServiceSetup::plain_session(true).await?;
-
-    // Subscribe to CollectionDeleted signal
-    let signal_stream = setup.service_api.receive_collection_deleted().await?;
-    tokio::pin!(signal_stream);
-
-    let collection_path = setup.collections[0].inner().path().to_owned();
-
-    // Delete the collection
-    setup.collections[0].delete(None).await?;
-
-    let signal_collection = assert_next_signal(&mut signal_stream).await;
-    assert_eq!(
-        signal_collection.as_str(),
-        collection_path.as_str(),
-        "Signal should contain the deleted collection path"
     );
 
     Ok(())
