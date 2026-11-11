@@ -1185,9 +1185,9 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     // Test 2: Discover without any password, all should be locked
     let discovered = service.discover_keyrings(None).await?;
     assert_eq!(discovered.len(), 3, "Should discover 3 keyrings");
-    for (_, _, _, keyring) in &discovered {
+    for dk in &discovered {
         assert!(
-            keyring.is_locked(),
+            dk.keyring.is_locked(),
             "All keyrings should be locked without secret"
         );
     }
@@ -1196,44 +1196,32 @@ async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let discovered = service.discover_keyrings(Some(secret1.clone())).await?;
     assert_eq!(discovered.len(), 3, "Should discover 3 keyrings");
 
-    let work_keyring = discovered
-        .iter()
-        .find(|(_, label, ..)| label == "Work")
-        .unwrap();
+    let work_keyring = discovered.iter().find(|dk| dk.label == "Work").unwrap();
     assert!(
-        !work_keyring.3.is_locked(),
+        !work_keyring.keyring.is_locked(),
         "Work keyring should be unlocked with correct password"
     );
 
-    let personal_keyring = discovered
-        .iter()
-        .find(|(_, label, ..)| label == "Personal")
-        .unwrap();
+    let personal_keyring = discovered.iter().find(|dk| dk.label == "Personal").unwrap();
     assert!(
-        personal_keyring.3.is_locked(),
+        personal_keyring.keyring.is_locked(),
         "Personal keyring should be locked with wrong password"
     );
 
     // Test 4: Verify login keyring gets default alias
-    let login_keyring = discovered
-        .iter()
-        .find(|(_, label, ..)| label == "Login")
-        .unwrap();
+    let login_keyring = discovered.iter().find(|dk| dk.label == "Login").unwrap();
     assert_eq!(
-        login_keyring.2,
+        login_keyring.alias,
         oo7::dbus::Service::DEFAULT_COLLECTION,
         "Login keyring should have default alias"
     );
     assert!(
-        login_keyring.3.is_locked(),
+        login_keyring.keyring.is_locked(),
         "Login keyring should be locked with wrong password"
     );
 
     // Test 5: Verify labels are properly capitalized
-    let labels: Vec<_> = discovered
-        .iter()
-        .map(|(_, label, ..)| label.as_str())
-        .collect();
+    let labels: Vec<_> = discovered.iter().map(|dk| dk.label.as_str()).collect();
     assert!(labels.contains(&"Work"), "Should have Work with capital W");
     assert!(
         labels.contains(&"Personal"),
@@ -1399,8 +1387,11 @@ async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let discovered = service.discover_keyrings(Some(v0_secret.clone())).await?;
     assert_eq!(discovered.len(), 2, "Should discover both keyrings");
 
-    let legacy = discovered.iter().find(|(_, l, ..)| l == "Legacy").unwrap();
-    assert!(!legacy.3.is_locked(), "V0 should be migrated and unlocked");
+    let legacy = discovered.iter().find(|dk| dk.label == "Legacy").unwrap();
+    assert!(
+        !legacy.keyring.is_locked(),
+        "V0 should be migrated and unlocked"
+    );
     assert_eq!(
         service.pending_migrations.lock().await.len(),
         0,
@@ -1456,9 +1447,11 @@ async fn discover_plain_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> 
     let discovered = service.discover_keyrings(None).await?;
     assert_eq!(discovered.len(), 1, "Only the plain keyring is discovered");
 
-    let (_, label, _, keyring) = &discovered[0];
-    assert_eq!(label, "Plain");
-    assert!(!keyring.is_locked(), "Plain keyring should be migrated");
+    assert_eq!(discovered[0].label, "Plain");
+    assert!(
+        !discovered[0].keyring.is_locked(),
+        "Plain keyring should be migrated"
+    );
     assert!(service.pending_migrations.lock().await.is_empty());
     assert!(keyrings_dir.join("v1/plain.keyring").exists());
     assert!(crate::migration::stamp_path(&v0_path).exists());
@@ -1561,14 +1554,14 @@ async fn discover_kwallet_keyrings() -> Result<(), Box<dyn std::error::Error>> {
 
     let kdewallet = discovered
         .iter()
-        .find(|(_, l, ..)| l == "Kdewallet")
+        .find(|dk| dk.label == "Kdewallet")
         .unwrap();
     assert!(
-        !kdewallet.3.is_locked(),
+        !kdewallet.keyring.is_locked(),
         "KWallet should be migrated and unlocked"
     );
     assert_eq!(
-        kdewallet.2, "kdewallet",
+        kdewallet.alias, "kdewallet",
         "kdewallet should have kdewallet alias (not default)"
     );
     assert_eq!(

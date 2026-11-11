@@ -1,5 +1,7 @@
 // org.freedesktop.Secret.Service
 
+mod discovery;
+
 use std::{
     collections::HashMap,
     sync::{
@@ -33,7 +35,7 @@ use crate::plasma::prompter::in_plasma_environment;
 use crate::{
     collection::Collection,
     error::{Error, custom_service_error},
-    migration::{self, PendingMigration},
+    migration::PendingMigration,
     prompt::{Prompt, PromptAction, PromptRole},
     session::{PeerInfo, Session, SessionType},
 };
@@ -718,12 +720,13 @@ impl Service {
             .await?;
 
         let default_keyring = if let Some(secret) = secret.clone() {
-            vec![(
-                "default".to_owned(),
-                "Login".to_owned(),
-                oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
-                Keyring::Unlocked(UnlockedKeyring::temporary(secret).await?),
-            )]
+            vec![discovery::LoadedKeyring {
+                name: "default".to_owned(),
+                label: "Login".to_owned(),
+                alias: oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
+                keyring: Keyring::Unlocked(UnlockedKeyring::temporary(secret).await?),
+                pending_migration: None,
+            }]
         } else {
             vec![]
         };
@@ -776,319 +779,18 @@ impl Service {
         false
     }
 
-    /// Discover existing keyrings in the data directory
-    /// Returns a vector of (name, label, alias, keyring) tuples
     pub(crate) async fn discover_keyrings(
         &self,
         secret: Option<Secret>,
-    ) -> Result<Vec<(String, String, String, Keyring)>, Error> {
-        let mut discovered = Vec::new();
-
-        let keyrings_dir = self.data_dir.join("keyrings");
-
-        // Scan for v1 keyrings first
-        let v1_dir = keyrings_dir.join("v1");
-        if v1_dir.exists() {
-            tracing::debug!("Scanning for v1 keyrings in {}", v1_dir.display());
-            if let Ok(mut entries) = tokio::fs::read_dir(&v1_dir).await {
-                while let Ok(Some(entry)) = entries.next_entry().await {
-                    let path = entry.path();
-
-                    // Skip directories and non-.keyring files
-                    if path.is_dir() || path.extension() != Some(std::ffi::OsStr::new("keyring")) {
-                        continue;
-                    }
-
-                    if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                        tracing::debug!("Found v1 keyring: {name}");
-
-                        // Try to load the keyring
-                        match self.load_keyring(&path, name, secret.as_ref()).await {
-                            Ok((name, label, alias, keyring)) => {
-                                discovered.push((name, label, alias, keyring))
-                            }
-                            Err(e) => tracing::warn!("Failed to load keyring {:?}: {}", path, e),
-                        }
-                    }
-                }
+    ) -> Result<Vec<discovery::LoadedKeyring>, Error> {
+        let mut loaded = discovery::discover_keyrings(&self.data_dir, secret).await?;
+        let mut pending = self.pending_migrations.lock().await;
+        for item in &mut loaded {
+            if let Some(migration) = item.pending_migration.take() {
+                pending.insert(item.name.clone(), migration);
             }
         }
-
-        // Scan for v0 keyrings
-        if keyrings_dir.exists() {
-            tracing::debug!("Scanning for v0 keyrings in {}", keyrings_dir.display());
-            if let Ok(mut entries) = tokio::fs::read_dir(&keyrings_dir).await {
-                while let Ok(Some(entry)) = entries.next_entry().await {
-                    let path = entry.path();
-
-                    // Skip directories and non-.keyring files
-                    if path.is_dir() || path.extension() != Some(std::ffi::OsStr::new("keyring")) {
-                        continue;
-                    }
-
-                    if migration::stamp_path(&path).exists() {
-                        continue;
-                    }
-
-                    if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                        tracing::debug!("Found v0 keyring: {name}");
-
-                        // Try to load the keyring
-                        match self.load_keyring(&path, name, secret.as_ref()).await {
-                            Ok((name, label, alias, keyring)) => {
-                                discovered.push((name, label, alias, keyring))
-                            }
-                            Err(e) => tracing::warn!("Failed to load keyring {:?}: {}", path, e),
-                        }
-                    }
-                }
-            }
-        }
-
-        // Discover KWallet keyrings for migration
-        #[cfg(feature = "kwallet_migration")]
-        self.discover_kwallet_keyrings(&self.data_dir, secret.as_ref(), &mut discovered)
-            .await;
-
-        let pending_count = self.pending_migrations.lock().await.len();
-
-        if discovered.is_empty() && pending_count == 0 {
-            tracing::info!("No keyrings discovered in data directory");
-        } else {
-            tracing::info!(
-                "Discovered {} keyring(s), {pending_count} pending migration(s)",
-                discovered.len(),
-            );
-        }
-
-        Ok(discovered)
-    }
-
-    /// Discover KWallet keyrings for migration
-    #[cfg(feature = "kwallet_migration")]
-    async fn discover_kwallet_keyrings(
-        &self,
-        data_dir: &std::path::Path,
-        secret: Option<&Secret>,
-        discovered: &mut Vec<(String, String, String, Keyring)>,
-    ) {
-        let kwallet_dir = data_dir.join("kwalletd");
-
-        if !kwallet_dir.exists() {
-            tracing::debug!("No kwalletd directory found, skipping KWallet discovery");
-            return;
-        }
-
-        tracing::debug!("Scanning for KWallet files in {}", kwallet_dir.display());
-
-        let Ok(mut entries) = tokio::fs::read_dir(&kwallet_dir).await else {
-            tracing::warn!("Failed to read kwalletd directory");
-            return;
-        };
-
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let path = entry.path();
-
-            // Only process .kwl files
-            if path.extension().is_none_or(|ext| ext != "kwl") {
-                continue;
-            }
-
-            if migration::stamp_path(&path).exists() {
-                continue;
-            }
-
-            let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-
-            tracing::debug!("Found KWallet file: {name}");
-
-            // Use lowercased name as alias
-            let alias = name.to_lowercase();
-
-            let label = {
-                let mut chars = name.chars();
-                match chars.next() {
-                    None => String::new(),
-                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                }
-            };
-
-            let migration = PendingMigration::KWallet {
-                name: name.to_owned(),
-                path: path.clone(),
-                label: label.clone(),
-                alias: alias.clone(),
-            };
-
-            if let Some(secret) = secret {
-                tracing::debug!("Attempting immediate migration of KWallet keyring '{name}'",);
-                match migration.migrate(&self.data_dir, Some(secret)).await {
-                    Ok(unlocked) => {
-                        tracing::info!("Successfully migrated KWallet keyring '{name}' to oo7",);
-                        discovered.push((
-                            name.to_owned(),
-                            label,
-                            alias,
-                            Keyring::Unlocked(unlocked),
-                        ));
-                        continue;
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to migrate KWallet keyring '{name}' at {}: {e}. Creating locked placeholder collection.",
-                            migration.path().display()
-                        );
-                    }
-                }
-            }
-
-            // Migration failed or no secret - create locked placeholder and
-            // register for pending migration
-            tracing::debug!(
-                "Creating locked placeholder for KWallet keyring '{name}', will migrate on unlock",
-            );
-
-            match LockedKeyring::open_at(&self.data_dir, name).await {
-                Ok(locked) => {
-                    tracing::debug!(
-                        "Created locked placeholder for '{name}', adding to pending migrations",
-                    );
-                    discovered.push((
-                        name.to_owned(),
-                        label.clone(),
-                        alias.clone(),
-                        Keyring::Locked(locked),
-                    ));
-                    self.pending_migrations
-                        .lock()
-                        .await
-                        .insert(name.to_owned(), migration);
-                }
-                Err(e) => {
-                    tracing::error!("Failed to create placeholder keyring for '{name}': {e}");
-                }
-            }
-        }
-    }
-
-    /// Load a single keyring from a file path
-    /// Returns (name, label, alias, keyring)
-    async fn load_keyring(
-        &self,
-        path: &std::path::Path,
-        name: &str,
-        secret: Option<&Secret>,
-    ) -> Result<(String, String, String, Keyring), Error> {
-        let alias = if name.eq_ignore_ascii_case(Self::LOGIN_ALIAS) {
-            oo7::dbus::Service::DEFAULT_COLLECTION.to_owned()
-        } else {
-            name.to_owned().to_lowercase()
-        };
-
-        // Use name as label (capitalized for consistency with Login)
-        let label = {
-            let mut chars = name.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            }
-        };
-
-        // Try to load the keyring
-        let keyring = match LockedKeyring::load(path).await {
-            Ok(locked_keyring) => {
-                // Successfully loaded as v1 keyring
-                if let Some(secret) = secret {
-                    match locked_keyring.unlock(secret.clone()).await {
-                        Ok(unlocked) => {
-                            tracing::info!("Unlocked keyring '{}' from {:?}", name, path);
-                            Keyring::Unlocked(unlocked)
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Failed to unlock keyring '{}' with provided secret: {}. Keeping it locked.",
-                                name,
-                                e
-                            );
-                            // Reload as locked since unlock consumed it
-                            Keyring::Locked(LockedKeyring::load(path).await?)
-                        }
-                    }
-                } else {
-                    tracing::debug!("No secret provided, keeping keyring '{}' locked", name);
-                    Keyring::Locked(locked_keyring)
-                }
-            }
-            Err(oo7::file::Error::VersionMismatch(Some(version)))
-                if version.first() == Some(&0) =>
-            // v0 is the legacy version
-            {
-                // This is a v0 keyring that needs migration
-                tracing::info!(
-                    "Found legacy v0 keyring '{name}' at {}, registering for migration",
-                    path.display()
-                );
-
-                let migration = PendingMigration::V0 {
-                    name: name.to_owned(),
-                    path: path.to_path_buf(),
-                    label: label.clone(),
-                    alias: alias.clone(),
-                };
-
-                tracing::debug!("Attempting immediate migration of v0 keyring '{name}'",);
-                match migration.migrate(&self.data_dir, secret).await {
-                    Ok(unlocked) => {
-                        tracing::info!("Successfully migrated v0 keyring '{name}' to v1",);
-                        return Ok((name.to_owned(), label, alias, Keyring::Unlocked(unlocked)));
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to migrate v0 keyring '{name}': {e}. Creating locked placeholder collection.",
-                        );
-                    }
-                }
-
-                // Migration failed - create locked placeholder and register for
-                // pending migration
-                tracing::debug!(
-                    "Creating locked placeholder for v0 keyring '{}', will migrate on unlock",
-                    name
-                );
-
-                let locked = LockedKeyring::open_at(&self.data_dir, name).await?;
-                self.pending_migrations
-                    .lock()
-                    .await
-                    .insert(name.to_owned(), migration);
-
-                Keyring::Locked(locked)
-            }
-            // Plain legacy keyrings, written by gnome-keyring for an empty
-            // password, don't have the binary file header. Their migration
-            // doesn't need a secret, so if it fails this isn't a keyring.
-            Err(oo7::file::Error::FileHeaderMismatch(_)) => {
-                tracing::info!(
-                    "Found legacy plain keyring '{name}' at {}, migrating",
-                    path.display()
-                );
-
-                let migration = PendingMigration::V0 {
-                    name: name.to_owned(),
-                    path: path.to_path_buf(),
-                    label: label.clone(),
-                    alias: alias.clone(),
-                };
-                Keyring::Unlocked(migration.migrate(&self.data_dir, secret).await?)
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-
-        Ok((name.to_owned(), label, alias, keyring))
+        Ok(loaded)
     }
 
     /// Initialize the service with collections and start client disconnect
@@ -1096,8 +798,7 @@ impl Service {
     pub(crate) async fn initialize(
         &self,
         connection: zbus::Connection,
-        mut discovered_keyrings: Vec<(String, String, String, Keyring)>, /* (name, label, alias,
-                                                                          * keyring) */
+        mut discovered_keyrings: Vec<discovery::LoadedKeyring>,
         secret: Option<Secret>,
         auto_create_default: bool,
     ) -> Result<(), Error> {
@@ -1107,8 +808,8 @@ impl Service {
         let mut collections = self.collections.lock().await;
 
         // Check if we have a default collection
-        let has_default = discovered_keyrings.iter().any(|(_, _, alias, _)| {
-            alias == oo7::dbus::Service::DEFAULT_COLLECTION || alias == Self::LOGIN_ALIAS
+        let has_default = discovered_keyrings.iter().any(|dk| {
+            dk.alias == oo7::dbus::Service::DEFAULT_COLLECTION || dk.alias == Self::LOGIN_ALIAS
         });
 
         if !has_default && auto_create_default {
@@ -1133,20 +834,21 @@ impl Service {
             } else {
                 "unlocked"
             };
-            discovered_keyrings.push((
-                Self::LOGIN_ALIAS.to_owned(),
-                "Login".to_owned(),
-                oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
+            discovered_keyrings.push(discovery::LoadedKeyring {
+                name: Self::LOGIN_ALIAS.to_owned(),
+                label: "Login".to_owned(),
+                alias: oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
                 keyring,
-            ));
+                pending_migration: None,
+            });
 
             tracing::info!("Created default 'Login' collection ({})", is_locked);
         }
 
         // Sort so the login keyring is processed first
-        discovered_keyrings.sort_by(|(name_a, ..), (name_b, ..)| {
-            let a_is_login = name_a.eq_ignore_ascii_case(Self::LOGIN_ALIAS);
-            let b_is_login = name_b.eq_ignore_ascii_case(Self::LOGIN_ALIAS);
+        discovered_keyrings.sort_by(|a, b| {
+            let a_is_login = a.name.eq_ignore_ascii_case(Self::LOGIN_ALIAS);
+            let b_is_login = b.name.eq_ignore_ascii_case(Self::LOGIN_ALIAS);
             b_is_login.cmp(&a_is_login)
         });
 
@@ -1154,12 +856,18 @@ impl Service {
         // releasing it to avoid deadlocks with incoming calls.
         let mut built_collections: Vec<(Collection, String)> = Vec::new();
 
-        for (name, label, alias, keyring) in discovered_keyrings {
-            tracing::info!("Setting up collection '{name}' (alias: {alias}).");
+        for dk in discovered_keyrings {
+            tracing::info!("Setting up collection '{}' (alias: {}).", dk.name, dk.alias);
             let (unique_label, unique_alias) =
-                Self::make_unique_label_and_alias(&collections, &label, &alias).await;
-            let collection =
-                Collection::new(&name, &unique_label, &unique_alias, self.clone(), keyring).await;
+                Self::make_unique_label_and_alias(&collections, &dk.label, &dk.alias).await;
+            let collection = Collection::new(
+                &dk.name,
+                &unique_label,
+                &unique_alias,
+                self.clone(),
+                dk.keyring,
+            )
+            .await;
             collections.insert(collection.path().to_owned().into(), collection.clone());
             built_collections.push((collection, unique_alias));
         }
