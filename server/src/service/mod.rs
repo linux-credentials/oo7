@@ -1,6 +1,7 @@
 // org.freedesktop.Secret.Service
 
 mod discovery;
+mod naming;
 
 use std::{
     collections::HashMap,
@@ -623,48 +624,6 @@ impl Service {
         Ok(service)
     }
 
-    /// Generate a unique label and alias by checking registered
-    /// collections and appending a counter if needed. Returns a tuple of
-    /// (label, alias).
-    async fn make_unique_label_and_alias(
-        collections: &HashMap<OwnedObjectPath, Collection>,
-        label: &str,
-        alias: &str,
-    ) -> (String, String) {
-        // Sanitize the label to create the path (for checking uniqueness)
-        let base_path = crate::collection::collection_path(label)
-            .expect("Sanitized label should always produce valid object path");
-        if !collections.contains_key(&base_path) && !Self::has_alias(collections, alias).await {
-            return (label.to_owned(), alias.to_owned());
-        }
-
-        // Append counter until we find a unique one
-        let mut counter = 2;
-        loop {
-            let new_label = format!("{label}{counter}");
-            let path = crate::collection::collection_path(&new_label)
-                .expect("Sanitized label should always produce valid object path");
-            let new_alias = format!("{alias}{counter}");
-
-            if !collections.contains_key(&path) && !Self::has_alias(collections, &new_alias).await {
-                return (new_label, new_alias);
-            }
-            counter += 1;
-        }
-    }
-
-    async fn has_alias(collections: &HashMap<OwnedObjectPath, Collection>, alias: &str) -> bool {
-        if alias.is_empty() {
-            return false;
-        }
-        for collection in collections.values() {
-            if collection.alias().await == alias {
-                return true;
-            }
-        }
-        false
-    }
-
     pub(crate) async fn discover_keyrings(
         &self,
         secret: Option<Secret>,
@@ -745,7 +704,7 @@ impl Service {
         for dk in discovered_keyrings {
             tracing::info!("Setting up collection '{}' (alias: {}).", dk.name, dk.alias);
             let (unique_label, unique_alias) =
-                Self::make_unique_label_and_alias(&collections, &dk.label, &dk.alias).await;
+                naming::make_unique_label_and_alias(&collections, &dk.label, &dk.alias).await;
             let collection = Collection::new(
                 &dk.name,
                 &unique_label,
@@ -1110,7 +1069,7 @@ impl Service {
     ) -> Result<(OwnedObjectPath, Collection), ServiceError> {
         let (unique_label, unique_alias) = {
             let collections = self.collections.lock().await;
-            Self::make_unique_label_and_alias(&collections, label, alias).await
+            naming::make_unique_label_and_alias(&collections, label, alias).await
         };
         let collection =
             Collection::new(name, &unique_label, &unique_alias, self.clone(), keyring).await;
