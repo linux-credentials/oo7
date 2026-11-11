@@ -305,7 +305,7 @@ mod tests {
             .await?;
 
         // Get the default collection
-        let default_collection = setup.default_collection().await?;
+        let default_collection = &setup.collections[0];
         let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
@@ -347,7 +347,7 @@ mod tests {
             .build()
             .await?;
 
-        let default_collection = setup.default_collection().await?;
+        let default_collection = &setup.collections[0];
         let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
@@ -401,7 +401,7 @@ mod tests {
             .build()
             .await?;
 
-        let default_collection = setup.default_collection().await?;
+        let default_collection = &setup.collections[0];
         let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
@@ -462,7 +462,7 @@ mod tests {
             .build()
             .await?;
 
-        let default_collection = setup.default_collection().await?;
+        let default_collection = &setup.collections[0];
         let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
@@ -548,7 +548,7 @@ mod tests {
             .build()
             .await?;
 
-        let default_collection = setup.default_collection().await?;
+        let default_collection = &setup.collections[0];
         let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
@@ -621,7 +621,7 @@ mod tests {
             .build()
             .await?;
 
-        let default_collection = setup.default_collection().await?;
+        let default_collection = &setup.collections[0];
         let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 
@@ -654,7 +654,7 @@ mod tests {
             .build()
             .await?;
 
-        let default_collection = setup.default_collection().await?;
+        let default_collection = &setup.collections[0];
         let collection_path: zbus::wire::OwnedObjectPath =
             default_collection.inner().path().to_owned().into();
 

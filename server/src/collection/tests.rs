@@ -624,7 +624,7 @@ async fn delete_locked_collection_with_prompt_impl(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
     setup.server.set_prompter_type(prompter_type).await;
-    let default_collection = setup.default_collection().await?;
+    let default_collection = &setup.collections[0];
 
     setup.lock_collection(default_collection).await?;
 
@@ -681,7 +681,7 @@ async fn delete_locked_collection_with_prompt_plasma() -> Result<(), Box<dyn std
 async fn unlock_retry_impl(prompter_type: PrompterType) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
     setup.server.set_prompter_type(prompter_type).await;
-    let default_collection = setup.default_collection().await?;
+    let default_collection = &setup.collections[0];
 
     let dbus_secret = setup.create_dbus_secret("test-secret-data")?;
     default_collection
@@ -781,7 +781,7 @@ async fn locked_collection_operations() -> Result<(), Box<dyn std::error::Error>
 async fn concurrent_replace_and_lookup() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
     let conn = &setup.client_conn;
-    let default_collection = setup.default_collection().await?;
+    let default_collection = &setup.collections[0];
     let collection_path = default_collection.inner().path().to_owned();
 
     // Seed both items.
