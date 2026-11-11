@@ -1,12 +1,11 @@
-use oo7::{Key, Secret, file::*};
-use tempfile::tempdir;
+use std::path::PathBuf;
 
 #[cfg(feature = "async-std")]
 use async_std::fs;
+use oo7::{Key, Secret, file::*};
+use tempfile::tempdir;
 #[cfg(feature = "tokio")]
 use tokio::fs;
-
-use std::path::PathBuf;
 
 use super::strong_key;
 
