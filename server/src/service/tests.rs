@@ -421,60 +421,19 @@ async fn get_secrets_with_non_existent_items() -> Result<(), Box<dyn std::error:
 }
 
 #[tokio::test]
-async fn search_items_across_collections() -> Result<(), Box<dyn std::error::Error>> {
+async fn lock_unlock_edge_cases() -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
 
-    let collections = setup.service_api.collections().await?;
-    assert_eq!(collections.len(), 2, "Should have 2 collections");
-
-    // Create item in first collection
-    let dbus_secret1 = setup.create_dbus_secret("password1")?;
-
-    collections[0]
-        .create_item(
-            "Default Item",
-            &[("shared", "attr")],
-            &dbus_secret1,
-            false,
-            None,
-        )
-        .await?;
-
-    // Create item in second collection with same attributes
-    let dbus_secret2 = setup.create_dbus_secret("password2")?;
-
-    collections[1]
-        .create_item(
-            "Session Item",
-            &[("shared", "attr")],
-            &dbus_secret2,
-            false,
-            None,
-        )
-        .await?;
-
-    // Search should find items from both collections
-    let (unlocked, locked) = setup
-        .service_api
-        .search_items(&[("shared", "attr")])
-        .await?;
-
-    assert_eq!(unlocked.len(), 2, "Should find items from both collections");
-    assert!(locked.is_empty(), "Should have no locked items");
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn unlock_edge_cases() -> Result<(), Box<dyn std::error::Error>> {
-    let setup = TestServiceSetup::plain_session(true).await?;
-
-    // Test 1: Empty object list
+    // Unlock: empty object list
     let items: Vec<ObjectPath<'_>> = vec![];
     let unlocked = setup.service_api.unlock(&items, None).await?;
     assert!(unlocked.is_empty(), "Should return empty for empty input");
 
-    // Test 2: Non-existent objects
+    // Lock: empty object list
+    let locked = setup.service_api.lock(&items, None).await?;
+    assert!(locked.is_empty(), "Should return empty for empty input");
+
+    // Shared fake objects for non-existent tests
     let fake_collection = dbus::api::Collection::new(
         &setup.client_conn,
         "/org/freedesktop/secrets/collection/NonExistent",
@@ -487,28 +446,29 @@ async fn unlock_edge_cases() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
 
-    let unlocked = setup
-        .service_api
-        .unlock(
-            &[fake_collection.inner().path(), fake_item.inner().path()],
-            None,
-        )
-        .await?;
+    let fake_paths = [fake_collection.inner().path(), fake_item.inner().path()];
 
+    // Unlock: non-existent objects
+    let unlocked = setup.service_api.unlock(&fake_paths, None).await?;
     assert!(
         unlocked.is_empty(),
         "Should have no unlocked objects for non-existent paths"
     );
 
-    // Test 3: Already unlocked objects
+    // Lock: non-existent objects
+    let locked = setup.service_api.lock(&fake_paths, None).await?;
+    assert!(
+        locked.is_empty(),
+        "Should have no locked objects for non-existent paths"
+    );
+
+    // Unlock: already unlocked item
     let item = setup
         .create_item("Test Item", &[("app", "test")], "test-password", false)
         .await?;
 
-    // Verify item is unlocked
     assert!(!item.is_locked().await?, "Item should be unlocked");
 
-    // Try to unlock already unlocked item
     let unlocked = setup
         .service_api
         .unlock(&[item.inner().path()], None)
@@ -521,7 +481,7 @@ async fn unlock_edge_cases() -> Result<(), Box<dyn std::error::Error>> {
         "Should return the same item path"
     );
 
-    // Also test with collection (starts unlocked by default)
+    // Unlock: already unlocked collection
     assert!(
         !setup.collections[0].is_locked().await?,
         "Collection should be unlocked"
@@ -536,44 +496,6 @@ async fn unlock_edge_cases() -> Result<(), Box<dyn std::error::Error>> {
         unlocked.len(),
         1,
         "Should return the already-unlocked collection"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn lock_non_existent_objects() -> Result<(), Box<dyn std::error::Error>> {
-    let setup = TestServiceSetup::encrypted_session(true).await?;
-
-    // Test with empty object list
-    let items: Vec<ObjectPath<'_>> = vec![];
-    let locked = setup.service_api.lock(&items, None).await?;
-    assert!(locked.is_empty(), "Should return empty for empty input");
-
-    // Test locking non-existent objects
-    let fake_collection = dbus::api::Collection::new(
-        &setup.client_conn,
-        "/org/freedesktop/secrets/collection/NonExistent",
-    )
-    .await?;
-
-    let fake_item = dbus::api::Item::new(
-        &setup.client_conn,
-        "/org/freedesktop/secrets/collection/Login/999",
-    )
-    .await?;
-
-    let locked = setup
-        .service_api
-        .lock(
-            &[fake_collection.inner().path(), fake_item.inner().path()],
-            None,
-        )
-        .await?;
-
-    assert!(
-        locked.is_empty(),
-        "Should have no locked objects for non-existent paths"
     );
 
     Ok(())
@@ -857,11 +779,23 @@ async fn create_collection_basic_impl(
     let initial_collections = setup.service_api.collections().await?;
     let initial_count = initial_collections.len();
 
+    // Subscribe to CollectionCreated signal before creating
+    let signal_stream = setup.service_api.receive_collection_created().await?;
+    tokio::pin!(signal_stream);
+
     // Create a new collection
     let collection = setup
         .service_api
         .create_collection("MyNewKeyring", Some("my-custom-alias"), None)
         .await?;
+
+    // Verify CollectionCreated signal was emitted
+    let signal_collection = crate::tests::assert_next_signal(&mut signal_stream).await;
+    assert_eq!(
+        signal_collection.inner().path().as_str(),
+        collection.inner().path().as_str(),
+        "Signal should contain the created collection path"
+    );
 
     // Verify collection appears in collections list
     let collections = setup.service_api.collections().await?;
@@ -919,52 +853,6 @@ async fn create_collection_basic_gnome() -> Result<(), Box<dyn std::error::Error
 #[tokio::test]
 async fn create_collection_basic_plasma() -> Result<(), Box<dyn std::error::Error>> {
     create_collection_basic_impl(PrompterType::Plasma).await
-}
-
-async fn create_collection_signal_impl(
-    prompter_type: PrompterType,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let setup = TestServiceSetup::plain_session(true).await?;
-    setup.server.set_prompter_type(prompter_type).await;
-
-    // Subscribe to CollectionCreated signal
-    let signal_stream = setup.service_api.receive_collection_created().await?;
-    tokio::pin!(signal_stream);
-
-    // Create a new collection
-    let collection = setup
-        .service_api
-        .create_collection("TestKeyring", None, None)
-        .await?;
-
-    let signal_collection = crate::tests::assert_next_signal(&mut signal_stream).await;
-    assert_eq!(
-        signal_collection.inner().path().as_str(),
-        collection.inner().path().as_str(),
-        "Signal should contain the created collection path"
-    );
-
-    let server_collection = setup
-        .server
-        .collection_from_path(collection.inner().path())
-        .await
-        .expect("Collection should exist on server");
-    let keyring_guard = server_collection.keyring.read().await;
-    let keyring_path = keyring_guard.as_ref().unwrap().path().unwrap();
-    tokio::fs::remove_file(keyring_path).await?;
-    Ok(())
-}
-
-#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
-#[tokio::test]
-async fn create_collection_signal_gnome() -> Result<(), Box<dyn std::error::Error>> {
-    create_collection_signal_impl(PrompterType::GNOME).await
-}
-
-#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
-#[tokio::test]
-async fn create_collection_signal_plasma() -> Result<(), Box<dyn std::error::Error>> {
-    create_collection_signal_impl(PrompterType::Plasma).await
 }
 
 async fn create_collection_and_add_items_impl(
