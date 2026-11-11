@@ -115,18 +115,6 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
         1,
         "Should have exactly one non-session collection (placeholder replaced in place, not duplicated)"
     );
-    let mut legacy_collection = None;
-    for collection in collections.values() {
-        if collection.label().await == "Legacy" {
-            legacy_collection = Some(collection);
-            break;
-        }
-    }
-    assert!(
-        legacy_collection.is_some(),
-        "Migrated Legacy collection should exist"
-    );
-
     // The migrated collection is served at the path of its alias, like the
     // others
     for collection in collections.values() {
@@ -138,6 +126,12 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
         assert_eq!(served.get().await.path(), collection.path());
     }
+    drop(collections);
+
+    assert!(
+        setup.server.collection_by_label("Legacy").await.is_some(),
+        "Migrated Legacy collection should exist"
+    );
 
     let v1_migrated = v1_dir.join("legacy.keyring");
     assert!(v1_migrated.exists(), "V1 file should exist after migration");
@@ -222,7 +216,7 @@ async fn pam_migration_then_write_to_default_alias() -> Result<(), Box<dyn std::
     let collections = setup.server.collections.lock().await;
     let mut login_count = 0;
     for collection in collections.values() {
-        if collection.label().await.starts_with("Login") {
+        if collection.label().await == "Login" {
             login_count += 1;
         }
     }
@@ -260,21 +254,15 @@ async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Erro
     )
     .await?;
 
-    let collections = setup.server.collections.lock().await;
-    let mut work_collection = None;
-    for collection in collections.values() {
-        if collection.label().await == "Work" {
-            work_collection = Some(collection);
-            break;
-        }
-    }
-    assert!(work_collection.is_some(), "Work collection should exist");
-    let work_collection = work_collection.unwrap();
+    let work_collection = setup
+        .server
+        .collection_by_label("Work")
+        .await
+        .expect("Work collection should exist");
     assert!(
         work_collection.is_locked().await,
         "Work collection should be locked"
     );
-    drop(collections);
 
     let pam_listener = PamListener::new(setup.server.clone());
     let socket_path = pam_listener.socket_path.clone();
@@ -288,15 +276,11 @@ async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Erro
     send_pam_message(&socket_path, &message).await?;
 
     // Response received means unlock completed
-    let collections = setup.server.collections.lock().await;
-    let mut work_collection = None;
-    for collection in collections.values() {
-        if collection.label().await == "Work" {
-            work_collection = Some(collection);
-            break;
-        }
-    }
-    let work_collection = work_collection.unwrap();
+    let work_collection = setup
+        .server
+        .collection_by_label("Work")
+        .await
+        .expect("Work collection should exist");
     assert!(
         !work_collection.is_locked().await,
         "Work collection should be unlocked"
@@ -330,20 +314,15 @@ async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
 
-    let collections = setup.server.collections.lock().await;
-    let mut work_collection = None;
-    for collection in collections.values() {
-        if collection.label().await == "Work" {
-            work_collection = Some(collection);
-            break;
-        }
-    }
-    let work_collection = work_collection.unwrap();
+    let work_collection = setup
+        .server
+        .collection_by_label("Work")
+        .await
+        .expect("Work collection should exist");
     assert!(
         work_collection.is_locked().await,
         "Work collection should be locked"
     );
-    drop(collections);
 
     let pam_listener = PamListener::new(setup.server.clone());
     let socket_path = pam_listener.socket_path.clone();
@@ -362,15 +341,11 @@ async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
     );
     send_pam_message(&socket_path, &message).await?;
 
-    let collections = setup.server.collections.lock().await;
-    let mut work_collection = None;
-    for collection in collections.values() {
-        if collection.label().await == "Work" {
-            work_collection = Some(collection);
-            break;
-        }
-    }
-    let work_collection = work_collection.unwrap();
+    let work_collection = setup
+        .server
+        .collection_by_label("Work")
+        .await
+        .expect("Work collection should exist");
     assert!(
         work_collection.is_locked().await,
         "Collection should be locked after password change"
