@@ -383,7 +383,7 @@ async fn delete_locked_item_with_prompt_impl(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let setup = TestServiceSetup::plain_session(true).await?;
     setup.server.set_prompter_type(prompter_type).await;
-    let default_collection = setup.default_collection().await?;
+    let default_collection = &setup.collections[0];
 
     let dbus_secret = setup.create_dbus_secret("test-password")?;
 
@@ -532,7 +532,7 @@ async fn set_label_persists() -> Result<(), Box<dyn std::error::Error>> {
     let setup =
         TestServiceSetup::with_login_keyring(oo7::Secret::from("test-password-long-enough"))
             .await?;
-    let collection = setup.default_collection().await?;
+    let collection = &setup.collections[0];
 
     // Stored first, with a superset of the changed item's attributes
     let other_secret = setup.create_dbus_secret("other-secret")?;
@@ -564,7 +564,7 @@ async fn set_attributes_persists() -> Result<(), Box<dyn std::error::Error>> {
     let setup =
         TestServiceSetup::with_login_keyring(oo7::Secret::from("test-password-long-enough"))
             .await?;
-    let collection = setup.default_collection().await?;
+    let collection = &setup.collections[0];
 
     // Stored first, with a superset of the changed item's attributes
     let other_secret = setup.create_dbus_secret("other-secret")?;
@@ -597,7 +597,7 @@ async fn set_secret_persists() -> Result<(), Box<dyn std::error::Error>> {
     let setup =
         TestServiceSetup::with_login_keyring(oo7::Secret::from("test-password-long-enough"))
             .await?;
-    let collection = setup.default_collection().await?;
+    let collection = &setup.collections[0];
 
     // Stored first, with a superset of the changed item's attributes
     let other_secret = setup.create_dbus_secret("other-secret")?;

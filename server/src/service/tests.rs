@@ -1814,7 +1814,7 @@ async fn concurrent_item_unlock_creates_single_prompt_impl(
     let setup = TestServiceSetup::plain_session(true).await?;
     setup.server.set_prompter_type(prompter_type).await;
 
-    let collection = setup.default_collection().await?;
+    let collection = &setup.collections[0];
     let dbus_secret = setup.create_dbus_secret("item-secret")?;
     let item = collection
         .create_item(
@@ -1871,7 +1871,7 @@ async fn unlock_wrong_password_dismissed_impl(
     let setup = TestServiceSetup::plain_session(true).await?;
     setup.server.set_prompter_type(prompter_type).await;
 
-    let collection = setup.default_collection().await?;
+    let collection = &setup.collections[0];
     let dbus_secret = setup.create_dbus_secret("item-secret")?;
     collection
         .create_item(
@@ -1913,7 +1913,7 @@ async fn concurrent_unlock_creates_single_prompt_impl(
     let setup = TestServiceSetup::plain_session(true).await?;
     setup.server.set_prompter_type(prompter_type).await;
 
-    let collection = setup.default_collection().await?;
+    let collection = &setup.collections[0];
 
     // Lock the collection
     setup.lock_collection(collection).await?;

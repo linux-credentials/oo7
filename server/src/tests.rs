@@ -77,19 +77,6 @@ impl Drop for TestServiceSetup {
 }
 
 impl TestServiceSetup {
-    /// Get the default/Login collection
-    pub async fn default_collection(
-        &self,
-    ) -> Result<&dbus::api::Collection, Box<dyn std::error::Error>> {
-        for collection in &self.collections {
-            let label = collection.label().await?;
-            if label == "Login" {
-                return Ok(collection);
-            }
-        }
-        Err("Default collection not found".into())
-    }
-
     async fn setup_server(
         secret: Option<Secret>,
         encrypted_supported: bool,
@@ -154,7 +141,8 @@ impl TestServiceSetup {
         let s = Self::setup_server(secret.clone(), true).await?;
 
         let (server_public_key, session) = s.service_api.open_session(None).await?;
-        let collections = s.service_api.collections().await?;
+        let mut collections = s.service_api.collections().await?;
+        collections.sort_by(|a, b| a.inner().path().cmp(b.inner().path()));
 
         Ok(TestServiceSetup {
             server: s.server,
@@ -181,7 +169,8 @@ impl TestServiceSetup {
         let s = Self::setup_server(secret.clone(), false).await?;
 
         let (server_public_key, session) = s.service_api.open_session(None).await?;
-        let collections = s.service_api.collections().await?;
+        let mut collections = s.service_api.collections().await?;
+        collections.sort_by(|a, b| a.inner().path().cmp(b.inner().path()));
 
         Ok(TestServiceSetup {
             server: s.server,
@@ -220,7 +209,8 @@ impl TestServiceSetup {
         let aes_key =
             oo7::Key::generate_aes_key(&client_private_key, server_public_key.as_ref().unwrap())?;
 
-        let collections = s.service_api.collections().await?;
+        let mut collections = s.service_api.collections().await?;
+        collections.sort_by(|a, b| a.inner().path().cmp(b.inner().path()));
 
         Ok(Self {
             server: s.server,
@@ -303,7 +293,8 @@ impl TestServiceSetup {
         let (server_public_key, session) = service_api.open_session(None).await?;
         let session = Arc::new(session);
 
-        let collections = service_api.collections().await?;
+        let mut collections = service_api.collections().await?;
+        collections.sort_by(|a, b| a.inner().path().cmp(b.inner().path()));
 
         Ok(TestServiceSetup {
             server: service,
