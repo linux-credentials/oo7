@@ -4,9 +4,11 @@ use std::sync::{
 };
 
 use oo7::dbus;
-use tokio_stream::StreamExt;
 
-use crate::{service::PrompterType, tests::TestServiceSetup};
+use crate::{
+    service::PrompterType,
+    tests::{TestServiceSetup, assert_next_signal},
+};
 
 #[tokio::test]
 async fn create_item_plain() -> Result<(), Box<dyn std::error::Error>> {
@@ -421,15 +423,7 @@ async fn item_created_signal() -> Result<(), Box<dyn std::error::Error>> {
         .create_item("Test Item", &[("app", "test")], "test-secret", false)
         .await?;
 
-    // Wait for signal with timeout
-    let signal_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(1), signal_stream.next()).await;
-
-    assert!(signal_result.is_ok(), "Should receive ItemCreated signal");
-    let signal = signal_result.unwrap();
-    assert!(signal.is_some(), "Signal should not be None");
-
-    let signal_item = signal.unwrap();
+    let signal_item = assert_next_signal(&mut signal_stream).await;
     assert_eq!(
         signal_item.inner().path().as_str(),
         item.inner().path().as_str(),
@@ -457,15 +451,7 @@ async fn item_deleted_signal() -> Result<(), Box<dyn std::error::Error>> {
     // Delete the item
     item.delete(None).await?;
 
-    // Wait for signal with timeout
-    let signal_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(1), signal_stream.next()).await;
-
-    assert!(signal_result.is_ok(), "Should receive ItemDeleted signal");
-    let signal = signal_result.unwrap();
-    assert!(signal.is_some(), "Signal should not be None");
-
-    let signal_item = signal.unwrap();
+    let signal_item = assert_next_signal(&mut signal_stream).await;
     assert_eq!(
         signal_item.as_str(),
         item_path.as_str(),
@@ -488,18 +474,7 @@ async fn collection_changed_signal() -> Result<(), Box<dyn std::error::Error>> {
         .set_label("Updated Collection Label")
         .await?;
 
-    // Wait for signal with timeout
-    let signal_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(1), signal_stream.next()).await;
-
-    assert!(
-        signal_result.is_ok(),
-        "Should receive CollectionChanged signal after label change"
-    );
-    let signal = signal_result.unwrap();
-    assert!(signal.is_some(), "Signal should not be None");
-
-    let signal_collection = signal.unwrap();
+    let signal_collection = assert_next_signal(&mut signal_stream).await;
     assert_eq!(
         signal_collection.inner().path().as_str(),
         setup.collections[0].inner().path().as_str(),
@@ -573,18 +548,7 @@ async fn collection_deleted_signal() -> Result<(), Box<dyn std::error::Error>> {
     // Delete the collection
     setup.collections[0].delete(None).await?;
 
-    // Wait for signal with timeout
-    let signal_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(1), signal_stream.next()).await;
-
-    assert!(
-        signal_result.is_ok(),
-        "Should receive CollectionDeleted signal"
-    );
-    let signal = signal_result.unwrap();
-    assert!(signal.is_some(), "Signal should not be None");
-
-    let signal_collection = signal.unwrap();
+    let signal_collection = assert_next_signal(&mut signal_stream).await;
     assert_eq!(
         signal_collection.as_str(),
         collection_path.as_str(),

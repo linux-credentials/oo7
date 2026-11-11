@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use oo7::dbus;
-use tokio_stream::StreamExt;
 
-use crate::{service::PrompterType, tests::TestServiceSetup};
+use crate::{
+    service::PrompterType,
+    tests::{TestServiceSetup, assert_next_signal},
+};
 
 #[tokio::test]
 async fn label_property() -> Result<(), Box<dyn std::error::Error>> {
@@ -357,18 +359,7 @@ async fn item_changed_signal() -> Result<(), Box<dyn std::error::Error>> {
     // Change the label
     item.set_label("Updated Label").await?;
 
-    // Wait for signal
-    let signal_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(1), signal_stream.next()).await;
-
-    assert!(
-        signal_result.is_ok(),
-        "Should receive ItemChanged signal after label change"
-    );
-    let signal = signal_result.unwrap();
-    assert!(signal.is_some(), "Signal should not be None");
-
-    let signal_item = signal.unwrap();
+    let signal_item = assert_next_signal(&mut signal_stream).await;
     assert_eq!(
         signal_item.inner().path().as_str(),
         item.inner().path().as_str(),
@@ -377,26 +368,12 @@ async fn item_changed_signal() -> Result<(), Box<dyn std::error::Error>> {
 
     // Change attributes and verify signal again
     item.set_attributes(&[("app", "updated-app")]).await?;
-
-    let signal_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(1), signal_stream.next()).await;
-
-    assert!(
-        signal_result.is_ok(),
-        "Should receive ItemChanged signal after attributes change"
-    );
+    assert_next_signal(&mut signal_stream).await;
 
     // Change secret and verify signal again
     let new_dbus_secret = setup.create_dbus_secret("new-secret")?;
     item.set_secret(&new_dbus_secret).await?;
-
-    let signal_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(1), signal_stream.next()).await;
-
-    assert!(
-        signal_result.is_ok(),
-        "Should receive ItemChanged signal after secret change"
-    );
+    assert_next_signal(&mut signal_stream).await;
 
     Ok(())
 }
