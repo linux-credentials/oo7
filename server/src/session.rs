@@ -153,12 +153,42 @@ pub struct PeerInfo {
 }
 
 impl PeerInfo {
-    pub fn new(pid: u32, name: String, session_type: SessionType) -> Self {
+    fn new(pid: u32, name: String, session_type: SessionType) -> Self {
         Self {
             pid,
             name,
             session_type,
         }
+    }
+
+    /// Look up the process behind a sender, and the session it runs in
+    pub async fn lookup(
+        connection: &zbus::Connection,
+        sender: &UniqueName<'_>,
+    ) -> Option<PeerInfo> {
+        // p2p test clients stand for a graphical application
+        #[cfg(any(test, feature = "test-util"))]
+        if sender.as_str() == crate::service::P2P_TEST_SENDER {
+            return Some(PeerInfo::new(
+                std::process::id(),
+                "test".to_owned(),
+                SessionType::Wayland,
+            ));
+        }
+
+        let proxy = zbus::fdo::DBusProxy::new(connection).await.ok()?;
+        let pid = proxy
+            .get_connection_unix_process_id(sender.into())
+            .await
+            .ok()?;
+        let cmdline = tokio::fs::read(format!("/proc/{pid}/cmdline")).await.ok()?;
+        let name = cmdline.split(|&b| b == 0).next()?;
+        let name = std::path::Path::new(std::str::from_utf8(name).ok()?)
+            .file_name()?
+            .to_str()?
+            .to_owned();
+        let session_type = SessionType::detect(pid).await;
+        Some(PeerInfo::new(pid, name, session_type))
     }
 
     pub fn session_type(&self) -> SessionType {
