@@ -272,9 +272,12 @@ impl Service {
             }
             drop(pending);
 
-            // Extract the label and collection before creating the prompt
-            let label = self.extract_label_from_objects(&not_unlocked).await;
-            let collection = self.extract_collection_from_objects(&not_unlocked).await;
+            let collection = self.collection_for_objects(&not_unlocked).await;
+            let label = if let Some(c) = &collection {
+                c.label().await
+            } else {
+                String::default()
+            };
 
             let prompt = Prompt::with_path(
                 self.clone(),
@@ -1300,60 +1303,16 @@ impl Service {
         Ok(signal_emitter)
     }
 
-    /// Extract the collection label from a list of object paths
-    /// The objects can be either collections or items
-    async fn extract_label_from_objects(&self, objects: &[OwnedObjectPath]) -> String {
-        if objects.is_empty() {
-            return String::new();
-        }
-
-        // Check if at least one of the objects is a Collection
-        for object in objects {
-            if let Some(collection) = self.collection_from_path(object).await {
-                return collection.label().await;
-            }
-        }
-
-        // Get the collection path from the first item
-        // assumes all items are from the same collection
-        if let Some(path_str) = objects.first().and_then(|p| p.as_str().rsplit_once('/')) {
-            let collection_path = path_str.0;
-            if let Ok(obj_path) = ObjectPath::try_from(collection_path)
-                && let Some(collection) = self.collection_from_path(&obj_path).await
-            {
-                return collection.label().await;
-            }
-        }
-
-        String::new()
-    }
-
-    /// Extract the collection from a list of object paths
-    /// The objects can be either collections or items
-    async fn extract_collection_from_objects(
-        &self,
-        objects: &[OwnedObjectPath],
-    ) -> Option<Collection> {
-        if objects.is_empty() {
-            return None;
-        }
-
-        // Check if at least one of the objects is a Collection
+    async fn collection_for_objects(&self, objects: &[OwnedObjectPath]) -> Option<Collection> {
         for object in objects {
             if let Some(collection) = self.collection_from_path(object).await {
                 return Some(collection);
             }
         }
 
-        // Get the collection path from the first item
-        // (assumes all items are from the same collection)
-        let path = objects
-            .first()
-            .unwrap()
-            .as_str()
-            .rsplit_once('/')
-            .map(|(parent, _)| parent)?;
-        self.collection_from_path(&ObjectPath::try_from(path).unwrap())
+        // Fall back to the parent path of the first item
+        let parent = objects.first()?.as_str().rsplit_once('/')?.0;
+        self.collection_from_path(&ObjectPath::try_from(parent).ok()?)
             .await
     }
 
