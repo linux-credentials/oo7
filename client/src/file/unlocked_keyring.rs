@@ -509,6 +509,8 @@ impl UnlockedKeyring {
             Err(e) => {
                 #[cfg(feature = "tracing")]
                 tracing::error!("Failed to write keyring after item creation");
+                let mut keyring = self.keyring.write().await;
+                keyring.items.pop();
                 Err(e)
             }
             Ok(_) => {
