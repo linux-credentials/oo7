@@ -37,11 +37,11 @@ use crate::{
     error::{Error, custom_service_error},
     migration::PendingMigration,
     prompt::{Prompt, PromptAction, PromptRole},
-    session::{PeerInfo, Session, SessionType},
+    session::{PeerInfo, Session},
 };
 
 #[cfg(any(test, feature = "test-util"))]
-const P2P_TEST_SENDER: &str = ":p2p.test";
+pub(crate) const P2P_TEST_SENDER: &str = ":p2p.test";
 
 /// Prompter type
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -124,7 +124,7 @@ impl Service {
 
         let sender = Self::sender(&header)
             .ok_or_else(|| custom_service_error("Failed to get sender from header."))?;
-        let peer_info = self.lookup_peer_info(&sender).await;
+        let peer_info = PeerInfo::lookup(&self.connection(), &sender).await;
         let session = Session::new(
             aes_key.map(Arc::new),
             self.clone(),
@@ -1136,35 +1136,8 @@ impl Service {
     pub(crate) async fn peer_info(&self, sender: &UniqueName<'_>) -> Option<PeerInfo> {
         match self.session_from_sender(sender).await {
             Some(session) => session.peer_info().cloned(),
-            None => self.lookup_peer_info(sender).await,
+            None => PeerInfo::lookup(&self.connection(), sender).await,
         }
-    }
-
-    /// Look up the process behind a sender, and the session it runs in
-    async fn lookup_peer_info(&self, sender: &UniqueName<'_>) -> Option<PeerInfo> {
-        // p2p test clients stand for a graphical application
-        #[cfg(any(test, feature = "test-util"))]
-        if sender.as_str() == P2P_TEST_SENDER {
-            return Some(PeerInfo::new(
-                std::process::id(),
-                "test".to_owned(),
-                SessionType::Wayland,
-            ));
-        }
-
-        let proxy = zbus::fdo::DBusProxy::new(&self.connection()).await.ok()?;
-        let pid = proxy
-            .get_connection_unix_process_id(sender.into())
-            .await
-            .ok()?;
-        let cmdline = tokio::fs::read(format!("/proc/{pid}/cmdline")).await.ok()?;
-        let name = cmdline.split(|&b| b == 0).next()?;
-        let name = std::path::Path::new(std::str::from_utf8(name).ok()?)
-            .file_name()?
-            .to_str()?
-            .to_owned();
-        let session_type = SessionType::detect(pid).await;
-        Some(PeerInfo::new(pid, name, session_type))
     }
 
     pub(crate) async fn session_from_sender(&self, sender: &UniqueName<'_>) -> Option<Session> {
