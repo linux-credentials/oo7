@@ -46,9 +46,7 @@ struct MockPrompters {
 }
 
 impl MockPrompters {
-    async fn register(
-        conn: &zbus::Connection,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    async fn register(conn: &zbus::Connection) -> Result<Self, Box<dyn std::error::Error>> {
         #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
         let gnome = {
             let prompter = MockPrompterServiceGNOME::new();
