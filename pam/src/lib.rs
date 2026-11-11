@@ -240,7 +240,7 @@ pub unsafe extern "C" fn pam_sm_open_session(
     let mut password_ptr: *const std::os::raw::c_void = std::ptr::null();
     let ret = unsafe { ffi::pam_get_data(pamh, STASHED_PASSWORD_KEY.as_ptr(), &mut password_ptr) };
 
-    if ret != PAM_SUCCESS || password_ptr.is_null() {
+    let password = if ret != PAM_SUCCESS || password_ptr.is_null() {
         // Try to fall back to PAM_AUTHTOK, it may have been set by a previous
         // module.
         password_ptr = std::ptr::null();
@@ -249,13 +249,16 @@ pub unsafe extern "C" fn pam_sm_open_session(
             tracing::debug!("No stashed password found in session");
             return PAM_SUCCESS;
         }
-    }
-
-    let password = unsafe { &*(password_ptr as *const Zeroizing<Vec<u8>>) };
-    tracing::debug!(
-        "Retrieved stashed password of length {} bytes",
-        password.len()
-    );
+        let password_cstr = unsafe { CStr::from_ptr(password_ptr as *const c_char) };
+        &Zeroizing::new(password_cstr.to_bytes().to_vec())
+    } else {
+        let password = unsafe { &*(password_ptr as *const Zeroizing<Vec<u8>>) };
+        tracing::debug!(
+            "Retrieved stashed password of length {} bytes",
+            password.len()
+        );
+        password
+    };
 
     // Get username and UID
     let username = match unsafe { get_user(pamh) } {
