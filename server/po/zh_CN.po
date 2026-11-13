@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-07-14 21:51+0000\n"
-"PO-Revision-Date: 2026-07-15 08:04+0800\n"
+"POT-Creation-Date: 2026-11-12 15:39+0000\n"
+"PO-Revision-Date: 2026-11-13 09:14+0800\n"
 "Last-Translator: lumingzh <lumingzh@qq.com>\n"
 "Language-Team: Chinese (China) <i18n-zh@googlegroups.com>\n"
 "Language: zh_CN\n"
@@ -16,77 +16,92 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Gtranslator 50.0\n"
+"X-Generator: Gtranslator 51.0\n"
 
-#: ../src/gnome/prompter.rs:151
+#: ../src/gnome/prompter.rs:158 ../src/gnome/prompter.rs:183
 msgid "Change Keyring Password"
 msgstr "更改密钥环密码"
 
-#: ../src/gnome/prompter.rs:152
+#: ../src/gnome/prompter.rs:160
+#, rust-format
+msgid "Enter the old password for the “{}” keyring"
+msgstr "输入用于“{}”密钥环的旧密码"
+
+#: ../src/gnome/prompter.rs:165
+#, rust-format
+msgid ""
+"An application wants to change the password for the “{}” keyring. Enter the "
+"old password for it."
+msgstr "有应用程序想要更改“{}”密钥环的密码。请输入其使用的旧密码。"
+
+#: ../src/gnome/prompter.rs:176 ../src/gnome/prompter.rs:201
+msgid "Continue"
+msgstr "继续"
+
+#: ../src/gnome/prompter.rs:177 ../src/gnome/prompter.rs:202
+#: ../src/gnome/prompter.rs:228 ../src/gnome/prompter.rs:250
+msgid "Cancel"
+msgstr "取消"
+
+#: ../src/gnome/prompter.rs:185
 #, rust-format
 msgid "Choose a new password for the “{}” keyring"
 msgstr "选择用于“{}”密钥环的新密码"
 
-#: ../src/gnome/prompter.rs:155 ../src/prompt/mod.rs:396
+#: ../src/gnome/prompter.rs:190 ../src/prompt/mod.rs:424
 #, rust-format
 msgid ""
 "An application wants to change the password for the “{}” keyring. Choose the "
 "new password you want to use for it."
 msgstr "有应用程序想要更改“{}”密钥环的密码。请选择您要对其使用的新密码。"
 
-#: ../src/gnome/prompter.rs:160
+#: ../src/gnome/prompter.rs:195
 msgid "This operation cannot be reverted"
 msgstr "此操作无法恢复"
 
-#: ../src/gnome/prompter.rs:166
-msgid "Continue"
-msgstr "继续"
-
-#: ../src/gnome/prompter.rs:167 ../src/gnome/prompter.rs:193
-#: ../src/gnome/prompter.rs:215
-msgid "Cancel"
-msgstr "取消"
-
-#: ../src/gnome/prompter.rs:177
+#: ../src/gnome/prompter.rs:212
 msgid "Unlock Keyring"
 msgstr "解锁密钥环"
 
-#: ../src/gnome/prompter.rs:178
+#: ../src/gnome/prompter.rs:213
 msgid "Authentication required"
 msgstr "需要认证"
 
-#: ../src/gnome/prompter.rs:181
+#: ../src/gnome/prompter.rs:216 ../src/prompt/mod.rs:414
 #, rust-format
-msgid "An application wants access to the keyring '{}', but it is locked"
+msgid "An application wants access to the keyring “{}”, but it is locked"
 msgstr "有应用程序想要访问密钥环“{}”，但其已锁定"
 
-#: ../src/gnome/prompter.rs:192
+#: ../src/gnome/prompter.rs:227
 msgid "Unlock"
 msgstr "解锁"
 
-#: ../src/gnome/prompter.rs:199
+#: ../src/gnome/prompter.rs:234
 msgid "New Keyring Password"
 msgstr "新密钥环密码"
 
-#: ../src/gnome/prompter.rs:200
+#: ../src/gnome/prompter.rs:235
 msgid "Choose password for new keyring"
 msgstr "选择新密钥环的密码"
 
-#: ../src/gnome/prompter.rs:203 ../src/prompt/mod.rs:391
+#: ../src/gnome/prompter.rs:238 ../src/prompt/mod.rs:419
 #, rust-format
 msgid ""
 "An application wants to create a new keyring called “{}”. Choose the "
 "password you want to use for it."
 msgstr "有应用程序想要创建名称为“{}”的新密钥环。请选择您要对其使用的密码。"
 
-#: ../src/gnome/prompter.rs:214
+#: ../src/gnome/prompter.rs:249
 msgid "Create"
 msgstr "创建"
 
-#: ../src/prompt/mod.rs:386
+#: ../src/gnome/prompter.rs:538
+msgid "The original password was incorrect"
+msgstr "原密码不正确"
+
 #, rust-format
-msgid "An application wants access to the keyring “{}”, but it is locked"
-msgstr "有应用程序想要访问密钥环“{}”，但其已锁定"
+#~ msgid "An application wants access to the keyring '{}', but it is locked"
+#~ msgstr "有应用程序想要访问密钥环“{}”，但其已锁定"
 
 #, rust-format
 #~ msgid ""
