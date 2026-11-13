@@ -297,8 +297,8 @@ impl Service {
             zbus::MessageStream::for_match_rule(rule, &self.connection(), None).await?;
         while let Some(message) = stream.try_next().await? {
             let body = message.body();
-            let Ok((_name, old_owner, new_owner)) =
-                body.deserialize::<(String, Optional<UniqueName<'_>>, Optional<UniqueName<'_>>)>()
+            let Ok((name, old_owner, new_owner)) =
+                body.deserialize::<(&str, Optional<UniqueName<'_>>, Optional<UniqueName<'_>>)>()
             else {
                 continue;
             };
@@ -306,6 +306,9 @@ impl Service {
             let old_owner = old_owner
                 .as_ref()
                 .expect("A disconnected client requires an old_owner");
+            if name != old_owner.as_str() {
+                continue; // a well-known name was released, the client is still connected
+            }
             if let Some(session) = self.session_from_sender(old_owner).await {
                 let client_name = match session.peer_info() {
                     Some(info) => format!("{old_owner} ({info})"),
