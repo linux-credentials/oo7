@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oo7 main\n"
 "Report-Msgid-Bugs-To: https://github.com/linux-credentials/oo7/issues\n"
-"POT-Creation-Date: 2026-08-20 03:37+0000\n"
-"PO-Revision-Date: 2026-08-20 15:22+0300\n"
+"POT-Creation-Date: 2026-11-14 03:38+0000\n"
+"PO-Revision-Date: 2026-11-14 14:58+0200\n"
 "Last-Translator: Jiri Grönroos <jiri.gronroos+l10n@iki.fi>\n"
 "Language-Team: Finnish <Finnish>\n"
 "Language: fi\n"
@@ -16,18 +16,41 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 3.9\n"
+"X-Generator: Poedit 3.10\n"
 
-#: ../src/gnome/prompter.rs:151
+#: ../src/gnome/prompter.rs:158 ../src/gnome/prompter.rs:183
 msgid "Change Keyring Password"
 msgstr "Vaihda avainnipun salasana"
 
-#: ../src/gnome/prompter.rs:152
+#: ../src/gnome/prompter.rs:160
+#, rust-format
+msgid "Enter the old password for the “{}” keyring"
+msgstr "Anna avainnipun “{}” vanha salasana"
+
+#: ../src/gnome/prompter.rs:165
+#, rust-format
+msgid ""
+"An application wants to change the password for the “{}” keyring. Enter the "
+"old password for it."
+msgstr ""
+"Sovellus haluaa vaihtaa avainnipun “{}” salasanan. Anna avainnipun vanha "
+"salasana."
+
+#: ../src/gnome/prompter.rs:176 ../src/gnome/prompter.rs:201
+msgid "Continue"
+msgstr "Jatka"
+
+#: ../src/gnome/prompter.rs:177 ../src/gnome/prompter.rs:202
+#: ../src/gnome/prompter.rs:228 ../src/gnome/prompter.rs:250
+msgid "Cancel"
+msgstr "Peru"
+
+#: ../src/gnome/prompter.rs:185
 #, rust-format
 msgid "Choose a new password for the “{}” keyring"
 msgstr "Valitse uusi salasana avainnipulle “{}”"
 
-#: ../src/gnome/prompter.rs:155 ../src/prompt/mod.rs:408
+#: ../src/gnome/prompter.rs:190 ../src/prompt/mod.rs:424
 #, rust-format
 msgid ""
 "An application wants to change the password for the “{}” keyring. Choose the "
@@ -36,45 +59,36 @@ msgstr ""
 "Sovellus haluaa vaihtaa avainnipun “{}” salasanan. Sinun täytyy valita "
 "avainnipulle salasana."
 
-#: ../src/gnome/prompter.rs:160
+#: ../src/gnome/prompter.rs:195
 msgid "This operation cannot be reverted"
 msgstr "Tätä toimintoa ei voi perua"
 
-#: ../src/gnome/prompter.rs:166
-msgid "Continue"
-msgstr "Jatka"
-
-#: ../src/gnome/prompter.rs:167 ../src/gnome/prompter.rs:193
-#: ../src/gnome/prompter.rs:215
-msgid "Cancel"
-msgstr "Peru"
-
-#: ../src/gnome/prompter.rs:177
+#: ../src/gnome/prompter.rs:212
 msgid "Unlock Keyring"
 msgstr "Avaa avainnipun lukitus"
 
-#: ../src/gnome/prompter.rs:178
+#: ../src/gnome/prompter.rs:213
 msgid "Authentication required"
 msgstr "Tunnistautuminen vaaditaan"
 
-#: ../src/gnome/prompter.rs:181 ../src/prompt/mod.rs:398
+#: ../src/gnome/prompter.rs:216 ../src/prompt/mod.rs:414
 #, rust-format
 msgid "An application wants access to the keyring “{}”, but it is locked"
 msgstr "Sovellus haluaa pääsyn avainnippuun “{}”, mutta se on lukittu"
 
-#: ../src/gnome/prompter.rs:192
+#: ../src/gnome/prompter.rs:227
 msgid "Unlock"
 msgstr "Avaa lukitus"
 
-#: ../src/gnome/prompter.rs:199
+#: ../src/gnome/prompter.rs:234
 msgid "New Keyring Password"
 msgstr "Uuden avainnipun salasana"
 
-#: ../src/gnome/prompter.rs:200
+#: ../src/gnome/prompter.rs:235
 msgid "Choose password for new keyring"
 msgstr "Valitse uuden avainnipun salasana"
 
-#: ../src/gnome/prompter.rs:203 ../src/prompt/mod.rs:403
+#: ../src/gnome/prompter.rs:238 ../src/prompt/mod.rs:419
 #, rust-format
 msgid ""
 "An application wants to create a new keyring called “{}”. Choose the "
@@ -83,6 +97,10 @@ msgstr ""
 "Sovellus haluaa luoda uuden avainnipun nimellä “{}”. Sinun täytyy valita "
 "avainnipulle salasana."
 
-#: ../src/gnome/prompter.rs:214
+#: ../src/gnome/prompter.rs:249
 msgid "Create"
 msgstr "Luo"
+
+#: ../src/gnome/prompter.rs:538
+msgid "The original password was incorrect"
+msgstr "Alkuperäinen salasana oli väärä"
