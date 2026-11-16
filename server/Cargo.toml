@@ -4,7 +4,6 @@ authors = ["Bilal Elmoussaoui", "Dhanuka Warusadura"]
 description = "Server side implementation of the freedesktop Secret Service"
 edition.workspace = true
 exclude.workspace = true
-homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true

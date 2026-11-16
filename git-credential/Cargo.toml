@@ -7,7 +7,6 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 repository.workspace = true
-homepage.workspace = true
 license.workspace = true
 rust-version.workspace = true
 exclude.workspace = true
