@@ -58,41 +58,43 @@ pub fn fixture() -> MutexGuard<'static, Fixture> {
 }
 
 impl Fixture {
-    // Rust >= 1.100 moved cdylib outputs from deps/ to
-    // build/<crate>/<hash>/out/.
+    // Rust >= 1.100 moved cdylib outputs from target/<profile>/deps/ to
+    // target/<profile>/build/<crate>/<hash>/out/.
     fn find_so(name: &str) -> PathBuf {
         let exe = std::env::current_exe().unwrap();
+        let stem = name.trim_end_matches(".so");
+
+        // Walk up to target/<profile>/.
         let mut dir = exe.parent().unwrap().to_owned();
-        while !dir.join("deps").is_dir() {
+        loop {
+            // Check deps/ and examples/ (< 1.100).
+            for subdir in ["deps", "examples"] {
+                let candidate = dir.join(subdir).join(name);
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+
+            // Check build/oo7-pam/*/out/ (>= 1.100).
+            if let Ok(entries) = std::fs::read_dir(dir.join("build/oo7-pam")) {
+                for hash_dir in entries.flatten() {
+                    if let Ok(files) = std::fs::read_dir(hash_dir.path().join("out")) {
+                        for file in files.flatten() {
+                            let n = file.file_name();
+                            let n = n.to_string_lossy();
+                            if n.starts_with(stem) && n.ends_with(".so") && file.path().is_file() {
+                                return file.path();
+                            }
+                        }
+                    }
+                }
+            }
+
             assert!(
                 dir.pop(),
                 "missing PAM modules, build them with `cargo test -p oo7-pam`"
             );
         }
-
-        for subdir in ["deps", "examples"] {
-            let candidate = dir.join(subdir).join(name);
-            if candidate.is_file() {
-                return candidate;
-            }
-        }
-
-        let stem = name.trim_end_matches(".so");
-        if let Ok(entries) = std::fs::read_dir(dir.join("build/oo7-pam")) {
-            for hash_dir in entries.flatten() {
-                if let Ok(files) = std::fs::read_dir(hash_dir.path().join("out")) {
-                    for file in files.flatten() {
-                        let n = file.file_name();
-                        let n = n.to_string_lossy();
-                        if n.starts_with(stem) && n.ends_with(".so") && file.path().is_file() {
-                            return file.path();
-                        }
-                    }
-                }
-            }
-        }
-
-        panic!("missing PAM modules, build them with `cargo test -p oo7-pam`");
     }
 
     fn new() -> Self {
