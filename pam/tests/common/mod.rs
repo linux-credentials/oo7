@@ -59,16 +59,25 @@ pub fn fixture() -> MutexGuard<'static, Fixture> {
 
 impl Fixture {
     fn new() -> Self {
-        let deps = std::env::current_exe()
+        // Rust < 1.100 places test binaries in target/debug/deps/,
+        // Rust >= 1.100 places them in target/debug/build/<crate>/<hash>/out/.
+        // Walk up from the test binary until we find the deps/ directory.
+        let mut dir = std::env::current_exe()
             .unwrap()
             .parent()
             .unwrap()
             .to_owned();
-        let module = deps.join("libpam_oo7.so");
-        let tokens = deps
-            .parent()
-            .unwrap()
-            .join("examples/libpam_test_tokens.so");
+        loop {
+            if dir.join("deps/libpam_oo7.so").is_file() {
+                break;
+            }
+            assert!(
+                dir.pop(),
+                "missing PAM modules, build them with `cargo test -p oo7-pam`"
+            );
+        }
+        let module = dir.join("deps/libpam_oo7.so");
+        let tokens = dir.join("examples/libpam_test_tokens.so");
         assert!(
             module.is_file() && tokens.is_file(),
             "missing PAM modules, build them with `cargo test -p oo7-pam`"
