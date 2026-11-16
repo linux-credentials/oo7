@@ -28,12 +28,12 @@ pub fn run(test_name: &str, test: impl FnOnce() -> io::Result<()>) -> io::Result
 
 fn run_namespace(test_name: &str) -> io::Result<()> {
     let executable = env::current_exe()?;
-    let deps = executable.parent().unwrap();
+    let exe_dir = executable.parent().unwrap();
     let fixtures = tempfile::tempdir()?;
     // Keep sandbox paths short and independent of the host's temporary
     // directory.
     let root = Path::new("/run").join(fixtures.path().file_name().unwrap());
-    let worker = root.join("deps").join(executable.file_name().unwrap());
+    let worker = root.join("bin").join(executable.file_name().unwrap());
     for (name, contents) in [
         (
             "passwd",
@@ -93,17 +93,23 @@ fn run_namespace(test_name: &str) -> io::Result<()> {
         .arg(&root)
         .arg("--chdir")
         .arg(&root);
-    for (source, destination) in [
-        (deps.to_owned(), root.join("deps")),
-        (
-            deps.parent().unwrap().join("examples"),
-            root.join("examples"),
-        ),
+    // Bind-mount the test binary and the two PAM .so files into the sandbox.
+    // Rust >= 1.100 changed the artifact layout, so use find_so to locate
+    // them regardless of where cargo placed them.
+    let module = super::Fixture::find_so("libpam_oo7.so");
+    let tokens = super::Fixture::find_so("libpam_test_tokens.so");
+    command
+        .arg("--ro-bind")
+        .arg(exe_dir.canonicalize()?)
+        .arg(root.join("bin"));
+    for (so, name) in [
+        (&module, "libpam_oo7.so"),
+        (&tokens, "libpam_test_tokens.so"),
     ] {
         command
             .arg("--ro-bind")
-            .arg(source.canonicalize()?)
-            .arg(destination);
+            .arg(so.canonicalize()?)
+            .arg(root.join("deps").join(name));
     }
     for name in ["passwd", "group", "nsswitch.conf"] {
         command
