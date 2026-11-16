@@ -58,30 +58,46 @@ pub fn fixture() -> MutexGuard<'static, Fixture> {
 }
 
 impl Fixture {
-    fn new() -> Self {
-        // Rust < 1.100 places test binaries in target/debug/deps/,
-        // Rust >= 1.100 places them in target/debug/build/<crate>/<hash>/out/.
-        // Walk up from the test binary until we find the deps/ directory.
-        let mut dir = std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_owned();
-        loop {
-            if dir.join("deps/libpam_oo7.so").is_file() {
-                break;
-            }
+    // Rust >= 1.100 moved cdylib outputs from deps/ to
+    // build/<crate>/<hash>/out/.
+    fn find_so(name: &str) -> PathBuf {
+        let exe = std::env::current_exe().unwrap();
+        let mut dir = exe.parent().unwrap().to_owned();
+        while !dir.join("deps").is_dir() {
             assert!(
                 dir.pop(),
                 "missing PAM modules, build them with `cargo test -p oo7-pam`"
             );
         }
-        let module = dir.join("deps/libpam_oo7.so");
-        let tokens = dir.join("examples/libpam_test_tokens.so");
-        assert!(
-            module.is_file() && tokens.is_file(),
-            "missing PAM modules, build them with `cargo test -p oo7-pam`"
-        );
+
+        for subdir in ["deps", "examples"] {
+            let candidate = dir.join(subdir).join(name);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+
+        let stem = name.trim_end_matches(".so");
+        if let Ok(entries) = std::fs::read_dir(dir.join("build/oo7-pam")) {
+            for hash_dir in entries.flatten() {
+                if let Ok(files) = std::fs::read_dir(hash_dir.path().join("out")) {
+                    for file in files.flatten() {
+                        let n = file.file_name();
+                        let n = n.to_string_lossy();
+                        if n.starts_with(stem) && n.ends_with(".so") && file.path().is_file() {
+                            return file.path();
+                        }
+                    }
+                }
+            }
+        }
+
+        panic!("missing PAM modules, build them with `cargo test -p oo7-pam`");
+    }
+
+    fn new() -> Self {
+        let module = Self::find_so("libpam_oo7.so");
+        let tokens = Self::find_so("libpam_test_tokens.so");
 
         let dir = tempfile::tempdir().unwrap();
         // PAM configuration lines can't contain spaces
