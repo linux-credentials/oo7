@@ -22,7 +22,6 @@ authors = ["Bilal Elmoussaoui", "Sophie Herold", "Maximiliano Sandoval"]
 keywords = ["keyring", "secret", "service", "portal", "keychain"]
 categories = ["os::linux-apis", "os", "api-bindings"]
 repository = "https://github.com/linux-credentials/oo7"
-homepage = "https://github.com/linux-credentials/oo7"
 license = "MIT"
 rust-version = "1.95"
 exclude = ["org.freedesktop.Secrets.xml"]
@@ -33,7 +32,6 @@ base64 = "0.23"
 cbc = "0.2"
 clap = { version = "4.5", features = ["cargo", "derive"] }
 endi = "1.1"
-futures-channel = "0.3"
 futures-lite = "2.6"
 futures-util = "0.3"
 hkdf = "0.13"
