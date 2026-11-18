@@ -74,6 +74,33 @@ pub use locked_keyring::LockedKeyring;
 pub use unlocked_item::UnlockedItem;
 pub use unlocked_keyring::{ItemDefinition, UnlockedKeyring};
 
+/// Check whether a secret can decrypt the legacy (gnome-keyring
+/// format) keyring at `path`, without migrating it.
+///
+/// Returns `Ok(false)` if the secret cannot decrypt the keyring.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(secret), fields(path = ?path.as_ref()))
+)]
+pub async fn validate_legacy_secret(
+    path: impl AsRef<std::path::Path>,
+    secret: &Secret,
+) -> Result<bool, Error> {
+    let path = path.as_ref();
+    #[cfg(feature = "tokio")]
+    let content = tokio::fs::read(path).await?;
+    #[cfg(feature = "async-std")]
+    let content = async_fs::read(path).await?;
+
+    let legacy = api::LegacyKeyring::try_from(content.as_slice())?;
+    match legacy.decrypt_items(secret) {
+        Ok(_) => Ok(true),
+        // A wrong secret yields a checksum mismatch.
+        Err(Error::ChecksumMismatch) => Ok(false),
+        Err(err) => Err(err),
+    }
+}
+
 use crate::{AsAttributes, GENERIC_SCHEMA, Key, Secret, XDG_SCHEMA_ATTRIBUTE};
 
 #[derive(Debug)]

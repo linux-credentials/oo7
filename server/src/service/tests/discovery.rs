@@ -1,7 +1,7 @@
 use oo7::{Secret, file::UnlockedKeyring};
 
 use super::super::*;
-use crate::tests::TestServiceSetup;
+use crate::{prompt::MAX_UNLOCK_ATTEMPTS, tests::TestServiceSetup};
 
 #[tokio::test]
 async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
@@ -325,6 +325,170 @@ async fn unlock_pending_v0_migration_emits_change_signals() -> Result<(), Box<dy
     }
     assert!(items_signaled, "Items property change should be signaled");
     assert!(locked_signaled, "Locked property change should be signaled");
+
+    Ok(())
+}
+
+// https://github.com/linux-credentials/oo7/issues/688
+// A wrong password must be rejected when unlocking a pending migration,
+// instead of silently unlocking the empty placeholder.
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_pending_v0_migration_wrong_password_retry_gnome()
+-> Result<(), Box<dyn std::error::Error>> {
+    unlock_pending_v0_migration_wrong_password_retry_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_pending_v0_migration_wrong_password_retry_plasma()
+-> Result<(), Box<dyn std::error::Error>> {
+    unlock_pending_v0_migration_wrong_password_retry_impl(PrompterType::Plasma).await
+}
+
+async fn unlock_pending_v0_migration_wrong_password_retry_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    let v0_secret = Secret::from("test");
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
+
+    let setup =
+        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+    setup.server.set_prompter_type(prompter_type).await;
+
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        1,
+        "V0 keyring should be pending migration"
+    );
+
+    // Find the placeholder collection
+    let collections = setup.service_api.collections().await?;
+    let mut legacy_index = None;
+    for (index, collection) in collections.iter().enumerate() {
+        if collection.label().await? == "Legacy" {
+            legacy_index = Some(index);
+            break;
+        }
+    }
+    let legacy_collection =
+        &collections[legacy_index.expect("Should have Legacy placeholder collection")];
+
+    assert!(
+        legacy_collection.is_locked().await?,
+        "Placeholder should be locked"
+    );
+
+    // Wrong passwords first, then the correct one
+    setup
+        .set_password_queue(vec![
+            Secret::from("wrong-password"),
+            Secret::from("another-wrong-password"),
+            v0_secret,
+        ])
+        .await;
+
+    let unlocked = setup
+        .service_api
+        .unlock(&[legacy_collection.inner().path()], None)
+        .await?;
+    assert_eq!(unlocked.len(), 1, "Should have unlocked the collection");
+
+    assert!(
+        !legacy_collection.is_locked().await?,
+        "Collection should be unlocked after retry with correct password"
+    );
+    assert_eq!(
+        legacy_collection.items().await?.len(),
+        1,
+        "Migrated item should be dispatched"
+    );
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        0,
+        "Migration should have completed"
+    );
+
+    Ok(())
+}
+
+// https://github.com/linux-credentials/oo7/issues/688
+// After exhausted unlock attempts, the placeholder must stay locked and
+// the migration pending, so it can be retried later.
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_pending_v0_migration_wrong_password_dismissed_gnome()
+-> Result<(), Box<dyn std::error::Error>> {
+    unlock_pending_v0_migration_wrong_password_dismissed_impl(PrompterType::GNOME).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_pending_v0_migration_wrong_password_dismissed_plasma()
+-> Result<(), Box<dyn std::error::Error>> {
+    unlock_pending_v0_migration_wrong_password_dismissed_impl(PrompterType::Plasma).await
+}
+
+async fn unlock_pending_v0_migration_wrong_password_dismissed_impl(
+    prompter_type: PrompterType,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
+
+    let setup =
+        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+    setup.server.set_prompter_type(prompter_type).await;
+
+    // Find the placeholder collection
+    let collections = setup.service_api.collections().await?;
+    let mut legacy_index = None;
+    for (index, collection) in collections.iter().enumerate() {
+        if collection.label().await? == "Legacy" {
+            legacy_index = Some(index);
+            break;
+        }
+    }
+    let legacy_collection =
+        &collections[legacy_index.expect("Should have Legacy placeholder collection")];
+
+    setup
+        .set_password_queue(vec![
+            Secret::from("wrong-password");
+            MAX_UNLOCK_ATTEMPTS as usize + 1
+        ])
+        .await;
+
+    let collection_path = legacy_collection.inner().path().to_owned();
+    let result = setup.service_api.unlock(&[collection_path], None).await;
+
+    assert!(
+        matches!(result, Err(oo7::dbus::Error::Dismissed)),
+        "Expected Dismissed error after max failed attempts, got: {result:?}"
+    );
+    assert!(
+        legacy_collection.is_locked().await?,
+        "Placeholder should remain locked after failed unlock attempts"
+    );
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        1,
+        "Migration should still be pending, so it can be retried later"
+    );
 
     Ok(())
 }
