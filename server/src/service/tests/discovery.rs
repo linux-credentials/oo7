@@ -216,6 +216,119 @@ async fn unlock_pending_v0_migration_impl(
     Ok(())
 }
 
+// https://github.com/linux-credentials/oo7/issues/688
+// Unlocking a pending migration must notify clients, else they keep
+// showing the empty placeholder collection until restarted.
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn unlock_pending_v0_migration_emits_change_signals() -> Result<(), Box<dyn std::error::Error>>
+{
+    use std::collections::HashMap;
+
+    use tokio_stream::StreamExt;
+    use zbus::{
+        MatchRule, MessageStream,
+        message::Type as MessageType,
+        wire::{OwnedObjectPath, OwnedVariant, Variant},
+    };
+
+    use crate::tests::assert_next_signal;
+
+    let temp_dir = tempfile::tempdir()?;
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    // Copy the v0 keyring fixture (contains a single item labeled "foo")
+    let v0_secret = Secret::from("test");
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
+
+    // Create test service that discovers keyrings WITHOUT the password
+    let setup =
+        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+
+    // Find the placeholder collection
+    let collections = setup.service_api.collections().await?;
+    let mut legacy_index = None;
+    for (index, collection) in collections.iter().enumerate() {
+        if collection.label().await? == "Legacy" {
+            legacy_index = Some(index);
+            break;
+        }
+    }
+    let legacy_collection =
+        &collections[legacy_index.expect("Should have Legacy placeholder collection")];
+
+    // The placeholder starts out locked and empty
+    assert!(legacy_collection.is_locked().await?);
+    assert_eq!(
+        legacy_collection.items().await?.len(),
+        0,
+        "Placeholder should not expose any items"
+    );
+
+    // Subscribe to the collection signals before triggering the migration
+    let item_created_stream = legacy_collection.receive_item_created().await?;
+    tokio::pin!(item_created_stream);
+
+    let properties_rule = MatchRule::builder()
+        .msg_type(MessageType::Signal)
+        .interface("org.freedesktop.DBus.Properties")
+        .member("PropertiesChanged")
+        .path(legacy_collection.inner().path().to_owned())
+        .build()?;
+    let mut properties_stream =
+        MessageStream::for_match_rule(properties_rule, &setup.client_conn, None).await?;
+
+    // Unlock via D-Bus API with the correct password (triggers migration)
+    setup.set_password_queue(vec![v0_secret]).await;
+    let unlocked = setup
+        .service_api
+        .unlock(&[legacy_collection.inner().path()], None)
+        .await?;
+    assert_eq!(unlocked.len(), 1, "Should have unlocked the collection");
+
+    // The migrated item is announced via ItemCreated
+    let item = assert_next_signal(&mut item_created_stream).await;
+    assert_eq!(
+        item.inner().path().as_str(),
+        format!("{}/1", legacy_collection.inner().path().as_str()),
+        "ItemCreated should announce the migrated item"
+    );
+    assert_eq!(item.label().await?, "foo");
+
+    // The Items and Locked properties are signaled as changed
+    let mut items_signaled = false;
+    let mut locked_signaled = false;
+    for _ in 0..2 {
+        let message = assert_next_signal(&mut properties_stream).await?;
+        let (_, changed, _invalidated): (String, HashMap<String, OwnedVariant>, Vec<String>) =
+            message.body().deserialize()?;
+
+        if let Some(value) = changed.get("Items") {
+            let items = Vec::<OwnedObjectPath>::try_from(Variant::from(value.clone()))?;
+            assert_eq!(
+                items.len(),
+                1,
+                "Items property should contain the migrated item"
+            );
+            assert_eq!(items[0].as_str(), item.inner().path().as_str());
+            items_signaled = true;
+        }
+        if let Some(value) = changed.get("Locked") {
+            assert!(!bool::try_from(Variant::from(value.clone()))?);
+            locked_signaled = true;
+        }
+    }
+    assert!(items_signaled, "Items property change should be signaled");
+    assert!(locked_signaled, "Locked property change should be signaled");
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn discover_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;
