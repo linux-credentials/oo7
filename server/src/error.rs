@@ -27,6 +27,17 @@ impl From<zbus::Error> for Error {
     }
 }
 
+impl From<ServiceError> for Error {
+    fn from(err: ServiceError) -> Self {
+        match err {
+            ServiceError::ZBus(err) => Self::Zbus(err),
+            err => Self::Zbus(zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed(
+                err.to_string(),
+            )))),
+        }
+    }
+}
+
 impl From<oo7::file::Error> for Error {
     fn from(err: oo7::file::Error) -> Self {
         Self::File(err)

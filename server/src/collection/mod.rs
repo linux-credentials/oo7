@@ -676,25 +676,57 @@ impl Collection {
             keyring_items.len(),
             self.path
         );
-        let mut items = self.items.lock().await;
-        let object_server = self.service.object_server();
-        let mut n_items = 1;
+        drop(keyring_guard);
 
-        for keyring_item in keyring_items {
-            let item_path = OwnedObjectPath::try_from(format!("{}/{n_items}", self.path)).unwrap();
-            let item = item::Item::new(
-                keyring_item,
-                self.service.clone(),
-                self.path.clone(),
-                item_path.clone(),
-            );
-            n_items += 1;
+        let mut dispatched_items = Vec::new();
+        {
+            let mut items = self.items.lock().await;
+            let object_server = self.service.object_server();
+            let mut n_items = 1;
 
-            items.push(item.clone());
-            object_server.at(item_path, item).await?;
+            for keyring_item in keyring_items {
+                let item_path =
+                    OwnedObjectPath::try_from(format!("{}/{n_items}", self.path)).unwrap();
+                let item = item::Item::new(
+                    keyring_item,
+                    self.service.clone(),
+                    self.path.clone(),
+                    item_path.clone(),
+                );
+                n_items += 1;
+
+                items.push(item.clone());
+                dispatched_items.push(item.clone());
+                object_server.at(item_path, item).await?;
+            }
+
+            *self.item_index.write().await = n_items;
         }
 
-        *self.item_index.write().await = n_items;
+        // Notify clients about the newly dispatched items.
+        let signal_emitter = self.service.signal_emitter(&self.path)?;
+        for item in &dispatched_items {
+            Self::item_created(&signal_emitter, item.path()).await?;
+        }
+        self.items_changed(&signal_emitter).await?;
+
+        Ok(())
+    }
+
+    /// Replace the keyring with a just-migrated one, dispatch its items
+    /// and emit the corresponding change signals.
+    pub async fn apply_migrated_keyring(&self, keyring: Keyring) -> Result<(), Error> {
+        *self.keyring.write().await = Some(keyring);
+
+        self.dispatch_items().await?;
+
+        // The keyring swap bypasses set_locked, so emit Locked here.
+        let signal_emitter = self.service.signal_emitter(&self.path)?;
+        self.locked_changed(&signal_emitter).await?;
+
+        let service_path = oo7::dbus::api::Service::PATH.as_ref().unwrap();
+        let signal_emitter = self.service.signal_emitter(service_path)?;
+        Service::collection_changed(&signal_emitter, &self.path).await?;
 
         Ok(())
     }
