@@ -162,7 +162,8 @@ impl Service {
                                 migration_name,
                                 e
                             );
-                            let _ = collection.set_locked(false, secret.clone()).await;
+                            // Keep the placeholder locked so the migration
+                            // can be retried.
                         }
                     }
                 } else {

@@ -1,7 +1,13 @@
+use std::collections::HashMap;
+
 use oo7::{Secret, file::UnlockedKeyring};
+use zbus::wire::{OwnedObjectPath, OwnedVariant, Variant};
 
 use super::super::*;
-use crate::{prompt::MAX_UNLOCK_ATTEMPTS, tests::TestServiceSetup};
+use crate::{
+    prompt::MAX_UNLOCK_ATTEMPTS,
+    tests::{TestServiceSetup, assert_next_signal},
+};
 
 #[tokio::test]
 async fn discover_v1_keyrings() -> Result<(), Box<dyn std::error::Error>> {
@@ -223,17 +229,6 @@ async fn unlock_pending_v0_migration_impl(
 #[tokio::test]
 async fn unlock_pending_v0_migration_emits_change_signals() -> Result<(), Box<dyn std::error::Error>>
 {
-    use std::collections::HashMap;
-
-    use tokio_stream::StreamExt;
-    use zbus::{
-        MatchRule, MessageStream,
-        message::Type as MessageType,
-        wire::{OwnedObjectPath, OwnedVariant, Variant},
-    };
-
-    use crate::tests::assert_next_signal;
-
     let temp_dir = tempfile::tempdir()?;
     let keyrings_dir = temp_dir.path().join("keyrings");
     tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
@@ -274,14 +269,14 @@ async fn unlock_pending_v0_migration_emits_change_signals() -> Result<(), Box<dy
     let item_created_stream = legacy_collection.receive_item_created().await?;
     tokio::pin!(item_created_stream);
 
-    let properties_rule = MatchRule::builder()
-        .msg_type(MessageType::Signal)
+    let properties_rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
         .interface("org.freedesktop.DBus.Properties")
         .member("PropertiesChanged")
         .path(legacy_collection.inner().path().to_owned())
         .build()?;
     let mut properties_stream =
-        MessageStream::for_match_rule(properties_rule, &setup.client_conn, None).await?;
+        zbus::MessageStream::for_match_rule(properties_rule, &setup.client_conn, None).await?;
 
     // Unlock via D-Bus API with the correct password (triggers migration)
     setup.set_password_queue(vec![v0_secret]).await;
@@ -488,6 +483,55 @@ async fn unlock_pending_v0_migration_wrong_password_dismissed_impl(
         setup.server.pending_migrations.lock().await.len(),
         1,
         "Migration should still be pending, so it can be retried later"
+    );
+
+    Ok(())
+}
+
+// https://github.com/linux-credentials/oo7/issues/688
+// A failed migration during unlock must keep the placeholder locked.
+#[tokio::test]
+async fn perform_unlock_failed_migration_keeps_placeholder_locked()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
+
+    let setup =
+        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+
+    // Find the placeholder collection on the server side
+    let legacy_collection = {
+        let collections = setup.server.collections.lock().await;
+        collections
+            .values()
+            .find(|c| c.name() == "legacy")
+            .expect("Should have Legacy placeholder collection")
+            .clone()
+    };
+
+    // Call perform_unlock directly with a wrong secret, bypassing the
+    // prompt validation
+    let path = OwnedObjectPath::from(legacy_collection.path().to_owned());
+    setup
+        .server
+        .perform_unlock(&[path], Some(Secret::from("wrong-password")))
+        .await;
+
+    assert!(
+        legacy_collection.is_locked().await,
+        "Placeholder should remain locked after a failed migration"
+    );
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        1,
+        "Migration should still be pending"
     );
 
     Ok(())
