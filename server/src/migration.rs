@@ -34,6 +34,33 @@ pub enum PendingMigration {
 }
 
 impl PendingMigration {
+    /// Check whether the secret can decrypt the legacy keyring, as the
+    /// placeholder keyring of a pending migration accepts any secret.
+    pub async fn validate_secret(&self, secret: &Secret) -> Result<bool, Error> {
+        match self {
+            Self::V0 { path, .. } => Ok(oo7::file::validate_legacy_secret(path, secret).await?),
+            #[cfg(feature = "kwallet_migration")]
+            Self::KWallet { path, .. } => {
+                let path = path.clone();
+                let password = secret.to_vec();
+                match tokio::task::spawn_blocking(move || {
+                    kwallet_parser::KWalletFile::open(&path, &password)
+                })
+                .await
+                {
+                    Ok(Ok(_)) => Ok(true),
+                    Ok(Err(err)) => {
+                        tracing::debug!("Failed to validate KWallet keyring secret: {err}");
+                        Ok(false)
+                    }
+                    Err(err) => Err(Error::IO(std::io::Error::other(format!(
+                        "Task join error: {err}"
+                    )))),
+                }
+            }
+        }
+    }
+
     /// Attempt to migrate this keyring with the provided secret
     pub async fn migrate(
         &self,
