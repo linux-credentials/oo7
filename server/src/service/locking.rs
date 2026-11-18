@@ -145,13 +145,11 @@ impl Service {
                                 migration_name
                             );
 
-                            // Replace the keyring in the collection
-                            let mut keyring_guard = collection.keyring.write().await;
-                            *keyring_guard = Some(Keyring::Unlocked(unlocked_keyring));
-                            drop(keyring_guard);
-
-                            // Dispatch items from the migrated keyring
-                            if let Err(e) = collection.dispatch_items().await {
+                            // Replace the placeholder and notify clients
+                            if let Err(e) = collection
+                                .apply_migrated_keyring(Keyring::Unlocked(unlocked_keyring))
+                                .await
+                            {
                                 tracing::error!("Failed to dispatch items after migration: {}", e);
                             }
 
@@ -230,9 +228,10 @@ impl Service {
                     };
 
                     if let Some(collection) = placeholder {
-                        *collection.keyring.write().await = Some(Keyring::Unlocked(unlocked));
-
-                        if let Err(e) = collection.dispatch_items().await {
+                        if let Err(e) = collection
+                            .apply_migrated_keyring(Keyring::Unlocked(unlocked))
+                            .await
+                        {
                             tracing::error!(
                                 "Failed to dispatch items for migrated keyring '{name}': {e}",
                             );
