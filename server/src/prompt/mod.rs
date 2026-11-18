@@ -228,7 +228,24 @@ impl Prompt {
         let collection = self.collection().expect("Unlock requires a collection");
         let label = self.label();
 
-        let is_valid = if let Some(ref secret) = secret {
+        // The placeholder of a pending migration accepts any secret;
+        // validate against the legacy keyring instead.
+        let pending_migration = {
+            let pending = self.service.pending_migrations.lock().await;
+            pending.get(collection.name()).cloned()
+        };
+
+        let is_valid = if let Some(migration) = pending_migration {
+            match secret.as_ref() {
+                Some(secret) => migration.validate_secret(secret).await.map_err(|err| {
+                    custom_service_error(&format!(
+                        "Failed to validate secret for {label} keyring: {err}."
+                    ))
+                })?,
+                // A pending migration always requires a secret.
+                None => false,
+            }
+        } else if let Some(ref secret) = secret {
             // Validate the secret using the already-open keyring
             let keyring_guard = collection.keyring.read().await;
             let valid = keyring_guard
