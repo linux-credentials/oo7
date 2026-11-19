@@ -41,7 +41,7 @@ mod encrypted_item;
 mod legacy_keyring;
 
 pub(super) use encrypted_item::EncryptedItem;
-pub(super) use legacy_keyring::{Keyring as LegacyKeyring, MAJOR_VERSION as LEGACY_MAJOR_VERSION};
+pub use legacy_keyring::{Keyring as LegacyKeyring, MAJOR_VERSION as LEGACY_MAJOR_VERSION};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
