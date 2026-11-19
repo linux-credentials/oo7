@@ -299,9 +299,17 @@ impl PamListener {
             tracing::info!("Migrated {} v0 keyring(s): {:?}", migrated.len(), migrated);
         }
 
-        let collections = self.service.collections.lock().await;
+        // Unlocking derives keys and reads files, don't hold the lock for it
+        let collections: Vec<_> = self
+            .service
+            .collections
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect();
 
-        for collection in collections.values() {
+        for collection in &collections {
             if collection.is_locked().await {
                 tracing::debug!("Attempting to unlock collection: {}", collection.path());
 
@@ -330,20 +338,29 @@ impl PamListener {
         old_secret: &Secret,
         new_secret: &Secret,
     ) -> Result<usize, Error> {
-        let collections = self.service.collections.lock().await;
+        // Changing a secret derives keys and writes files, don't hold the
+        // lock for it
+        let collections: Vec<_> = self
+            .service
+            .collections
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect();
         let mut changed_count = 0;
 
-        for (path, collection) in collections.iter() {
+        for collection in &collections {
             // Skip session collection (it's temporary and doesn't persist)
             if collection.alias().await == oo7::dbus::Service::SESSION_COLLECTION {
-                tracing::debug!("Skipping session collection: {}", path);
+                tracing::debug!("Skipping session collection: {}", collection.path());
                 continue;
             }
 
             // Get the keyring from the collection
             let keyring_guard = collection.keyring.read().await;
             let Some(keyring) = keyring_guard.as_ref() else {
-                tracing::debug!("Collection {} has no keyring", path);
+                tracing::debug!("Collection {} has no keyring", collection.path());
                 continue;
             };
 
@@ -355,7 +372,7 @@ impl PamListener {
                 // Try to unlock with old password first
                 tracing::debug!(
                     "Collection {} is locked, attempting to unlock with old password",
-                    path
+                    collection.path()
                 );
                 drop(keyring_guard);
 
@@ -366,7 +383,7 @@ impl PamListener {
                 {
                     tracing::warn!(
                         "Failed to unlock collection {} with old password: {}",
-                        path,
+                        collection.path(),
                         e
                     );
                     continue;
@@ -378,7 +395,7 @@ impl PamListener {
             // Re-acquire the lock to get the unlocked keyring
             let keyring_guard = collection.keyring.read().await;
             let Some(oo7::file::Keyring::Unlocked(uk)) = keyring_guard.as_ref() else {
-                tracing::warn!("Collection {} is not unlocked", path);
+                tracing::warn!("Collection {} is not unlocked", collection.path());
                 continue;
             };
 
@@ -388,7 +405,7 @@ impl PamListener {
                 Err(e) => {
                     tracing::warn!(
                         "Failed to validate old password for collection {}: {}",
-                        path,
+                        collection.path(),
                         e
                     );
                     continue;
@@ -398,7 +415,7 @@ impl PamListener {
             if !can_decrypt {
                 tracing::debug!(
                     "Old password does not match keyring {} password, skipping",
-                    path
+                    collection.path()
                 );
                 continue;
             }
@@ -406,7 +423,10 @@ impl PamListener {
             // Change the keyring password
             match uk.change_secret(new_secret.clone()).await {
                 Ok(_) => {
-                    tracing::info!("Successfully changed password for collection: {}", path);
+                    tracing::info!(
+                        "Successfully changed password for collection: {}",
+                        collection.path()
+                    );
                     changed_count += 1;
 
                     // Re-lock the collection if it was locked before we
@@ -416,16 +436,20 @@ impl PamListener {
                         if let Err(e) = collection.set_locked(true, None).await {
                             tracing::warn!(
                                 "Failed to re-lock collection {} after password change: {}",
-                                path,
+                                collection.path(),
                                 e
                             );
                         } else {
-                            tracing::debug!("Re-locked collection: {}", path);
+                            tracing::debug!("Re-locked collection: {}", collection.path());
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::error!("Failed to change password for collection {}: {}", path, e);
+                    tracing::error!(
+                        "Failed to change password for collection {}: {}",
+                        collection.path(),
+                        e
+                    );
                 }
             }
         }
