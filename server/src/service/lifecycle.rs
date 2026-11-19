@@ -259,7 +259,25 @@ impl Service {
 
         // Now register on D-Bus and dispatch items without holding the lock
         for (collection, alias) in &built_collections {
-            collection.dispatch_items().await?;
+            // A pending migration dispatches the placeholder items of the
+            // legacy keyring, so they can be searched while locked
+            let migration = {
+                let pending = self.pending_migrations.lock().await;
+                pending.get(collection.name()).cloned()
+            };
+            match migration {
+                Some(migration) => {
+                    let items = migration.items().await.unwrap_or_else(|e| {
+                        tracing::warn!(
+                            "Failed to read the items of the pending migration of '{}': {e}",
+                            collection.name()
+                        );
+                        Vec::new()
+                    });
+                    collection.dispatch_file_items(items).await?;
+                }
+                None => collection.dispatch_items().await?,
+            }
             object_server
                 .at(collection.path(), collection.clone())
                 .await?;

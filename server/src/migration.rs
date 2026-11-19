@@ -65,6 +65,21 @@ impl PendingMigration {
         }
     }
 
+    /// The placeholder items of the legacy keyring, exposing its
+    /// cleartext attributes so they can be searched while the keyring
+    /// is locked.
+    pub async fn items(&self) -> Result<Vec<oo7::file::Item>, Error> {
+        match self {
+            Self::V0 { path, .. } => {
+                let content = tokio::fs::read(path).await?;
+                let keyring = oo7::file::api::LegacyKeyring::try_from(content.as_slice())?;
+                Ok(keyring.items())
+            }
+            #[cfg(feature = "kwallet_migration")]
+            Self::KWallet { .. } => Ok(Vec::new()),
+        }
+    }
+
     /// Attempt to migrate this keyring with the provided secret
     pub async fn migrate(
         &self,

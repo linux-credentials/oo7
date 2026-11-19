@@ -257,12 +257,12 @@ async fn unlock_pending_v0_migration_emits_change_signals() -> Result<(), Box<dy
     let legacy_collection =
         &collections[legacy_index.expect("Should have Legacy placeholder collection")];
 
-    // The placeholder starts out locked and empty
+    // The placeholder starts out locked, with a locked stand-in item
     assert!(legacy_collection.is_locked().await?);
     assert_eq!(
         legacy_collection.items().await?.len(),
-        0,
-        "Placeholder should not expose any items"
+        1,
+        "Placeholder should expose a stand-in item"
     );
 
     // Subscribe to the collection signals before triggering the migration
@@ -533,6 +533,99 @@ async fn perform_unlock_failed_migration_keeps_placeholder_locked()
         1,
         "Migration should still be pending"
     );
+
+    Ok(())
+}
+
+// https://github.com/linux-credentials/oo7/issues/690
+//
+// The items of a pending migration must be reported as locked by
+// SearchItems, so clients prompt to unlock the keyring holding them
+// instead of creating a new secret.
+#[tokio::test]
+async fn search_items_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    // The fixture keyring holds a single item with the
+    // org.gnome.keyring.Note schema
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
+
+    let setup =
+        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+
+    let (unlocked, locked) = setup
+        .service_api
+        .search_items(&[("xdg:schema", "org.gnome.keyring.Note")])
+        .await?;
+    assert!(unlocked.is_empty(), "No item should be unlocked");
+    assert_eq!(locked.len(), 1, "The placeholder item should be locked");
+    assert_eq!(
+        locked[0].inner().path().as_str(),
+        "/org/freedesktop/secrets/collection/legacy/1"
+    );
+    assert!(locked[0].is_locked().await?);
+
+    // Non-matching attributes find nothing
+    let (unlocked, locked) = setup
+        .service_api
+        .search_items(&[("application", "nope")])
+        .await?;
+    assert!(unlocked.is_empty());
+    assert!(locked.is_empty());
+
+    Ok(())
+}
+
+// https://github.com/linux-credentials/oo7/issues/690
+//
+// Unlocking the item path returned by SearchItems migrates the keyring,
+// and the path resolves to the migrated item.
+#[tokio::test]
+async fn unlock_item_path_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
+
+    let setup =
+        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+
+    let (_, locked) = setup
+        .service_api
+        .search_items(&[("xdg:schema", "org.gnome.keyring.Note")])
+        .await?;
+    assert_eq!(locked.len(), 1);
+    let item_path = locked[0].inner().path().to_owned();
+
+    setup.set_password_queue(vec![Secret::from("test")]).await;
+    let unlocked = setup
+        .service_api
+        .unlock(std::slice::from_ref(&item_path), None)
+        .await?;
+    assert_eq!(unlocked.len(), 1, "Should have unlocked the item");
+
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        0,
+        "The migration should have completed"
+    );
+
+    // The same path now resolves to the migrated item, with its data
+    let item = oo7::dbus::api::Item::new(&setup.client_conn, item_path).await?;
+    assert!(!item.is_locked().await?);
+    assert_eq!(item.label().await?, "foo");
+    assert_eq!(item.secret(&setup.session).await?.value(), b"foo");
 
     Ok(())
 }
