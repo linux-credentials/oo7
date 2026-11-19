@@ -287,7 +287,13 @@ impl Prompt {
             };
 
             // Execute the unlock action after successful validation
-            let result_value = action.execute(secret).await?;
+            let result_value = match action.execute(secret).await {
+                Ok(value) => value,
+                Err(err) => {
+                    self.emit_dismissed().await;
+                    return Err(err);
+                }
+            };
 
             let prompt_path = self.path().to_owned();
             let signal_emitter = self.service.signal_emitter(&prompt_path)?;
