@@ -449,3 +449,41 @@ impl TestServiceSetup {
         Ok(())
     }
 }
+
+/// Set up a service with a legacy v0 keyring awaiting migration, and
+/// return the path of its locked placeholder collection. The fixture
+/// keyring is encrypted with "test" and holds a single item labeled
+/// "foo".
+pub(crate) async fn pending_migration_setup() -> Result<
+    (
+        TestServiceSetup,
+        tempfile::TempDir,
+        zbus::wire::OwnedObjectPath,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    let temp_dir = tempfile::tempdir()?;
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("client/fixtures/legacy.keyring");
+    tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
+
+    let setup =
+        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+
+    let collections = setup.service_api.collections().await?;
+    let mut legacy_path = None;
+    for collection in &collections {
+        if collection.label().await? == "Legacy" {
+            legacy_path = Some(collection.inner().path().to_owned().into());
+            break;
+        }
+    }
+    let legacy_path = legacy_path.expect("Should have Legacy placeholder collection");
+
+    Ok((setup, temp_dir, legacy_path))
+}

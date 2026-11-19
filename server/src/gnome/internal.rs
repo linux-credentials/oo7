@@ -225,7 +225,7 @@ mod tests {
     use oo7::{Secret, dbus};
     use zbus::wire::{ObjectPath, OwnedObjectPath};
 
-    use crate::tests::TestServiceSetup;
+    use crate::tests::{TestServiceSetup, pending_migration_setup};
 
     /// Proxy for the InternalUnsupportedGuiltRiddenInterface
     #[zbus::proxy(
@@ -707,36 +707,6 @@ mod tests {
         );
 
         Ok(())
-    }
-
-    /// Set up a service with a legacy v0 keyring awaiting migration
-    async fn pending_migration_setup()
-    -> Result<(TestServiceSetup, tempfile::TempDir, OwnedObjectPath), Box<dyn std::error::Error>>
-    {
-        let temp_dir = tempfile::tempdir()?;
-        let keyrings_dir = temp_dir.path().join("keyrings");
-        tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
-
-        let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("client/fixtures/legacy.keyring");
-        tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
-
-        let setup =
-            TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
-
-        let collections = setup.service_api.collections().await?;
-        let mut legacy_path = None;
-        for collection in &collections {
-            if collection.label().await? == "Legacy" {
-                legacy_path = Some(collection.inner().path().to_owned().into());
-                break;
-            }
-        }
-        let legacy_path = legacy_path.expect("Should have Legacy placeholder collection");
-
-        Ok((setup, temp_dir, legacy_path))
     }
 
     // https://github.com/linux-credentials/oo7/issues/689
