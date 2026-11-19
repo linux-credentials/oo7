@@ -230,3 +230,23 @@ async fn complete_collection_creation_no_pending() -> Result<(), Box<dyn std::er
     );
     Ok(())
 }
+
+// An empty label must not panic the daemon
+#[tokio::test]
+async fn create_collection_empty_label() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(false).await?;
+
+    let collection = setup.service_api.create_collection("", None, None).await?;
+
+    assert_eq!(collection.label().await?, "");
+    assert!(
+        setup
+            .service_api
+            .collections()
+            .await?
+            .iter()
+            .any(|c| c.inner().path() == collection.inner().path())
+    );
+
+    Ok(())
+}

@@ -458,9 +458,13 @@ pub(crate) fn alias_path(alias: &str) -> Option<OwnedObjectPath> {
 }
 
 pub(crate) fn collection_path(label: &str) -> Result<OwnedObjectPath, wire::Error> {
-    let sanitized_label = label
+    let mut sanitized_label = label
         .to_lowercase()
         .replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
+    if sanitized_label.is_empty() {
+        // An empty label would produce a path with a trailing slash
+        sanitized_label = "_".to_owned();
+    }
 
     OwnedObjectPath::try_from(format!(
         "/org/freedesktop/secrets/collection/{sanitized_label}"
