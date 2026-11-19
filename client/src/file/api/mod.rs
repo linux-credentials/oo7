@@ -92,7 +92,7 @@ impl Keyring {
             // TODO: UTC?
             modified_time: std::time::SystemTime::UNIX_EPOCH
                 .elapsed()
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs(),
             usage_count: 0,
             items: Vec::new(),
@@ -157,7 +157,7 @@ impl Keyring {
 
         self.modified_time = std::time::SystemTime::UNIX_EPOCH
             .elapsed()
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
         self.usage_count += 1;
 
