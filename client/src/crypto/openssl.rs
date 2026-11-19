@@ -172,6 +172,16 @@ pub(crate) fn verify_checksum_md5(digest: impl AsRef<[u8]>, content: impl AsRef<
     )
 }
 
+/// The lowercase hex encoded MD5 digest of `value`, as stored in the
+/// cleartext attribute section of legacy keyring files.
+pub fn md5_hex(value: &str) -> String {
+    hash(MessageDigest::md5(), value.as_bytes())
+        .unwrap()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 pub(crate) fn derive_key(
     secret: impl AsRef<[u8]>,
     key_strength: Result<(), file::WeakKeyError>,
