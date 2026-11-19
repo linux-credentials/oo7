@@ -691,7 +691,9 @@ mod tests {
         let collection =
             oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
         assert!(collection.is_locked().await?);
-        assert!(collection.items().await?.is_empty());
+        // The placeholder only exposes the locked stand-in item
+        assert_eq!(collection.items().await?.len(), 1);
+        assert!(collection.items().await?[0].is_locked().await?);
 
         let dbus_secret = setup.create_dbus_secret("test")?;
         internal_proxy
@@ -700,6 +702,8 @@ mod tests {
 
         assert!(!collection.is_locked().await?);
         assert_eq!(collection.items().await?.len(), 1);
+        assert!(!collection.items().await?[0].is_locked().await?);
+        assert_eq!(collection.items().await?[0].label().await?, "foo");
         assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
 
         Ok(())

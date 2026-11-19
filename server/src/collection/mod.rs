@@ -544,7 +544,25 @@ impl Collection {
             return Ok(Vec::new());
         };
         if keyring.is_locked() {
-            return Ok(Vec::new());
+            drop(keyring_guard);
+
+            // The placeholder items of a pending migration store their
+            // attribute values as MD5 digests; hash the searched values
+            // to match them. The generic schema fallback is compared
+            // as-is.
+            let hashed: HashMap<String, String> = attributes
+                .iter()
+                .map(|(key, value)| {
+                    if key.as_str() == oo7::XDG_SCHEMA_ATTRIBUTE
+                        && value.as_str() == oo7::GENERIC_SCHEMA
+                    {
+                        (key.clone(), value.clone())
+                    } else {
+                        (key.clone(), oo7::crypto::md5_hex(value))
+                    }
+                })
+                .collect();
+            return self.search_items_with_key(&hashed, None, false).await;
         }
         let key = keyring
             .as_unlocked()
@@ -667,16 +685,25 @@ impl Collection {
     }
 
     pub async fn dispatch_items(&self) -> Result<(), Error> {
-        let keyring_guard = self.keyring.read().await;
-        let keyring = keyring_guard.as_ref().unwrap();
+        let keyring_items = {
+            let keyring_guard = self.keyring.read().await;
+            let keyring = keyring_guard.as_ref().unwrap();
+            keyring.items().await?
+        };
+        self.dispatch_file_items(keyring_items).await
+    }
 
-        let keyring_items = keyring.items().await?;
+    /// Register the given file items on the object server and notify
+    /// clients.
+    pub async fn dispatch_file_items(
+        &self,
+        keyring_items: Vec<oo7::file::Item>,
+    ) -> Result<(), Error> {
         tracing::debug!(
             "Dispatching {} items for collection `{}`.",
             keyring_items.len(),
             self.path
         );
-        drop(keyring_guard);
 
         let mut dispatched_items = Vec::new();
         {
@@ -713,11 +740,24 @@ impl Collection {
         Ok(())
     }
 
+    /// Remove all items from the object server and the collection.
+    async fn clear_items(&self) -> Result<(), Error> {
+        let mut items = self.items.lock().await;
+        let object_server = self.service.object_server();
+        for item in items.iter() {
+            object_server.remove::<item::Item, _>(item.path()).await?;
+        }
+        items.clear();
+        Ok(())
+    }
+
     /// Replace the keyring with a just-migrated one, dispatch its items
     /// and emit the corresponding change signals.
     pub async fn apply_migrated_keyring(&self, keyring: Keyring) -> Result<(), Error> {
         *self.keyring.write().await = Some(keyring);
 
+        // Drop the placeholder items, the migrated items take their paths
+        self.clear_items().await?;
         self.dispatch_items().await?;
 
         // The keyring swap bypasses set_locked, so emit Locked here.
