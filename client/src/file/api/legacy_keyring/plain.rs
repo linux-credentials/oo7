@@ -26,6 +26,8 @@ use std::{collections::HashMap, io};
 use zeroize::Zeroizing;
 
 use super::{FILE_HEADER_LEN, item_type_schema};
+#[cfg(any(feature = "unstable", test))]
+use crate::file::Item;
 use crate::{
     Secret, XDG_SCHEMA_ATTRIBUTE,
     file::{Error, UnlockedItem},
@@ -41,6 +43,17 @@ pub struct Keyring {
 impl Keyring {
     pub fn into_items(self) -> Vec<UnlockedItem> {
         self.items
+    }
+
+    /// The items of this keyring, unlocked.
+    ///
+    /// As the keyring is not encrypted, the items carry their data.
+    #[cfg(any(feature = "unstable", test))]
+    pub fn items(&self) -> Vec<Item> {
+        self.items
+            .iter()
+            .map(|item| Item::Unlocked(item.clone()))
+            .collect()
     }
 
     fn read_item(id: &str, group: &Group, attribute_groups: &[&Group]) -> UnlockedItem {
