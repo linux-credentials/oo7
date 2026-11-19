@@ -33,7 +33,7 @@ kwallet-parser = { version = "0.8.0-alpha", path = "../kwallet/parser", optional
 libc.workspace = true
 num.workspace = true
 num-bigint-dig.workspace = true
-oo7 = { workspace = true, features = ["tokio"] }
+oo7 = { workspace = true, features = ["tokio", "unstable"] }
 openssl = { workspace = true, optional = true }
 rpassword.workspace = true
 rustix = { version = "1.1", default-features = false, features = ["process", "std", "thread", "mm", "fs", "net", "event"] }
