@@ -526,7 +526,7 @@ async fn concurrent_replace_and_lookup() -> Result<(), Box<dyn std::error::Error
 // https://github.com/linux-credentials/oo7/issues/696
 #[tokio::test]
 async fn create_item_in_locked_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
-    let (setup, _temp_dir, collection_path) = crate::tests::pending_migration_setup().await?;
+    let (setup, _temp_dir, collection_path) = crate::tests::pending_migration_setup(None).await?;
 
     let collection =
         oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
@@ -564,7 +564,7 @@ async fn create_item_in_locked_pending_migration() -> Result<(), Box<dyn std::er
 // https://github.com/linux-credentials/oo7/issues/696
 #[tokio::test]
 async fn delete_item_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
-    let (setup, _temp_dir, collection_path) = crate::tests::pending_migration_setup().await?;
+    let (setup, _temp_dir, collection_path) = crate::tests::pending_migration_setup(None).await?;
 
     let collection =
         oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;

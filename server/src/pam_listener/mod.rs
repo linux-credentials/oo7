@@ -306,10 +306,17 @@ impl PamListener {
                 tracing::debug!("Attempting to unlock collection: {}", collection.path());
 
                 // Try to unlock with the provided secret
-                if let Err(e) = collection.set_locked(false, Some(secret.clone())).await {
-                    tracing::debug!("Failed to unlock collection {}: {}", collection.path(), e);
-                } else {
-                    tracing::info!("Unlocked collection: {}", collection.path());
+                match self
+                    .service
+                    .unlock_collection(collection, Some(secret.clone()))
+                    .await
+                {
+                    Ok(()) => {
+                        tracing::info!("Unlocked collection: {}", collection.path());
+                    }
+                    Err(e) => {
+                        tracing::debug!("Failed to unlock collection {}: {}", collection.path(), e);
+                    }
                 }
             }
         }
@@ -352,7 +359,11 @@ impl PamListener {
                 );
                 drop(keyring_guard);
 
-                if let Err(e) = collection.set_locked(false, Some(old_secret.clone())).await {
+                if let Err(e) = self
+                    .service
+                    .unlock_collection(collection, Some(old_secret.clone()))
+                    .await
+                {
                     tracing::warn!(
                         "Failed to unlock collection {} with old password: {}",
                         path,
