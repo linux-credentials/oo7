@@ -455,6 +455,66 @@ mod tests {
         Ok(())
     }
 
+    // https://github.com/linux-credentials/oo7/issues/696
+    #[tokio::test]
+    async fn test_change_with_prompt_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
+        let (setup, _temp_dir, collection_path) = pending_migration_setup().await?;
+        let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
+            .build()
+            .await?;
+
+        let collection =
+            oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
+        assert!(collection.is_locked().await?);
+
+        // Queue: old password first (to unlock and migrate), then the new
+        // password (to change to)
+        let new_password = Secret::text("changed-via-prompt");
+        setup
+            .set_password_queue(vec![Secret::from("test"), new_password.clone()])
+            .await;
+
+        let prompt_path = internal_proxy
+            .change_with_prompt(&collection_path.as_ref())
+            .await?;
+        let prompt_proxy = dbus::api::Prompt::new(&setup.client_conn, prompt_path)
+            .await?
+            .unwrap();
+        prompt_proxy.receive_completed(None).await?;
+
+        // The migration completed and the keyring holds its items
+        assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
+        assert!(!collection.is_locked().await?);
+        assert_eq!(collection.items().await?.len(), 1);
+        assert_eq!(collection.items().await?[0].label().await?, "foo");
+
+        // The keyring now opens with the new password, not the old one
+        setup
+            .service_api
+            .lock(std::slice::from_ref(&collection_path), None)
+            .await?;
+        internal_proxy
+            .unlock_with_master_password(
+                &collection_path.as_ref(),
+                setup.create_dbus_secret(new_password)?.into(),
+            )
+            .await?;
+        assert!(!collection.is_locked().await?);
+        setup
+            .service_api
+            .lock(std::slice::from_ref(&collection_path), None)
+            .await?;
+        let result = internal_proxy
+            .unlock_with_master_password(
+                &collection_path.as_ref(),
+                setup.create_dbus_secret("test")?.into(),
+            )
+            .await;
+        assert!(result.is_err(), "The old password should no longer unlock");
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn test_change_with_prompt_locked_collection() -> Result<(), Box<dyn std::error::Error>> {
         let setup = TestServiceSetup::plain_session(true).await?;

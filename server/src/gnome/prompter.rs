@@ -525,7 +525,8 @@ impl GNOMEPrompterCallback {
                     let collection = prompt
                         .collection()
                         .expect("ChangePassword requires a collection");
-                    let properties = match collection.set_locked(false, secret).await {
+                    let properties = match self.service.unlock_collection(collection, secret).await
+                    {
                         Ok(()) => {
                             self.change_password_unlocked.store(true, Ordering::Relaxed);
                             Properties::for_change_password_new(
