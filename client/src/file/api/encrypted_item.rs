@@ -83,6 +83,9 @@ impl EncryptedItem {
         let n_iv = crypto::iv_len();
 
         // The encrypted data, the iv, and the mac are concatenated into blob.
+        if n < n_mac + n_iv {
+            return Err(Error::NoData);
+        }
         let (encrypted_data_with_iv, mac_tag) = &self.blob.split_at(n - n_mac);
 
         // verify item
@@ -130,5 +133,23 @@ impl EncryptedItem {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decrypt_short_blob_is_an_error() {
+        // The placeholder items of a pending migration carry no blob
+        let item = EncryptedItem {
+            hashed_attributes: HashMap::new(),
+            blob: Vec::new(),
+        };
+        let key = Key::new(vec![
+            132, 3, 113, 222, 81, 209, 49, 43, 81, 232, 243, 46, 1, 103, 184, 42,
+        ]);
+        assert!(matches!(item.decrypt(Some(&key)), Err(Error::NoData)));
     }
 }
