@@ -639,24 +639,18 @@ impl Collection {
                     Keyring::Locked(unlocked.lock())
                 }
                 (Keyring::Locked(locked_kr), false) => {
-                    let keyring_path = locked_kr.path().map(|p| p.to_path_buf());
-
                     let unlock_result = if let Some(secret) = secret {
-                        locked_kr.unlock(secret).await
+                        locked_kr.try_unlock(secret).await
                     } else {
-                        locked_kr.unlock_unencrypted().await
+                        locked_kr.try_unlock_unencrypted().await
                     };
 
                     let unlocked = match unlock_result {
                         Ok(unlocked) => unlocked,
                         Err(err) => {
-                            // Reload the locked keyring from disk before
-                            // returning error
-                            if let Some(path) = keyring_path
-                                && let Ok(reloaded) = oo7::file::LockedKeyring::load(&path).await
-                            {
-                                *keyring_guard = Some(Keyring::Locked(reloaded));
-                            }
+                            // Put the locked keyring back, it can be
+                            // unlocked again
+                            *keyring_guard = Some(Keyring::Locked(locked_kr));
                             return Err(custom_service_error(&format!(
                                 "Failed to unlock keyring: {err}"
                             )));
