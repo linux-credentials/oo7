@@ -10,7 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 clap.workspace = true
-kwallet-parser = { version = "0.7.1", path = "../parser" }
+kwallet-parser = { version = "0.7.2", path = "../parser" }
 oo7 = { workspace = true, features = ["tokio", "native_crypto"] }
 rpassword.workspace = true
 serde.workspace = true
