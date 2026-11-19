@@ -97,3 +97,93 @@ async fn locked_collection_operations() -> Result<(), Box<dyn std::error::Error>
 
     Ok(())
 }
+
+// A failed unlock must not brick the collection when the keyring file
+// can no longer be read from disk
+enum KeyringDamage {
+    Corrupted,
+    Deleted,
+}
+
+async fn unlock_after_keyring_file_is_damaged(
+    damage: KeyringDamage,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use oo7::{Secret, file::UnlockedKeyring};
+
+    let temp_dir = tempfile::tempdir()?;
+    let secret = Secret::from("test-password-long-enough");
+    let keyring = UnlockedKeyring::open_at(temp_dir.path(), "login", Some(secret.clone())).await?;
+    keyring
+        .create_item(
+            "Test Item",
+            &[("app", "test")],
+            Secret::text("item-secret"),
+            false,
+        )
+        .await?;
+    keyring.write().await?;
+
+    let setup = TestServiceSetup::with_disk_keyrings(
+        temp_dir.path().to_path_buf(),
+        None,
+        Some(secret.clone()),
+    )
+    .await?;
+
+    let collection = setup
+        .server
+        .collection_from_path(
+            setup
+                .service_api
+                .read_alias("default")
+                .await?
+                .expect("default collection should exist")
+                .inner()
+                .path(),
+        )
+        .await
+        .expect("collection should exist");
+
+    // Damage the keyring file behind the daemon's back
+    let keyring_path = temp_dir.path().join("keyrings/v1/login.keyring");
+    match damage {
+        KeyringDamage::Corrupted => tokio::fs::write(&keyring_path, b"corrupted").await?,
+        KeyringDamage::Deleted => tokio::fs::remove_file(&keyring_path).await?,
+    }
+
+    collection.set_locked(true, None).await?;
+    assert!(collection.is_locked().await);
+
+    // A wrong secret fails and leaves the collection locked
+    assert!(
+        collection
+            .set_locked(false, Some(Secret::from("wrong-password")))
+            .await
+            .is_err()
+    );
+    assert!(collection.is_locked().await);
+
+    // The correct secret still unlocks the in-memory keyring, with its
+    // items
+    collection.set_locked(false, Some(secret)).await?;
+    assert!(!collection.is_locked().await);
+    let found = collection
+        .search_inner_items(&std::collections::HashMap::from([(
+            "app".to_string(),
+            "test".to_string(),
+        )]))
+        .await?;
+    assert_eq!(found.len(), 1, "The in-memory items should have survived");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn unlock_after_keyring_file_is_corrupted() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_after_keyring_file_is_damaged(KeyringDamage::Corrupted).await
+}
+
+#[tokio::test]
+async fn unlock_after_keyring_file_is_deleted() -> Result<(), Box<dyn std::error::Error>> {
+    unlock_after_keyring_file_is_damaged(KeyringDamage::Deleted).await
+}

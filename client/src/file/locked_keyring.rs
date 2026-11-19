@@ -90,6 +90,14 @@ impl LockedKeyring {
 
     /// Unlocks a keyring and validates it
     pub async fn unlock(self, secret: Secret) -> Result<UnlockedKeyring, Error> {
+        self.try_unlock(secret).await
+    }
+
+    /// Unlocks a keyring and validates it
+    ///
+    /// The keyring is left untouched when the secret does not decrypt it,
+    /// unlike [`Self::unlock`] which consumes it.
+    pub async fn try_unlock(&self, secret: Secret) -> Result<UnlockedKeyring, Error> {
         self.unlock_inner(secret, true).await
     }
 
@@ -111,7 +119,7 @@ impl LockedKeyring {
         Self::log_validation_error(&validation, false);
         validation?;
 
-        Ok(self.into_unlocked(Some(Arc::new(key)), None))
+        Ok(self.to_unlocked(Some(Arc::new(key)), None).await)
     }
 
     /// Unlocks a keyring without validating it
@@ -128,7 +136,7 @@ impl LockedKeyring {
     }
 
     async fn unlock_inner(
-        self,
+        &self,
         secret: Secret,
         validate_items: bool,
     ) -> Result<UnlockedKeyring, Error> {
@@ -146,7 +154,7 @@ impl LockedKeyring {
             None
         };
 
-        Ok(self.into_unlocked(key, Some(Arc::new(secret))))
+        Ok(self.to_unlocked(key, Some(Arc::new(secret))).await)
     }
 
     #[cfg(feature = "tracing")]
@@ -180,11 +188,16 @@ impl LockedKeyring {
         }
     }
 
-    fn into_unlocked(self, key: Option<Arc<Key>>, secret: Option<Arc<Secret>>) -> UnlockedKeyring {
+    /// An unlocked handle on the same keyring data.
+    async fn to_unlocked(
+        &self,
+        key: Option<Arc<Key>>,
+        secret: Option<Arc<Secret>>,
+    ) -> UnlockedKeyring {
         UnlockedKeyring {
-            keyring: self.keyring,
-            path: self.path,
-            mtime: self.mtime,
+            keyring: Arc::clone(&self.keyring),
+            path: self.path.clone(),
+            mtime: Mutex::new(*self.mtime.lock().await),
             key: Mutex::new(key),
             secret: Mutex::new(secret),
         }
@@ -196,6 +209,14 @@ impl LockedKeyring {
     /// encryption. Returns [`Error::IncorrectSecret`] if encrypted items
     /// are found.
     pub async fn unlock_unencrypted(self) -> Result<UnlockedKeyring, Error> {
+        self.try_unlock_unencrypted().await
+    }
+
+    /// Unlocks a keyring without a secret, for unencrypted keyrings.
+    ///
+    /// The keyring is left untouched when it holds encrypted items,
+    /// unlike [`Self::unlock_unencrypted`] which consumes it.
+    pub async fn try_unlock_unencrypted(&self) -> Result<UnlockedKeyring, Error> {
         let inner_keyring = self.keyring.read().await;
         for encrypted_item in &inner_keyring.items {
             if !encrypted_item.is_valid(None) {
@@ -204,7 +225,7 @@ impl LockedKeyring {
         }
         drop(inner_keyring);
 
-        Ok(self.into_unlocked(None, None))
+        Ok(self.to_unlocked(None, None).await)
     }
 
     /// Load a keyring from a file path.
