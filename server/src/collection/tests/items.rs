@@ -522,3 +522,70 @@ async fn concurrent_replace_and_lookup() -> Result<(), Box<dyn std::error::Error
 
     Ok(())
 }
+
+// https://github.com/linux-credentials/oo7/issues/696
+#[tokio::test]
+async fn create_item_in_locked_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
+    let (setup, _temp_dir, collection_path) = crate::tests::pending_migration_setup().await?;
+
+    let collection =
+        oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
+    assert!(collection.is_locked().await?);
+
+    setup
+        .set_password_queue(vec![oo7::Secret::from("test")])
+        .await;
+    let item = collection
+        .create_item(
+            "New Item",
+            &[("application", "test-app")],
+            &setup.create_dbus_secret("item-secret")?,
+            false,
+            None,
+        )
+        .await?;
+
+    assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
+    assert!(!collection.is_locked().await?);
+    let items = collection.items().await?;
+    assert_eq!(items.len(), 2);
+    assert_eq!(item.label().await?, "New Item");
+    assert_eq!(item.secret(&setup.session).await?.value(), b"item-secret");
+    let mut has_legacy_item = false;
+    for i in &items {
+        if i.label().await? == "foo" {
+            has_legacy_item = true;
+        }
+    }
+    assert!(has_legacy_item, "The legacy item should have been migrated");
+    Ok(())
+}
+
+// https://github.com/linux-credentials/oo7/issues/696
+#[tokio::test]
+async fn delete_item_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
+    let (setup, _temp_dir, collection_path) = crate::tests::pending_migration_setup().await?;
+
+    let collection =
+        oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
+
+    // Delete the placeholder item reported by SearchItems
+    let (_, locked) = setup
+        .service_api
+        .search_items(&[("xdg:schema", "org.gnome.keyring.Note")])
+        .await?;
+    assert_eq!(locked.len(), 1);
+
+    setup
+        .set_password_queue(vec![oo7::Secret::from("test")])
+        .await;
+    locked[0].delete(None).await?;
+
+    // The migration completed and the item was deleted from the migrated
+    // keyring
+    assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
+    assert!(!collection.is_locked().await?);
+    assert_eq!(collection.items().await?.len(), 0);
+
+    Ok(())
+}
