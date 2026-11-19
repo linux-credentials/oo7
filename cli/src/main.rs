@@ -698,13 +698,21 @@ impl Commands {
                     Keyring::File(keyring) => {
                         let items = keyring.all_items().await?;
                         let mut outputs = Vec::new();
+                        let mut n_invalid = 0;
                         for item in items {
                             match item {
                                 Ok(item) => outputs.push(ItemOutput::from_file_item(&item, hex)),
-                                Err(_) if !json => {
-                                    println!("Item is not valid and cannot be decrypted");
-                                }
-                                Err(_) => {} // Skip invalid items in JSON mode
+                                Err(_) => n_invalid += 1,
+                            }
+                        }
+                        if !json && n_invalid > 0 {
+                            if outputs.is_empty() {
+                                // All items fail to decrypt -> secret is wrong
+                                println!(
+                                    "None of the items could be decrypted, the keyring secret is likely wrong"
+                                );
+                            } else {
+                                println!("{n_invalid} items are not valid and cannot be decrypted");
                             }
                         }
                         outputs
