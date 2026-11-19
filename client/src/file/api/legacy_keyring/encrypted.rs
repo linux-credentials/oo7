@@ -66,6 +66,9 @@ impl Keyring {
             self.iteration_count.try_into().unwrap(),
         )?;
         let decrypted = crypto::decrypt_no_padding(&self.encrypted_content, &key, iv)?;
+        if decrypted.len() < 16 {
+            return Err(Error::NoData);
+        }
         let (digest, content) = decrypted.split_at(16);
         if !crypto::verify_checksum_md5(digest, content) {
             return Err(Error::ChecksumMismatch);
@@ -320,6 +323,21 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+
+    #[test]
+    fn decrypt_empty_content_is_an_error() {
+        // A crafted keyring file can declare an empty encrypted content
+        let keyring = Keyring {
+            salt: vec![0; 8],
+            iteration_count: 100000,
+            encrypted_content: Vec::new(),
+            hashed_items: Vec::new(),
+        };
+        assert!(matches!(
+            keyring.decrypt_items(&Secret::from("test")),
+            Err(Error::NoData)
+        ));
+    }
 
     #[test]
     fn legacy_decrypt() -> Result<(), Error> {
