@@ -38,10 +38,11 @@ impl ashpd::backend::secret::SecretImpl for Secret {
         token: HandleToken,
         app_id: ashpd::MaybeAppID,
         fd: std::os::fd::OwnedFd,
+        options: ashpd::desktop::secret::RetrieveOptions,
     ) -> ashpd::backend::Result<HashMap<String, OwnedVariant>> {
         tracing::debug!("Request from app: {app_id}");
 
-        let task = tokio::spawn(async move { send_secret_to_app(&app_id, fd).await });
+        let task = tokio::spawn(async move { send_secret_to_app(&app_id, fd, options).await });
 
         // Store the abort handle for this request
         {
@@ -66,7 +67,11 @@ impl ashpd::backend::secret::SecretImpl for Secret {
 }
 
 /// Generates, stores and send the secret back to the fd stream
-async fn send_secret_to_app(app_id: &ashpd::MaybeAppID, fd: std::os::fd::OwnedFd) -> Result<()> {
+async fn send_secret_to_app(
+    app_id: &ashpd::MaybeAppID,
+    fd: std::os::fd::OwnedFd,
+    options: ashpd::desktop::secret::RetrieveOptions,
+) -> Result<()> {
     let service = Service::new().await?;
     let collection = service.default_collection().await?;
     // Native apps can have a desktop file name or an empty ID. Keep the
@@ -78,7 +83,9 @@ async fn send_secret_to_app(app_id: &ashpd::MaybeAppID, fd: std::os::fd::OwnedFd
     let mut file = tokio::fs::File::from_std(std::fs::File::from(fd));
 
     if collection.is_locked().await? {
-        collection.unlock(None).await?;
+        collection
+            .unlock(options.parent_window().cloned().map(Into::into))
+            .await?;
     }
 
     if let Some(item) = collection.search_items(attributes).await?.first() {
