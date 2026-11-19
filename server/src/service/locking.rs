@@ -7,7 +7,7 @@ use zbus::{
 };
 
 use super::Service;
-use crate::{collection::Collection, error::custom_service_error};
+use crate::{collection::Collection, error::custom_service_error, migration::PendingMigration};
 
 impl Service {
     pub async fn set_locked(
@@ -225,10 +225,18 @@ impl Service {
 
     pub async fn migrate_pending_keyrings(&self, secret: &Secret) -> Vec<String> {
         let mut migrated = Vec::new();
-        let mut pending = self.pending_migrations.lock().await;
+        // Migrating reads files and derives keys, don't hold the lock for it
+        let migrations: Vec<PendingMigration> = self
+            .pending_migrations
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect();
         let mut to_remove = Vec::new();
 
-        for (name, migration) in pending.iter() {
+        for migration in &migrations {
+            let name = migration.name();
             tracing::debug!("Attempting to migrate pending keyring: {name}");
 
             match migration.migrate(&self.data_dir, Some(secret)).await {
@@ -284,8 +292,8 @@ impl Service {
                         }
                     }
 
-                    migrated.push(name.clone());
-                    to_remove.push(name.clone());
+                    migrated.push(name.to_owned());
+                    to_remove.push(name.to_owned());
                 }
                 Err(e) => {
                     tracing::debug!(
@@ -296,6 +304,7 @@ impl Service {
             }
         }
 
+        let mut pending = self.pending_migrations.lock().await;
         for name in &to_remove {
             pending.remove(name);
         }
