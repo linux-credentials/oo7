@@ -89,7 +89,9 @@ impl InternalInterface {
             .await
             .ok_or_else(|| ServiceError::NoSuchObject(collection.to_string()))?;
 
-        collection_obj.set_locked(false, Some(secret)).await?;
+        self.service
+            .unlock_collection(&collection_obj, Some(secret))
+            .await?;
 
         tracing::info!(
             "Collection `{}` unlocked via InternalUnsupportedGuiltRiddenInterface",
@@ -116,8 +118,8 @@ impl InternalInterface {
             .await
             .ok_or_else(|| ServiceError::NoSuchObject(collection.to_string()))?;
 
-        collection_obj
-            .set_locked(false, Some(original_secret))
+        self.service
+            .unlock_collection(&collection_obj, Some(original_secret))
             .await?;
 
         let keyring_guard = collection_obj.keyring.read().await;
@@ -643,6 +645,134 @@ mod tests {
             matches!(result, Err(dbus::Error::Dismissed)),
             "Failed prompt action should emit Completed(dismissed=true), got: {result:?}"
         );
+
+        Ok(())
+    }
+
+    /// Set up a service with a legacy v0 keyring awaiting migration
+    async fn pending_migration_setup()
+    -> Result<(TestServiceSetup, tempfile::TempDir, OwnedObjectPath), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let keyrings_dir = temp_dir.path().join("keyrings");
+        tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+        let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("client/fixtures/legacy.keyring");
+        tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
+
+        let setup =
+            TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+
+        let collections = setup.service_api.collections().await?;
+        let mut legacy_path = None;
+        for collection in &collections {
+            if collection.label().await? == "Legacy" {
+                legacy_path = Some(collection.inner().path().to_owned().into());
+                break;
+            }
+        }
+        let legacy_path = legacy_path.expect("Should have Legacy placeholder collection");
+
+        Ok((setup, temp_dir, legacy_path))
+    }
+
+    // https://github.com/linux-credentials/oo7/issues/689
+    #[tokio::test]
+    async fn test_unlock_with_master_password_pending_migration()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (setup, _temp_dir, collection_path) = pending_migration_setup().await?;
+        let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
+            .build()
+            .await?;
+
+        let collection =
+            oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
+        assert!(collection.is_locked().await?);
+        assert!(collection.items().await?.is_empty());
+
+        let dbus_secret = setup.create_dbus_secret("test")?;
+        internal_proxy
+            .unlock_with_master_password(&collection_path.as_ref(), dbus_secret.into())
+            .await?;
+
+        assert!(!collection.is_locked().await?);
+        assert_eq!(collection.items().await?.len(), 1);
+        assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
+
+        Ok(())
+    }
+
+    // https://github.com/linux-credentials/oo7/issues/689
+    #[tokio::test]
+    async fn test_unlock_with_master_password_pending_migration_wrong_password()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (setup, _temp_dir, collection_path) = pending_migration_setup().await?;
+        let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
+            .build()
+            .await?;
+
+        let collection =
+            oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
+
+        let wrong_dbus_secret = setup.create_dbus_secret("wrong-password")?;
+        let result = internal_proxy
+            .unlock_with_master_password(&collection_path.as_ref(), wrong_dbus_secret.into())
+            .await;
+
+        assert!(result.is_err(), "Unlocking with wrong password should fail");
+        assert!(collection.is_locked().await?);
+        assert_eq!(
+            setup.server.pending_migrations.lock().await.len(),
+            1,
+            "Migration should still be pending"
+        );
+
+        Ok(())
+    }
+
+    // https://github.com/linux-credentials/oo7/issues/689
+    #[tokio::test]
+    async fn test_change_with_master_password_pending_migration()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (setup, _temp_dir, collection_path) = pending_migration_setup().await?;
+        let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
+            .build()
+            .await?;
+
+        let collection =
+            oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
+
+        let new_secret = Secret::text("new-master-password");
+        internal_proxy
+            .change_with_master_password(
+                &collection_path.as_ref(),
+                setup.create_dbus_secret("test")?.into(),
+                setup.create_dbus_secret(new_secret.clone())?.into(),
+            )
+            .await?;
+
+        // The keyring is migrated and unlocked with its items
+        assert!(!collection.is_locked().await?);
+        assert_eq!(collection.items().await?.len(), 1);
+        assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
+
+        // The migrated keyring now opens with the new master password
+        setup
+            .service_api
+            .lock(std::slice::from_ref(&collection_path), None)
+            .await?;
+        assert!(collection.is_locked().await?);
+
+        internal_proxy
+            .unlock_with_master_password(
+                &collection_path.as_ref(),
+                setup.create_dbus_secret(new_secret)?.into(),
+            )
+            .await?;
+        assert!(!collection.is_locked().await?);
 
         Ok(())
     }
