@@ -38,6 +38,12 @@ pub enum Keyring {
 }
 
 impl Keyring {
+    /// Whether this keyring is stored in the encrypted binary format.
+    #[cfg(any(feature = "unstable", test))]
+    pub fn is_encrypted(&self) -> bool {
+        matches!(self, Self::Encrypted(_))
+    }
+
     /// Retrieve the keyring items.
     ///
     /// The secret is ignored for plain keyrings.
@@ -45,6 +51,17 @@ impl Keyring {
         match self {
             Self::Encrypted(keyring) => keyring.decrypt_items(secret),
             Self::Plain(keyring) => Ok(keyring.into_items()),
+        }
+    }
+
+    /// Check whether the secret can decrypt this keyring.
+    ///
+    /// Plain keyrings are not encrypted and accept any secret.
+    #[cfg(any(feature = "unstable", test))]
+    pub fn validate_secret(&self, secret: &Secret) -> Result<bool, Error> {
+        match self {
+            Self::Encrypted(keyring) => keyring.validate_secret(secret),
+            Self::Plain(_) => Ok(true),
         }
     }
 }
@@ -60,5 +77,53 @@ impl TryFrom<&[u8]> for Keyring {
         } else {
             plain::Keyring::try_from(value).map(Self::Plain)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(name: &str) -> Vec<u8> {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join(name);
+        std::fs::read(path).unwrap()
+    }
+
+    #[test]
+    fn encrypted_keyring() {
+        let keyring = Keyring::try_from(fixture("legacy.keyring").as_slice()).unwrap();
+        assert!(keyring.is_encrypted());
+
+        assert!(
+            keyring
+                .validate_secret(&Secret::from("test"))
+                .expect("validation should not fail")
+        );
+        assert!(
+            !keyring
+                .validate_secret(&Secret::from("wrong-password"))
+                .expect("validation should not fail")
+        );
+
+        let items = keyring
+            .decrypt_items(&Secret::from("test"))
+            .expect("decryption should not fail");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label(), "foo");
+    }
+
+    #[test]
+    fn plain_keyring() {
+        let keyring = Keyring::try_from(fixture("plain.keyring").as_slice()).unwrap();
+        assert!(!keyring.is_encrypted());
+
+        // Plain keyrings accept any secret
+        assert!(
+            keyring
+                .validate_secret(&Secret::from("anything"))
+                .expect("validation should not fail")
+        );
     }
 }

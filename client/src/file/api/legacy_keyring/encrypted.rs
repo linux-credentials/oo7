@@ -28,6 +28,22 @@ pub struct Keyring {
 
 impl Keyring {
     pub fn decrypt_items(self, secret: &Secret) -> Result<Vec<UnlockedItem>, Error> {
+        let content = self.decrypt_content(secret)?;
+        self.read_items(&content)
+    }
+
+    /// Check whether the secret can decrypt this keyring.
+    #[cfg(any(feature = "unstable", test))]
+    pub fn validate_secret(&self, secret: &Secret) -> Result<bool, Error> {
+        match self.decrypt_content(secret) {
+            Ok(_) => Ok(true),
+            Err(Error::ChecksumMismatch) => Ok(false),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Decrypt the keyring content, verifying its checksum.
+    fn decrypt_content(&self, secret: &Secret) -> Result<Vec<u8>, Error> {
         let (key, iv) = crypto::legacy_derive_key_and_iv(
             &**secret,
             &self.salt,
@@ -38,7 +54,7 @@ impl Keyring {
         if !crypto::verify_checksum_md5(digest, content) {
             return Err(Error::ChecksumMismatch);
         }
-        self.read_items(content)
+        Ok(content.to_vec())
     }
 
     fn read_attributes<'a>(

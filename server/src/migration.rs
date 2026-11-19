@@ -38,7 +38,11 @@ impl PendingMigration {
     /// placeholder keyring of a pending migration accepts any secret.
     pub async fn validate_secret(&self, secret: &Secret) -> Result<bool, Error> {
         match self {
-            Self::V0 { path, .. } => Ok(oo7::file::validate_legacy_secret(path, secret).await?),
+            Self::V0 { path, .. } => {
+                let content = tokio::fs::read(path).await?;
+                let keyring = oo7::file::api::LegacyKeyring::try_from(content.as_slice())?;
+                Ok(keyring.validate_secret(secret)?)
+            }
             #[cfg(feature = "kwallet_migration")]
             Self::KWallet { path, .. } => {
                 let path = path.clone();
