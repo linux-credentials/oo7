@@ -186,7 +186,13 @@ impl Service {
 
                 if let Some((collection, item, is_locked)) = found_collection {
                     if is_locked {
-                        let _ = collection.set_locked(false, secret.clone()).await;
+                        if let Err(e) = self.unlock_collection(&collection, secret.clone()).await {
+                            tracing::warn!(
+                                "Failed to unlock collection {}: {}",
+                                collection.path(),
+                                e
+                            );
+                        }
                     } else {
                         let keyring = collection.keyring.read().await;
                         match keyring.as_ref() {
@@ -195,7 +201,15 @@ impl Service {
                             }
                             _ => {
                                 drop(keyring);
-                                let _ = collection.set_locked(false, secret.clone()).await;
+                                if let Err(e) =
+                                    self.unlock_collection(&collection, secret.clone()).await
+                                {
+                                    tracing::warn!(
+                                        "Failed to unlock collection {}: {}",
+                                        collection.path(),
+                                        e
+                                    );
+                                }
                             }
                         }
                     }
