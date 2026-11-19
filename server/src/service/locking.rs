@@ -7,7 +7,7 @@ use zbus::{
 };
 
 use super::Service;
-use crate::collection::Collection;
+use crate::{collection::Collection, error::custom_service_error};
 
 impl Service {
     pub async fn set_locked(
@@ -113,9 +113,51 @@ impl Service {
             .await
     }
 
+    /// Unlock a collection with a secret, completing its pending legacy
+    /// keyring migration, if any.
+    ///
+    /// Unlike [`Collection::set_locked`], this migrates the legacy keyring
+    /// registered for the collection instead of unlocking the empty
+    /// placeholder backing it, and fails if the secret cannot decrypt it.
+    pub(crate) async fn unlock_collection(
+        &self,
+        collection: &Collection,
+        secret: Option<Secret>,
+    ) -> Result<(), ServiceError> {
+        let migration = {
+            let pending = self.pending_migrations.lock().await;
+            pending.get(collection.name()).cloned()
+        };
+
+        let Some(migration) = migration else {
+            return collection.set_locked(false, secret).await;
+        };
+
+        let name = migration.name().to_owned();
+        tracing::debug!("Attempting migration for '{name}' during unlock");
+        match migration.migrate(&self.data_dir, secret.as_ref()).await {
+            Ok(unlocked) => {
+                tracing::info!("Successfully migrated '{name}' during unlock");
+
+                collection
+                    .apply_migrated_keyring(Keyring::Unlocked(unlocked))
+                    .await
+                    .map_err(|e| {
+                        custom_service_error(&format!(
+                            "Failed to dispatch items of migrated keyring '{name}': {e}"
+                        ))
+                    })?;
+
+                self.pending_migrations.lock().await.remove(&name);
+                Ok(())
+            }
+            Err(e) => Err(custom_service_error(&format!(
+                "Failed to migrate keyring '{name}': {e}"
+            ))),
+        }
+    }
+
     pub(crate) async fn perform_unlock(&self, objects: &[OwnedObjectPath], secret: Option<Secret>) {
-        // First, check for pending migrations (without holding collections
-        // lock)
         for object in objects {
             let collection = {
                 let collections = self.collections.lock().await;
@@ -123,52 +165,8 @@ impl Service {
             };
 
             if let Some(collection) = collection {
-                // Check if this collection has a pending migration by name
-                let migration_opt = {
-                    let pending = self.pending_migrations.lock().await;
-                    pending.get(collection.name()).cloned()
-                };
-
-                if let Some(migration) = migration_opt {
-                    let migration_name = migration.name();
-                    tracing::debug!(
-                        "Attempting migration for '{}' during unlock",
-                        migration_name
-                    );
-
-                    // Attempt migration with the provided secret (no locks
-                    // held)
-                    match migration.migrate(&self.data_dir, secret.as_ref()).await {
-                        Ok(unlocked_keyring) => {
-                            tracing::info!(
-                                "Successfully migrated '{}' during unlock",
-                                migration_name
-                            );
-
-                            // Replace the placeholder and notify clients
-                            if let Err(e) = collection
-                                .apply_migrated_keyring(Keyring::Unlocked(unlocked_keyring))
-                                .await
-                            {
-                                tracing::error!("Failed to dispatch items after migration: {}", e);
-                            }
-
-                            // Remove from pending migrations
-                            self.pending_migrations.lock().await.remove(migration_name);
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Failed to migrate '{}' during unlock: {}",
-                                migration_name,
-                                e
-                            );
-                            // Keep the placeholder locked so the migration
-                            // can be retried.
-                        }
-                    }
-                } else {
-                    // Normal unlock
-                    let _ = collection.set_locked(false, secret.clone()).await;
+                if let Err(e) = self.unlock_collection(&collection, secret.clone()).await {
+                    tracing::warn!("Failed to unlock collection {}: {}", collection.path(), e);
                 }
             } else {
                 // Try to find as item within collections
