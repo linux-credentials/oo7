@@ -412,8 +412,10 @@ enum Commands {
 
     #[command(name = "change-secret", about = "Change the keyring secret")]
     ChangeSecret {
-        #[arg(help = "The new secret. If not provided, it will be read from the terminal")]
-        new_secret: Option<oo7::Secret>,
+        #[arg(
+            help = "The new secret. If not provided, it will be read from the terminal. Use '-' to read it from stdin"
+        )]
+        new_secret: Option<String>,
     },
 
     #[command(
@@ -448,9 +450,12 @@ impl fmt::Display for MigrateFormat {
 }
 
 impl Commands {
-    async fn execute(self, args: Arguments) -> Result<(), Error> {
+    async fn execute(self, mut args: Arguments) -> Result<(), Error> {
+        // A secret of "-" is read from stdin
+        let secret = resolve_secret(args.secret.take())?;
+
         if matches!(self, Commands::Migrate { .. }) {
-            return self.migrate(args.secret).await;
+            return self.migrate(secret).await;
         }
 
         let service = Service::new().await?;
@@ -494,9 +499,9 @@ impl Commands {
             });
             (Some(secret), path)
         } else if let Some(keyring) = args.keyring {
-            let secret = args.secret.or_else(|| {
+            let secret = secret.or_else(|| {
                 if std::io::stdin().is_terminal() {
-                    rpassword::prompt_password("Keyring secret: ")
+                    rpassword::prompt_password("Keyring Secret: ")
                         .ok()
                         .filter(|s| !s.is_empty())
                         .map(oo7::Secret::from)
@@ -505,7 +510,7 @@ impl Commands {
                 }
             });
             (secret, Some(keyring))
-        } else if let Some(secret) = args.secret {
+        } else if let Some(secret) = secret {
             (
                 Some(secret),
                 data_dir().map(|mut path| {
@@ -752,7 +757,7 @@ impl Commands {
             Commands::ChangeSecret { new_secret } => {
                 match keyring {
                     Keyring::File(keyring) => {
-                        let secret = match new_secret {
+                        let secret = match resolve_secret(new_secret)? {
                             Some(s) => s,
                             None => {
                                 let s = rpassword::prompt_password("Type the new secret: ")
@@ -949,9 +954,9 @@ struct Arguments {
         short,
         long,
         global = true,
-        help = "Specify the keyring secret"
+        help = "Specify the keyring secret. Use '-' to read it from stdin"
     )]
-    secret: Option<oo7::Secret>,
+    secret: Option<String>,
     #[arg(
         name = "app-id",
         long,
@@ -966,6 +971,38 @@ struct Arguments {
         help = "Print debug information during command processing."
     )]
     is_verbose: bool,
+}
+
+/// Read a secret from stdin, prompting on the terminal if there is one.
+fn read_secret_from_stdin() -> Result<oo7::Secret, Error> {
+    let mut stdin = std::io::stdin().lock();
+    if stdin.is_terminal() {
+        rpassword::prompt_password("Keyring secret: ")
+            .map(Into::into)
+            .map_err(|_| Error::new("Can't read secret"))
+    } else {
+        let mut buf = Vec::new();
+        stdin
+            .read_to_end(&mut buf)
+            .map_err(|_| Error::new("Can't read secret"))?;
+        // Drop the trailing newline added by echo
+        if buf.last() == Some(&b'\n') {
+            buf.pop();
+            if buf.last() == Some(&b'\r') {
+                buf.pop();
+            }
+        }
+        Ok(buf.into())
+    }
+}
+
+/// Resolve a secret argument, reading it from stdin when set to "-".
+fn resolve_secret(secret: Option<String>) -> Result<Option<oo7::Secret>, Error> {
+    match secret {
+        Some(s) if s == "-" => Ok(Some(read_secret_from_stdin()?)),
+        Some(s) => Ok(Some(s.into())),
+        None => Ok(None),
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
