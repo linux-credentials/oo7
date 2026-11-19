@@ -404,3 +404,78 @@ async fn message_serialization() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+// https://github.com/linux-credentials/oo7/issues/696
+#[tokio::test]
+async fn pam_wrong_secret_keeps_pending_migration_locked() -> Result<(), Box<dyn std::error::Error>>
+{
+    let temp_dir = tempfile::tempdir()?;
+    let (setup, _temp_dir, _) =
+        crate::tests::pending_migration_setup(Some(temp_dir.path().join("pam.sock"))).await?;
+
+    let legacy = setup
+        .server
+        .collection_by_label("Legacy")
+        .await
+        .expect("Legacy placeholder collection should exist");
+    assert!(legacy.is_locked().await);
+
+    let socket_path = spawn_pam_listener(&setup.server).await;
+
+    let message = create_pam_message(
+        PamOperation::Unlock,
+        "testuser",
+        &[],
+        Secret::from("wrong-password").as_bytes(),
+    );
+    send_pam_message(&socket_path, &message).await?;
+
+    let legacy = setup
+        .server
+        .collection_by_label("Legacy")
+        .await
+        .expect("Legacy placeholder collection should exist");
+    assert!(
+        legacy.is_locked().await,
+        "The placeholder should stay locked, so the migration can be retried"
+    );
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        1,
+        "The migration should still be pending"
+    );
+
+    Ok(())
+}
+
+// https://github.com/linux-credentials/oo7/issues/696
+#[tokio::test]
+async fn pam_change_password_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
+    let socket_dir = tempfile::tempdir()?;
+    let (setup, data_dir, _) =
+        crate::tests::pending_migration_setup(Some(socket_dir.path().join("pam.sock"))).await?;
+
+    let socket_path = spawn_pam_listener(&setup.server).await;
+
+    let new_secret = Secret::from("new-password");
+    let message = create_pam_message(
+        PamOperation::ChangePassword,
+        "testuser",
+        Secret::from("test").as_bytes(),
+        new_secret.as_bytes(),
+    );
+    send_pam_message(&socket_path, &message).await?;
+
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        0,
+        "The migration should have completed"
+    );
+
+    let keyring = UnlockedKeyring::open_at(data_dir.path(), "legacy", Some(new_secret)).await?;
+    let items = keyring.items().await?;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].label(), "foo");
+
+    Ok(())
+}

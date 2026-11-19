@@ -458,7 +458,7 @@ mod tests {
     // https://github.com/linux-credentials/oo7/issues/696
     #[tokio::test]
     async fn test_change_with_prompt_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
-        let (setup, _temp_dir, collection_path) = pending_migration_setup().await?;
+        let (setup, _temp_dir, collection_path) = pending_migration_setup(None).await?;
         let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
             .build()
             .await?;
@@ -713,7 +713,7 @@ mod tests {
     #[tokio::test]
     async fn test_unlock_with_master_password_pending_migration()
     -> Result<(), Box<dyn std::error::Error>> {
-        let (setup, _temp_dir, collection_path) = pending_migration_setup().await?;
+        let (setup, _temp_dir, collection_path) = pending_migration_setup(None).await?;
         let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
             .build()
             .await?;
@@ -743,7 +743,7 @@ mod tests {
     #[tokio::test]
     async fn test_unlock_with_master_password_pending_migration_wrong_password()
     -> Result<(), Box<dyn std::error::Error>> {
-        let (setup, _temp_dir, collection_path) = pending_migration_setup().await?;
+        let (setup, _temp_dir, collection_path) = pending_migration_setup(None).await?;
         let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
             .build()
             .await?;
@@ -771,7 +771,7 @@ mod tests {
     #[tokio::test]
     async fn test_change_with_master_password_pending_migration()
     -> Result<(), Box<dyn std::error::Error>> {
-        let (setup, _temp_dir, collection_path) = pending_migration_setup().await?;
+        let (setup, _temp_dir, collection_path) = pending_migration_setup(None).await?;
         let internal_proxy = InternalInterfaceProxyProxy::builder(&setup.client_conn)
             .build()
             .await?;
