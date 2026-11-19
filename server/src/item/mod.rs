@@ -49,14 +49,20 @@ impl Item {
 
             let item_self = self.clone();
             let coll = collection.clone();
+            let service = self.service.clone();
             let caller = caller.to_owned();
             let action = crate::prompt::PromptAction::new(
                 move |unlock_secret: Option<oo7::Secret>| async move {
-                    // Unlock the collection
-                    coll.set_locked(false, unlock_secret).await?;
+                    service.unlock_collection(&coll, unlock_secret).await?;
+
+                    // The migration replaced the placeholder items
+                    let item = coll
+                        .item_from_path(item_self.path())
+                        .await
+                        .ok_or_else(|| ServiceError::NoSuchObject(item_self.path().to_string()))?;
 
                     // Now delete the item
-                    item_self.delete_unlocked(&coll, &caller).await?;
+                    item.delete_unlocked(&coll, &caller).await?;
 
                     Ok(zbus::wire::Variant::new(OwnedObjectPath::default())
                         .try_into_owned()

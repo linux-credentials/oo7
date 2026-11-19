@@ -65,11 +65,14 @@ impl Collection {
             let prompt_path = OwnedObjectPath::from(prompt.path().clone());
 
             let collection = self.clone();
+            let service = self.service.clone();
             let caller_owned = caller;
             let action =
                 crate::prompt::PromptAction::new(move |unlock_secret: Option<Secret>| async move {
-                    // Unlock the collection
-                    collection.set_locked(false, unlock_secret).await?;
+                    // Unlock the collection, completing a pending migration
+                    service
+                        .unlock_collection(&collection, unlock_secret)
+                        .await?;
 
                     collection.delete_unlocked(&caller_owned).await?;
 
@@ -201,9 +204,13 @@ impl Collection {
             let prompt_path = OwnedObjectPath::from(prompt.path().clone());
 
             let collection = self.clone();
+            let service = self.service.clone();
             let action =
                 crate::prompt::PromptAction::new(move |unlock_secret: Option<Secret>| async move {
-                    collection.set_locked(false, unlock_secret).await?;
+                    // Unlock the collection, completing a pending migration
+                    service
+                        .unlock_collection(&collection, unlock_secret)
+                        .await?;
 
                     let item_path = collection
                         .create_item_unlocked(properties, secret, replace)

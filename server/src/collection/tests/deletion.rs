@@ -124,3 +124,28 @@ async fn delete_locked_collection_with_prompt_gnome() -> Result<(), Box<dyn std:
 async fn delete_locked_collection_with_prompt_plasma() -> Result<(), Box<dyn std::error::Error>> {
     delete_locked_collection_with_prompt_impl(PrompterType::Plasma).await
 }
+
+// https://github.com/linux-credentials/oo7/issues/696
+#[tokio::test]
+async fn delete_locked_pending_migration() -> Result<(), Box<dyn std::error::Error>> {
+    let (setup, _temp_dir, collection_path) = crate::tests::pending_migration_setup().await?;
+
+    let collection =
+        oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
+    assert!(collection.is_locked().await?);
+
+    setup
+        .set_password_queue(vec![oo7::Secret::from("test")])
+        .await;
+    collection.delete(None).await?;
+
+    assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
+    let collections = setup.service_api.collections().await?;
+    assert!(
+        collections
+            .iter()
+            .all(|c| c.inner().path() != collection.inner().path())
+    );
+
+    Ok(())
+}
