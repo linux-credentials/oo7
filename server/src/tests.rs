@@ -454,7 +454,9 @@ impl TestServiceSetup {
 /// return the path of its locked placeholder collection. The fixture
 /// keyring is encrypted with "test" and holds a single item labeled
 /// "foo".
-pub(crate) async fn pending_migration_setup() -> Result<
+pub(crate) async fn pending_migration_setup(
+    pam_socket: Option<std::path::PathBuf>,
+) -> Result<
     (
         TestServiceSetup,
         tempfile::TempDir,
@@ -473,7 +475,8 @@ pub(crate) async fn pending_migration_setup() -> Result<
     tokio::fs::copy(&fixture_path, keyrings_dir.join("legacy.keyring")).await?;
 
     let setup =
-        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), None, None).await?;
+        TestServiceSetup::with_disk_keyrings(temp_dir.path().to_path_buf(), pam_socket, None)
+            .await?;
 
     let collections = setup.service_api.collections().await?;
     let mut legacy_path = None;
