@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use oo7::{Secret, dbus::ServiceError, file::Keyring};
 use zbus::{
     proxy::Defaults,
@@ -17,16 +15,16 @@ impl Service {
     ) -> Result<(Vec<OwnedObjectPath>, Vec<OwnedObjectPath>), ServiceError> {
         let mut without_prompt = Vec::new();
         let mut with_prompt = Vec::new();
-        let snapshot: HashMap<OwnedObjectPath, Collection> = self.collections.lock().await.clone();
+        let snapshot = self.sorted_collections().await;
 
         for object in objects {
             let resolved = Self::resolve_alias(&snapshot, object)
                 .await
                 .unwrap_or_else(|| object.clone());
             let mut found = false;
-            for (path, collection) in snapshot.iter() {
+            for collection in &snapshot {
                 let collection_locked = collection.is_locked().await;
-                if resolved == *path {
+                if resolved.as_str() == collection.path().as_str() {
                     found = true;
                     if collection_locked == locked {
                         tracing::debug!(
