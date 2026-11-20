@@ -450,44 +450,61 @@ impl Prompt {
             .expect("Wrong format in translatable string"),
         };
 
-        match proxy.prompt(&self.label, &description).await {
-            Ok((fd, true)) => {
-                let std_stream = std::os::unix::net::UnixStream::from(
-                    fd.as_fd().try_clone_to_owned().expect("Failed to clone fd"),
-                );
-                std_stream.set_nonblocking(true).map_err(|e| {
-                    custom_service_error(&format!("Failed to set non-blocking: {e}"))
-                })?;
-                let mut stream = tokio::net::UnixStream::from_std(std_stream)
-                    .expect("Failed to create Tokio UnixStream");
-                let mut buffer = zeroize::Zeroizing::new(Vec::new());
-                stream.read_to_end(&mut buffer).await.map_err(|e| {
-                    custom_service_error(&format!("Failed to read secret from CLI prompter: {e}"))
-                })?;
-                let secret = if buffer.is_empty() {
-                    None
-                } else {
-                    Some(Secret::from(buffer.as_slice()))
-                };
-
-                match self.role {
-                    PromptRole::Unlock => {
-                        self.on_unlock_collection(secret).await?;
-                    }
-                    PromptRole::CreateCollection => {
-                        self.on_create_collection(secret).await?;
-                    }
-                    PromptRole::ChangePassword => {
-                        self.on_change_password(secret).await?;
-                    }
-                }
-                Ok(())
-            }
-            Ok((_, false)) => {
+        let mut attempts = 0;
+        loop {
+            let (fd, accepted) = match proxy.prompt(&self.label, &description).await {
+                Ok(result) => result,
+                Err(e) => return Err(custom_service_error(&format!("CLI prompter failed: {e}"))),
+            };
+            if !accepted {
                 tracing::info!("CLI prompter dismissed by user.");
-                Err(custom_service_error("Prompt dismissed by user."))
+                return Err(custom_service_error("Prompt dismissed by user."));
             }
-            Err(e) => Err(custom_service_error(&format!("CLI prompter failed: {e}"))),
+
+            let std_stream = std::os::unix::net::UnixStream::from(
+                fd.as_fd().try_clone_to_owned().expect("Failed to clone fd"),
+            );
+            std_stream
+                .set_nonblocking(true)
+                .map_err(|e| custom_service_error(&format!("Failed to set non-blocking: {e}")))?;
+            let mut stream = tokio::net::UnixStream::from_std(std_stream)
+                .expect("Failed to create Tokio UnixStream");
+            let mut buffer = zeroize::Zeroizing::new(Vec::new());
+            stream.read_to_end(&mut buffer).await.map_err(|e| {
+                custom_service_error(&format!("Failed to read secret from CLI prompter: {e}"))
+            })?;
+            let secret = if buffer.is_empty() {
+                None
+            } else {
+                Some(Secret::from(buffer.as_slice()))
+            };
+
+            match self.role {
+                PromptRole::Unlock => {
+                    if self.on_unlock_collection(secret).await? {
+                        return Ok(());
+                    }
+
+                    attempts += 1;
+                    if attempts >= MAX_UNLOCK_ATTEMPTS {
+                        tracing::warn!(
+                            "Maximum unlock attempts ({MAX_UNLOCK_ATTEMPTS}) reached, \
+                             dismissing prompt."
+                        );
+                        self.emit_dismissed().await;
+                        return Ok(());
+                    }
+                    // Prompt again, the secret was incorrect
+                }
+                PromptRole::CreateCollection => {
+                    self.on_create_collection(secret).await?;
+                    return Ok(());
+                }
+                PromptRole::ChangePassword => {
+                    self.on_change_password(secret).await?;
+                    return Ok(());
+                }
+            }
         }
     }
 }
