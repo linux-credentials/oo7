@@ -260,3 +260,45 @@ async fn duplicate_default_alias_resolved() -> Result<(), Box<dyn std::error::Er
 
     Ok(())
 }
+
+// https://github.com/linux-credentials/oo7/issues/703
+// An alias points at a single collection, moving it must clear the
+// previous holder so ReadAlias stays deterministic.
+#[tokio::test]
+async fn set_alias_moves_the_alias() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let login_path = setup.collections[0].inner().path().to_owned();
+
+    let other = setup
+        .service_api
+        .create_collection("Other", None, None)
+        .await?;
+
+    // Move the default alias to the new collection
+    setup.service_api.set_alias("default", &other).await?;
+
+    let aliased = setup
+        .service_api
+        .read_alias("default")
+        .await?
+        .expect("alias should resolve");
+    assert_eq!(
+        aliased.inner().path(),
+        other.inner().path(),
+        "The alias should point to the new collection"
+    );
+
+    // The previous holder no longer claims it
+    let login = setup
+        .server
+        .collection_from_path(&login_path)
+        .await
+        .expect("login collection should exist");
+    assert_eq!(
+        login.alias().await,
+        "",
+        "The previous holder must be cleared"
+    );
+
+    Ok(())
+}
