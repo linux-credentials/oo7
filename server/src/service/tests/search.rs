@@ -195,3 +195,62 @@ async fn replace_item_missing_xdg_schema() -> Result<(), Box<dyn std::error::Err
 
     Ok(())
 }
+
+// https://github.com/linux-credentials/oo7/issues/703
+// With items sharing attributes across collections, the default
+// collection must be searched first, then the rest by path, so clients
+// taking the first match get a stable answer across restarts.
+#[tokio::test]
+async fn search_items_default_collection_first() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+
+    // An item in the default collection
+    let login_item = setup
+        .create_item("Login Item", &[("shared", "attr")], "login-secret", false)
+        .await?;
+
+    // The same attributes in a few other collections
+    let mut other_items = Vec::new();
+    for index in 0..4 {
+        let collection = setup
+            .service_api
+            .create_collection(&format!("Extra{index}"), None, None)
+            .await?;
+        let dbus_secret = setup.create_dbus_secret(format!("secret-{index}"))?;
+        other_items.push(
+            collection
+                .create_item(
+                    &format!("Extra Item {index}"),
+                    &[("shared", "attr")],
+                    &dbus_secret,
+                    false,
+                    None,
+                )
+                .await?,
+        );
+    }
+
+    let (unlocked, _) = setup
+        .service_api
+        .search_items(&[("shared", "attr")])
+        .await?;
+    assert_eq!(unlocked.len(), 5);
+
+    // The default collection's item comes first, the rest in path order
+    assert_eq!(
+        unlocked[0].inner().path().as_str(),
+        login_item.inner().path().as_str()
+    );
+    let mut sorted_others: Vec<_> = other_items
+        .iter()
+        .map(|item| item.inner().path().as_str())
+        .collect();
+    sorted_others.sort_unstable();
+    let result_others: Vec<_> = unlocked[1..]
+        .iter()
+        .map(|i| i.inner().path().as_str())
+        .collect();
+    assert_eq!(result_others, sorted_others);
+
+    Ok(())
+}
