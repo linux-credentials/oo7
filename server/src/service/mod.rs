@@ -213,7 +213,7 @@ impl Service {
     ) -> Result<(Vec<OwnedObjectPath>, Vec<OwnedObjectPath>), ServiceError> {
         let mut unlocked = Vec::new();
         let mut locked = Vec::new();
-        let snapshot: Vec<Collection> = self.collections.lock().await.values().cloned().collect();
+        let snapshot = self.sorted_collections().await;
 
         for collection in &snapshot {
             let items = collection.search_inner_items(&attributes).await?;
@@ -339,7 +339,7 @@ impl Service {
             session
         );
         let mut secrets = HashMap::new();
-        let snapshot: Vec<Collection> = self.collections.lock().await.values().cloned().collect();
+        let snapshot = self.sorted_collections().await;
 
         'outer: for collection in &snapshot {
             for item in &items {
@@ -376,7 +376,7 @@ impl Service {
 
     #[zbus(out_args("collection"))]
     pub async fn read_alias(&self, name: &str) -> Result<OwnedObjectPath, ServiceError> {
-        let collections = self.collections.lock().await;
+        let collections = self.sorted_collections().await;
         if let Some(path) = Self::find_by_alias(&collections, name).await {
             tracing::debug!("Collection: {} found for alias: {}.", path, name);
             Ok(path)
@@ -511,25 +511,22 @@ impl Service {
     }
 
     async fn resolve_alias(
-        collections: &HashMap<OwnedObjectPath, Collection>,
+        collections: &[Collection],
         path: &ObjectPath<'_>,
     ) -> Option<OwnedObjectPath> {
         let alias = path.strip_prefix("/org/freedesktop/secrets/aliases/")?;
         Self::find_by_alias(collections, alias).await
     }
 
-    async fn find_by_alias(
-        collections: &HashMap<OwnedObjectPath, Collection>,
-        alias: &str,
-    ) -> Option<OwnedObjectPath> {
+    async fn find_by_alias(collections: &[Collection], alias: &str) -> Option<OwnedObjectPath> {
         let alias_to_find = if alias == Self::LOGIN_ALIAS {
             oo7::dbus::Service::DEFAULT_COLLECTION
         } else {
             alias
         };
-        for (path, collection) in collections.iter() {
+        for collection in collections {
             if collection.alias().await == alias_to_find {
-                return Some(path.clone());
+                return Some(collection.path().to_owned().into());
             }
         }
         None
@@ -546,13 +543,32 @@ impl Service {
         None
     }
 
+    /// The collections sorted by path, with the default collection first,
+    /// so lookups and searches are deterministic across daemon restarts.
+    pub(crate) async fn sorted_collections(&self) -> Vec<Collection> {
+        let collections: Vec<Collection> =
+            self.collections.lock().await.values().cloned().collect();
+        let mut sorted: Vec<(bool, Collection)> = Vec::with_capacity(collections.len());
+        for collection in collections {
+            let is_default = collection.alias().await == oo7::dbus::Service::DEFAULT_COLLECTION;
+            sorted.push((!is_default, collection));
+        }
+        sorted.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.path().cmp(b.1.path())));
+        sorted
+            .into_iter()
+            .map(|(_, collection)| collection)
+            .collect()
+    }
+
     pub async fn collection_from_path(&self, path: &ObjectPath<'_>) -> Option<Collection> {
-        let collections = self.collections.lock().await;
-        if let Some(collection) = collections.get(path).cloned() {
+        if let Some(collection) = self.collections.lock().await.get(path).cloned() {
             return Some(collection);
         }
+        let collections = self.sorted_collections().await;
         let resolved = Self::resolve_alias(&collections, path).await?;
-        collections.get(&resolved).cloned()
+        collections
+            .into_iter()
+            .find(|c| c.path().as_str() == resolved.as_str())
     }
 
     pub fn session_index(&self) -> u32 {
