@@ -1,5 +1,7 @@
 #![deny(unsafe_code)]
 
+mod merge;
+
 use std::{
     collections::HashMap,
     fmt,
@@ -10,6 +12,7 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand};
+use merge::OnConflict;
 use oo7::dbus::Service;
 use serde::Serialize;
 use time::{OffsetDateTime, UtcOffset};
@@ -17,7 +20,7 @@ use time::{OffsetDateTime, UtcOffset};
 const BINARY_NAME: &str = env!("CARGO_BIN_NAME");
 const H_STYLE: anstyle::Style = anstyle::Style::new().bold().underline();
 
-struct CliPrompter;
+pub(crate) struct CliPrompter;
 
 #[zbus::interface(name = "org.freedesktop.secrets.CliPrompter")]
 impl CliPrompter {
@@ -63,7 +66,7 @@ trait InternalInterface {
     ) -> zbus::Result<zbus::wire::OwnedObjectPath>;
 }
 
-enum Error {
+pub(crate) enum Error {
     Owned(String),
     Borrowed(&'static str),
 }
@@ -429,6 +432,36 @@ enum Commands {
         #[arg(short, long, default_value_t, help = "Format of the legacy keyring")]
         format: MigrateFormat,
     },
+
+    #[command(
+        name = "merge",
+        about = "Merge the items of a keyring or collection into another",
+        after_help = format!("Each side is a keyring file path, or a collection of the running\n  service by alias, name or label.\n\n{H_STYLE}Example:{H_STYLE:#}\n  {} merge default2 default\n  {0} merge ~/.local/share/keyrings/old.keyring default --origin-secret -", BINARY_NAME)
+    )]
+    Merge {
+        #[arg(help = "The keyring file, collection alias, name or label to merge from")]
+        origin: String,
+        #[arg(help = "The keyring file, collection alias, name or label to merge into")]
+        destination: String,
+        #[arg(
+            long,
+            value_name = "SECRET",
+            help = "The secret of the origin keyring file, use '-' to read it from stdin"
+        )]
+        origin_secret: Option<String>,
+        #[arg(
+            long,
+            value_name = "SECRET",
+            help = "The secret of the destination keyring file, use '-' to read it from stdin"
+        )]
+        destination_secret: Option<String>,
+        #[arg(
+            long,
+            value_enum,
+            help = "What to do when an item exists on both sides, defaults to asking"
+        )]
+        on_conflict: Option<OnConflict>,
+    },
 }
 
 #[derive(Clone, Default, clap::ValueEnum, fmt::Debug)]
@@ -451,6 +484,24 @@ impl fmt::Display for MigrateFormat {
 
 impl Commands {
     async fn execute(self, mut args: Arguments) -> Result<(), Error> {
+        if let Commands::Merge {
+            origin,
+            destination,
+            origin_secret,
+            destination_secret,
+            on_conflict,
+        } = self
+        {
+            return merge::run(
+                &origin,
+                &destination,
+                origin_secret,
+                destination_secret,
+                on_conflict,
+            )
+            .await;
+        }
+
         // A secret of "-" is read from stdin
         let secret = resolve_secret(args.secret.take())?;
 
@@ -560,7 +611,9 @@ impl Commands {
         };
 
         let output = match self {
-            Commands::Migrate { .. } | Commands::ListCollections { .. } => unreachable!(),
+            Commands::Migrate { .. }
+            | Commands::Merge { .. }
+            | Commands::ListCollections { .. } => unreachable!(),
             Commands::Delete { attributes } => {
                 match keyring {
                     Keyring::Collection(collection) => {
@@ -1005,7 +1058,7 @@ fn read_secret_from_stdin() -> Result<oo7::Secret, Error> {
 }
 
 /// Resolve a secret argument, reading it from stdin when set to "-".
-fn resolve_secret(secret: Option<String>) -> Result<Option<oo7::Secret>, Error> {
+pub(crate) fn resolve_secret(secret: Option<String>) -> Result<Option<oo7::Secret>, Error> {
     match secret {
         Some(s) if s == "-" => Ok(Some(read_secret_from_stdin()?)),
         Some(s) => Ok(Some(s.into())),
