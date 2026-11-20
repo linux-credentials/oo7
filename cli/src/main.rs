@@ -326,6 +326,8 @@ enum Commands {
             required = true, num_args = 1
         )]
         attributes: Vec<(String, String)>,
+        #[command(flatten)]
+        arguments: Arguments,
     },
 
     #[command(
@@ -347,6 +349,8 @@ enum Commands {
         hex: bool,
         #[arg(long, help = "Format the output as json.")]
         json: bool,
+        #[command(flatten)]
+        arguments: Arguments,
     },
 
     #[command(
@@ -372,6 +376,8 @@ enum Commands {
         hex: bool,
         #[arg(long, help = "Format the output as json.")]
         json: bool,
+        #[command(flatten)]
+        arguments: Arguments,
     },
 
     #[command(
@@ -388,6 +394,8 @@ enum Commands {
             required = true, num_args = 1
         )]
         attributes: Vec<(String, String)>,
+        #[command(flatten)]
+        arguments: Arguments,
     },
 
     #[command(name = "list", about = "List all the items in the keyring")]
@@ -396,6 +404,8 @@ enum Commands {
         hex: bool,
         #[arg(long, help = "Format the output as json.")]
         json: bool,
+        #[command(flatten)]
+        arguments: Arguments,
     },
 
     #[command(name = "list-collections", about = "List available collections")]
@@ -405,13 +415,22 @@ enum Commands {
     },
 
     #[command(name = "lock", about = "Lock the keyring")]
-    Lock,
+    Lock {
+        #[command(flatten)]
+        arguments: Arguments,
+    },
 
     #[command(name = "unlock", about = "Unlock the keyring")]
-    Unlock,
+    Unlock {
+        #[command(flatten)]
+        arguments: Arguments,
+    },
 
     #[command(name = "repair", about = "Repair the keyring")]
-    Repair,
+    Repair {
+        #[command(flatten)]
+        arguments: Arguments,
+    },
 
     #[command(name = "change-secret", about = "Change the keyring secret")]
     ChangeSecret {
@@ -419,6 +438,8 @@ enum Commands {
             help = "The new secret. If not provided, it will be read from the terminal. Use '-' to read it from stdin"
         )]
         new_secret: Option<String>,
+        #[command(flatten)]
+        arguments: Arguments,
     },
 
     #[command(
@@ -483,7 +504,26 @@ impl fmt::Display for MigrateFormat {
 }
 
 impl Commands {
-    async fn execute(self, mut args: Arguments) -> Result<(), Error> {
+    fn arguments(&self) -> Arguments {
+        match self {
+            Self::Delete { arguments, .. }
+            | Self::Lookup { arguments, .. }
+            | Self::Search { arguments, .. }
+            | Self::Store { arguments, .. }
+            | Self::List { arguments, .. }
+            | Self::Lock { arguments }
+            | Self::Unlock { arguments }
+            | Self::Repair { arguments }
+            | Self::ChangeSecret { arguments, .. } => arguments.clone(),
+            Self::ListCollections { .. } | Self::Migrate { .. } | Self::Merge { .. } => {
+                Arguments::default()
+            }
+        }
+    }
+
+    async fn execute(self) -> Result<(), Error> {
+        let mut args = self.arguments();
+
         if let Commands::Merge {
             origin,
             destination,
@@ -614,7 +654,7 @@ impl Commands {
             Commands::Migrate { .. }
             | Commands::Merge { .. }
             | Commands::ListCollections { .. } => unreachable!(),
-            Commands::Delete { attributes } => {
+            Commands::Delete { attributes, .. } => {
                 match keyring {
                     Keyring::Collection(collection) => {
                         let items = collection.search_items(&attributes).await?;
@@ -633,6 +673,7 @@ impl Commands {
                 secret_only,
                 hex,
                 json,
+                ..
             } => match keyring {
                 Keyring::Collection(collection) => {
                     let items = collection.search_items(&attributes).await?;
@@ -665,6 +706,7 @@ impl Commands {
                 secret_only,
                 hex,
                 json,
+                ..
             } => match keyring {
                 Keyring::File(keyring) => {
                     let items = keyring.search_items(&attributes).await?;
@@ -713,7 +755,9 @@ impl Commands {
                     }
                 }
             },
-            Commands::Store { label, attributes } => {
+            Commands::Store {
+                label, attributes, ..
+            } => {
                 let mut stdin = std::io::stdin().lock();
                 let secret: oo7::Secret = if stdin.is_terminal() {
                     print!("Type a secret: ");
@@ -746,7 +790,7 @@ impl Commands {
                 }
                 Output::None
             }
-            Commands::List { hex, json } => {
+            Commands::List { hex, json, .. } => {
                 let items = match keyring {
                     Keyring::File(keyring) => {
                         let items = keyring.all_items().await?;
@@ -781,7 +825,7 @@ impl Commands {
                 };
                 Output::Items(items, json)
             }
-            Commands::Lock => {
+            Commands::Lock { .. } => {
                 match keyring {
                     Keyring::File(_) => {
                         return Err(Error::new("Keyring file doesn't support locking."));
@@ -792,7 +836,7 @@ impl Commands {
                 }
                 Output::None
             }
-            Commands::Unlock => {
+            Commands::Unlock { .. } => {
                 match keyring {
                     Keyring::File(_) => {
                         return Err(Error::new("Keyring file doesn't support unlocking."));
@@ -803,7 +847,7 @@ impl Commands {
                 }
                 Output::None
             }
-            Commands::Repair => {
+            Commands::Repair { .. } => {
                 match keyring {
                     Keyring::File(keyring) => {
                         let deleted_items = keyring.delete_broken_items().await?;
@@ -815,7 +859,7 @@ impl Commands {
                 }
                 Output::None
             }
-            Commands::ChangeSecret { new_secret } => {
+            Commands::ChangeSecret { new_secret, .. } => {
                 match keyring {
                     Keyring::File(keyring) => {
                         let secret = match resolve_secret(new_secret)? {
@@ -988,43 +1032,6 @@ impl Commands {
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-    #[command(flatten)]
-    args: Arguments,
-}
-
-#[derive(Args)]
-struct Arguments {
-    #[arg(
-        name = "collection",
-        short,
-        long,
-        global = true,
-        help = "Specify a collection by name. The default collection will be used if not specified"
-    )]
-    collection: Option<String>,
-    #[arg(
-        name = "keyring",
-        short,
-        long,
-        global = true,
-        help = "Specify the path to a keyring file"
-    )]
-    keyring: Option<PathBuf>,
-    #[arg(
-        name = "secret",
-        short,
-        long,
-        global = true,
-        help = "Specify the keyring secret. Use '-' to read it from stdin"
-    )]
-    secret: Option<String>,
-    #[arg(
-        name = "app-id",
-        long,
-        global = true,
-        help = "Specify a sandboxed application ID"
-    )]
-    app_id: Option<oo7::ashpd::AppID>,
     #[arg(
         short = 'v',
         long = "verbose",
@@ -1032,6 +1039,33 @@ struct Arguments {
         help = "Print debug information during command processing."
     )]
     is_verbose: bool,
+}
+
+#[derive(Args, Clone, Default)]
+struct Arguments {
+    #[arg(
+        name = "collection",
+        short,
+        long,
+        help = "Specify a collection by name. The default collection will be used if not specified"
+    )]
+    collection: Option<String>,
+    #[arg(
+        name = "keyring",
+        short,
+        long,
+        help = "Specify the path to a keyring file"
+    )]
+    keyring: Option<PathBuf>,
+    #[arg(
+        name = "secret",
+        short,
+        long,
+        help = "Specify the keyring secret. Use '-' to read it from stdin"
+    )]
+    secret: Option<String>,
+    #[arg(name = "app-id", long, help = "Specify a sandboxed application ID")]
+    app_id: Option<oo7::ashpd::AppID>,
 }
 
 /// Read a secret from stdin, prompting on the terminal if there is one.
@@ -1070,7 +1104,7 @@ pub(crate) fn resolve_secret(secret: Option<String>) -> Result<Option<oo7::Secre
 async fn main() -> Result<(), Error> {
     let cli = Cli::parse();
 
-    if cli.args.is_verbose {
+    if cli.is_verbose {
         tracing_subscriber::fmt()
             .with_max_level(tracing_subscriber::filter::LevelFilter::DEBUG)
             .init();
@@ -1078,7 +1112,7 @@ async fn main() -> Result<(), Error> {
         tracing_subscriber::fmt::init();
     }
 
-    cli.command.execute(cli.args).await
+    cli.command.execute().await
 }
 
 // Source <https://github.com/clap-rs/clap/blob/master/examples/typed-derive.rs#L48>
