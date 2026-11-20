@@ -3,14 +3,17 @@ use zgvariant::serialized::Context;
 
 use super::*;
 
-async fn spawn_pam_listener(server: &crate::Service) -> std::path::PathBuf {
+/// Spawn the listener, returning its socket path and a clone sharing the
+/// buffered secrets, for [`PamListener::replay_buffered_secrets`].
+async fn spawn_pam_listener(server: &crate::Service) -> (std::path::PathBuf, PamListener) {
     let pam_listener = PamListener::new(server.clone());
     let socket_path = pam_listener.socket_path.clone();
+    let spawned = pam_listener.clone();
     tokio::spawn(async move {
-        let _ = pam_listener.start().await;
+        let _ = spawned.start().await;
     });
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-    socket_path
+    (socket_path, pam_listener)
 }
 
 fn create_pam_message(
@@ -40,6 +43,18 @@ async fn send_pam_message(
     socket_path: &std::path::Path,
     message_bytes: &[u8],
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let response = send_pam_bytes(socket_path, message_bytes).await?;
+    if !response.success {
+        return Err(format!("PAM operation failed: {}", response.error_message).into());
+    }
+    Ok(())
+}
+
+/// Send raw bytes on the PAM socket and read back the response, if any.
+async fn send_pam_bytes(
+    socket_path: &std::path::Path,
+    message_bytes: &[u8],
+) -> Result<PamResponse, Box<dyn std::error::Error>> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut stream = tokio::net::UnixStream::connect(socket_path).await?;
@@ -54,14 +69,7 @@ async fn send_pam_message(
     let mut response_bytes = vec![0u8; response_length];
     stream.read_exact(&mut response_bytes).await?;
 
-    let response = PamResponse::from_bytes(&response_bytes)?;
-
-    // Check if response indicates success or error
-    if !response.success {
-        return Err(format!("PAM operation failed: {}", response.error_message).into());
-    }
-
-    Ok(())
+    Ok(PamResponse::from_bytes(&response_bytes)?)
 }
 
 #[tokio::test]
@@ -94,7 +102,7 @@ async fn pam_migrates_v0_keyrings() -> Result<(), Box<dyn std::error::Error>> {
         "V0 keyring should be pending migration"
     );
 
-    let socket_path = spawn_pam_listener(&setup.server).await;
+    let (socket_path, _) = spawn_pam_listener(&setup.server).await;
 
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], v0_secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
@@ -179,7 +187,7 @@ async fn pam_migration_then_write_to_default_alias() -> Result<(), Box<dyn std::
 
     assert_eq!(setup.server.pending_migrations.lock().await.len(), 1);
 
-    let socket_path = spawn_pam_listener(&setup.server).await;
+    let (socket_path, _) = spawn_pam_listener(&setup.server).await;
 
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], v0_secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
@@ -262,7 +270,7 @@ async fn pam_unlocks_locked_collections() -> Result<(), Box<dyn std::error::Erro
         "Work collection should be locked"
     );
 
-    let socket_path = spawn_pam_listener(&setup.server).await;
+    let (socket_path, _) = spawn_pam_listener(&setup.server).await;
 
     let message = create_pam_message(PamOperation::Unlock, "testuser", &[], secret.as_bytes());
     send_pam_message(&socket_path, &message).await?;
@@ -316,7 +324,7 @@ async fn pam_change_password() -> Result<(), Box<dyn std::error::Error>> {
         "Work collection should be locked"
     );
 
-    let socket_path = spawn_pam_listener(&setup.server).await;
+    let (socket_path, _) = spawn_pam_listener(&setup.server).await;
 
     let new_secret = Secret::from("new-password");
     let message = create_pam_message(
@@ -420,7 +428,7 @@ async fn pam_wrong_secret_keeps_pending_migration_locked() -> Result<(), Box<dyn
         .expect("Legacy placeholder collection should exist");
     assert!(legacy.is_locked().await);
 
-    let socket_path = spawn_pam_listener(&setup.server).await;
+    let (socket_path, _) = spawn_pam_listener(&setup.server).await;
 
     let message = create_pam_message(
         PamOperation::Unlock,
@@ -455,7 +463,7 @@ async fn pam_change_password_pending_migration() -> Result<(), Box<dyn std::erro
     let (setup, data_dir, _) =
         crate::tests::pending_migration_setup(Some(socket_dir.path().join("pam.sock"))).await?;
 
-    let socket_path = spawn_pam_listener(&setup.server).await;
+    let (socket_path, _) = spawn_pam_listener(&setup.server).await;
 
     let new_secret = Secret::from("new-password");
     let message = create_pam_message(
@@ -476,6 +484,98 @@ async fn pam_change_password_pending_migration() -> Result<(), Box<dyn std::erro
     let items = keyring.items().await?;
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].label(), "foo");
+
+    Ok(())
+}
+
+// A secret arriving before the service is initialized is buffered and
+// replayed once initialization is done, like Service::run does
+#[tokio::test]
+async fn pam_secret_before_initialization_is_replayed() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+    let keyrings_dir = temp_dir.path().join("keyrings");
+    tokio::fs::create_dir_all(keyrings_dir.join("v1")).await?;
+
+    let secret = Secret::from("pam-password");
+    let keyring = UnlockedKeyring::open_at(temp_dir.path(), "login", Some(secret.clone())).await?;
+    keyring
+        .create_item(
+            "Login Item",
+            &[("app", "pam-replay")],
+            Secret::text("item-secret"),
+            false,
+        )
+        .await?;
+    keyring.write().await?;
+
+    // The service is served on the bus but not initialized yet
+    let (server, server_conn, _client_conn, _parts_temp) =
+        crate::tests::TestServiceSetup::uninitialized_service(
+            temp_dir.path().to_path_buf(),
+            Some(temp_dir.path().join("pam.sock")),
+        )
+        .await?;
+
+    // The PAM secret arrives before the keyrings are discovered
+    let (socket_path, listener) = spawn_pam_listener(&server).await;
+    let message = create_pam_message(PamOperation::Unlock, "testuser", &[], secret.as_bytes());
+    send_pam_message(&socket_path, &message).await?;
+
+    // Initialize like Service::run does, then replay the buffered secret
+    let discovered = server.discover_keyrings(None).await?;
+    server
+        .initialize(server_conn, discovered, None, false)
+        .await?;
+
+    let login = server
+        .collection_by_label("Login")
+        .await
+        .expect("Login collection should exist");
+    assert!(login.is_locked().await, "No secret known at this point");
+
+    listener.replay_buffered_secrets().await;
+
+    let login = server
+        .collection_by_label("Login")
+        .await
+        .expect("Login collection should exist");
+    assert!(
+        !login.is_locked().await,
+        "The buffered secret should replay"
+    );
+
+    Ok(())
+}
+
+// Garbage on the PAM socket fails the connection cleanly
+#[tokio::test]
+async fn pam_malformed_message() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = tempfile::tempdir()?;
+
+    let setup = crate::tests::TestServiceSetup::with_disk_keyrings(
+        temp_dir.path().to_path_buf(),
+        Some(temp_dir.path().join("pam.sock")),
+        None,
+    )
+    .await?;
+
+    let (socket_path, _) = spawn_pam_listener(&setup.server).await;
+
+    // A valid length prefix around bytes that don't parse as a message
+    let payload = b"definitely not a pam message";
+    let mut message = (payload.len() as u32).to_le_bytes().to_vec();
+    message.extend_from_slice(payload);
+
+    let result = send_pam_bytes(&socket_path, &message).await;
+    assert!(
+        result.is_err(),
+        "A malformed message should fail the connection"
+    );
+
+    // The listener keeps serving valid messages afterwards
+    let secret = Secret::from("good-password");
+    let message = create_pam_message(PamOperation::Unlock, "testuser", &[], secret.as_bytes());
+    send_pam_message(&socket_path, &message).await?;
 
     Ok(())
 }
