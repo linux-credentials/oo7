@@ -52,6 +52,14 @@ impl Collection {
         } else {
             "unknown".to_string()
         };
+        // Deleting the placeholder of a pending migration would migrate
+        // the legacy keyring and throw the result away
+        if self.service.has_pending_migration(self.name()).await {
+            return Err(ServiceError::IsLocked(format!(
+                "Collection `{}` holds a keyring awaiting migration, unlock it first.",
+                self.path
+            )));
+        }
         // Check if collection is locked
         if self.is_locked().await {
             // Create a prompt to unlock and delete the collection
