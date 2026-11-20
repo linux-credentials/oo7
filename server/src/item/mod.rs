@@ -35,6 +35,16 @@ impl Item {
         };
         let collection = self.collection().await?;
 
+        // Deleting a stand-in item would migrate the legacy keyring and
+        // throw the item away
+        if self.service.has_pending_migration(collection.name()).await {
+            return Err(ServiceError::IsLocked(format!(
+                "Item `{}` belongs to a collection holding a keyring awaiting \
+                 migration, unlock the collection first.",
+                self.path
+            )));
+        }
+
         // Check if item or collection is locked
         if self.is_locked().await || collection.is_locked().await {
             // Create a prompt to unlock and delete the item
