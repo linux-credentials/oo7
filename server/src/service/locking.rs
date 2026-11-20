@@ -155,6 +155,12 @@ impl Service {
         }
     }
 
+    /// Whether a legacy keyring awaits migration under this collection's
+    /// name.
+    pub(crate) async fn has_pending_migration(&self, name: &str) -> bool {
+        self.pending_migrations.lock().await.contains_key(name)
+    }
+
     pub(crate) async fn perform_unlock(&self, objects: &[OwnedObjectPath], secret: Option<Secret>) {
         for object in objects {
             let collection = {

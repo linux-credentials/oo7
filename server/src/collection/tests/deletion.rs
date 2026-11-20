@@ -134,11 +134,31 @@ async fn delete_locked_pending_migration() -> Result<(), Box<dyn std::error::Err
         oo7::dbus::api::Collection::new(&setup.client_conn, collection_path.clone()).await?;
     assert!(collection.is_locked().await?);
 
+    // Deleting the placeholder is refused even with the correct secret, it
+    // stands in for the legacy keyring and deleting it would throw the
+    // migrated data away
     setup
         .set_password_queue(vec![oo7::Secret::from("test")])
         .await;
-    collection.delete(None).await?;
+    let result = collection.delete(None).await;
+    assert!(
+        result.is_err(),
+        "Deleting a collection with a pending migration should fail"
+    );
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        1,
+        "The migration should still be pending"
+    );
 
+    // Once unlocked, the migrated collection can be deleted
+    let unlocked = setup
+        .service_api
+        .unlock(std::slice::from_ref(&collection_path), None)
+        .await?;
+    assert_eq!(unlocked.len(), 1);
+
+    collection.delete(None).await?;
     assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
     let collections = setup.service_api.collections().await?;
     assert!(
