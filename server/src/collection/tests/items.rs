@@ -576,13 +576,31 @@ async fn delete_item_pending_migration() -> Result<(), Box<dyn std::error::Error
         .await?;
     assert_eq!(locked.len(), 1);
 
+    // Deleting a stand-in item is refused even with the correct secret,
+    // it would migrate the legacy keyring and throw the item away
     setup
         .set_password_queue(vec![oo7::Secret::from("test")])
         .await;
+    let result = locked[0].delete(None).await;
+    assert!(
+        result.is_err(),
+        "Deleting an item of a collection with a pending migration should fail"
+    );
+    assert_eq!(
+        setup.server.pending_migrations.lock().await.len(),
+        1,
+        "The migration should still be pending"
+    );
+    assert!(collection.is_locked().await?);
+
+    // Once unlocked, the migrated item can be deleted
+    let unlocked = setup
+        .service_api
+        .unlock(std::slice::from_ref(&collection_path), None)
+        .await?;
+    assert_eq!(unlocked.len(), 1);
     locked[0].delete(None).await?;
 
-    // The migration completed and the item was deleted from the migrated
-    // keyring
     assert_eq!(setup.server.pending_migrations.lock().await.len(), 0);
     assert!(!collection.is_locked().await?);
     assert_eq!(collection.items().await?.len(), 0);
