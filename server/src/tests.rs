@@ -242,17 +242,24 @@ impl TestServiceSetup {
         })
     }
 
-    /// Create a test setup that discovers keyrings from disk
-    /// This is useful for PAM tests that need to create keyrings on disk first
-    pub(crate) async fn with_disk_keyrings(
+    /// A service served on a p2p connection, but not yet initialized. The
+    /// caller drives discovery and [`crate::Service::initialize`], like
+    /// [`crate::Service::run`] does.
+    pub(crate) async fn uninitialized_service(
         data_dir: std::path::PathBuf,
         pam_socket: Option<std::path::PathBuf>,
-        secret: Option<Secret>,
-    ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
+    ) -> Result<
+        (
+            crate::Service,
+            zbus::Connection,
+            zbus::Connection,
+            tempfile::TempDir,
+        ),
+        Box<dyn std::error::Error>,
+    > {
         use zbus::proxy::Defaults;
 
         let (server_conn, client_conn) = create_p2p_connection().await?;
-
         let temp_dir = tempfile::TempDir::new()?;
         let service = crate::Service::new(data_dir, pam_socket, true);
 
@@ -272,6 +279,19 @@ impl TestServiceSetup {
                 crate::gnome::internal::InternalInterface::new(service.clone()),
             )
             .await?;
+
+        Ok((service, server_conn, client_conn, temp_dir))
+    }
+
+    /// Create a test setup that discovers keyrings from disk
+    /// This is useful for PAM tests that need to create keyrings on disk first
+    pub(crate) async fn with_disk_keyrings(
+        data_dir: std::path::PathBuf,
+        pam_socket: Option<std::path::PathBuf>,
+        secret: Option<Secret>,
+    ) -> Result<TestServiceSetup, Box<dyn std::error::Error>> {
+        let (service, server_conn, client_conn, temp_dir) =
+            Self::uninitialized_service(data_dir, pam_socket).await?;
 
         let discovered = service.discover_keyrings(secret.clone()).await?;
         service
