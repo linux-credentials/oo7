@@ -391,6 +391,14 @@ impl Service {
         name: &str,
         collection: OwnedObjectPath,
     ) -> Result<(), ServiceError> {
+        // An alias points at a single collection, clear it from any other
+        // holder so resolving it stays deterministic
+        for other in self.sorted_collections().await {
+            if other.path().as_str() != collection.as_str() && other.alias().await == name {
+                other.set_alias("").await;
+            }
+        }
+
         let collections = self.collections.lock().await;
 
         for (path, other_collection) in collections.iter() {
