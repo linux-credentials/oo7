@@ -63,7 +63,8 @@ grcov coverage-raw/combined.info \
   --ignore "**/target/*" \
   --ignore "**/error.rs" \
   --ignore "**/main.rs" \
-  --ignore "**/capability.rs"
+  --ignore "**/capability.rs" \
+  --ignore "**/login.rs"
 
 # Generate HTML report with grcov
 grcov coverage-raw/combined.info \
@@ -84,20 +85,24 @@ grcov coverage-raw/combined.info \
   --ignore "**/target/*" \
   --ignore "**/error.rs" \
   --ignore "**/main.rs" \
-  --ignore "**/capability.rs"
+  --ignore "**/capability.rs" \
+  --ignore "**/login.rs"
 
 # Extract and display coverage percentage
-if [ -f coverage/html/coverage.json ]; then
-  COVERAGE=$(jq -r '.message' coverage/html/coverage.json | sed 's/%//')
+if [ -f coverage/coverage.json ]; then
+  COVERAGE=$(jq -r '.coveragePercent' coverage/coverage.json)
+  COVERED=$(jq -r '.linesCovered' coverage/coverage.json)
+  TOTAL=$(jq -r '.linesTotal' coverage/coverage.json)
   echo ""
-  echo "✅ Combined coverage: ${COVERAGE}%"
+  echo "✅ Combined coverage: ${COVERAGE}% (${COVERED}/${TOTAL} lines)"
   echo "📁 HTML report available at: coverage/html/index.html"
   echo "📁 JSON report available at: coverage/coverage.json"
 else
   echo "⚠️  Warning: coverage.json not found"
 fi
 
-# Clean up raw files
+# Keep the combined LCOV file for line-level analysis
+mv coverage-raw/combined.info coverage/combined.info
 rm -rf coverage-raw
 
 echo ""
