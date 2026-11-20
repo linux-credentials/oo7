@@ -324,46 +324,59 @@ impl Service {
             let old_owner = old_owner
                 .as_ref()
                 .expect("A disconnected client requires an old_owner");
-            if name != old_owner.as_str() {
-                continue; // a well-known name was released, the client is still connected
-            }
-            if let Some(session) = self.session_from_sender(old_owner).await {
-                let client_name = match session.peer_info() {
-                    Some(info) => format!("{old_owner} ({info})"),
-                    None => old_owner.to_string(),
-                };
-                session.mark_stale().await;
-                tracing::info!(
-                    "Client {} disconnected. Session: {} marked for cleanup.",
-                    client_name,
-                    session.path()
-                );
-            }
+            self.handle_owner_lost(name, old_owner).await;
         }
         Ok(())
+    }
+
+    /// A client's unique name disappeared from the bus, mark its session
+    /// for cleanup. A well-known name being released does not mean the
+    /// client disconnected.
+    pub(crate) async fn handle_owner_lost(&self, name: &str, old_owner: &UniqueName<'_>) {
+        if name != old_owner.as_str() {
+            return;
+        }
+        if let Some(session) = self.session_from_sender(old_owner).await {
+            let client_name = match session.peer_info() {
+                Some(info) => format!("{old_owner} ({info})"),
+                None => old_owner.to_string(),
+            };
+            session.mark_stale().await;
+            tracing::info!(
+                "Client {} disconnected. Session: {} marked for cleanup.",
+                client_name,
+                session.path()
+            );
+        }
     }
 
     pub(crate) async fn cleanup_stale_sessions(&self) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
         loop {
             interval.tick().await;
-            let stale_paths: Vec<_> = {
-                let sessions = self.sessions.lock().await;
-                let mut paths = Vec::new();
-                for (path, session) in sessions.iter() {
-                    if session.is_stale().await {
-                        paths.push(path.clone());
-                    }
+            self.cleanup_stale_sessions_tick().await;
+        }
+    }
+
+    /// Close the sessions whose client has been gone for longer than the
+    /// stale timeout.
+    pub(crate) async fn cleanup_stale_sessions_tick(&self) {
+        let stale_paths: Vec<_> = {
+            let sessions = self.sessions.lock().await;
+            let mut paths = Vec::new();
+            for (path, session) in sessions.iter() {
+                if session.is_stale().await {
+                    paths.push(path.clone());
                 }
-                paths
-            };
-            for path in stale_paths {
-                if let Some(session) = self.session(&path).await {
-                    match session.close().await {
-                        Ok(_) => tracing::info!("Stale session {} cleaned up.", path),
-                        Err(err) => {
-                            tracing::error!("Failed to clean up stale session {}: {}", path, err)
-                        }
+            }
+            paths
+        };
+        for path in stale_paths {
+            if let Some(session) = self.session(&path).await {
+                match session.close().await {
+                    Ok(_) => tracing::info!("Stale session {} cleaned up.", path),
+                    Err(err) => {
+                        tracing::error!("Failed to clean up stale session {}: {}", path, err)
                     }
                 }
             }

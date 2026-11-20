@@ -275,6 +275,20 @@ impl Session {
             .await
             .is_some_and(|t| t.elapsed() > SESSION_STALE_TIMEOUT)
     }
+
+    /// Pretend the client disconnected before the stale timeout, to test
+    /// the cleanup without waiting for it.
+    #[cfg(test)]
+    pub(crate) async fn force_stale(&self) {
+        *self.disconnected_at.lock().await =
+            Some(Instant::now() - SESSION_STALE_TIMEOUT - Duration::from_secs(1));
+    }
+
+    /// Whether the client disconnected, regardless of the timeout.
+    #[cfg(test)]
+    pub(crate) async fn is_marked_stale(&self) -> bool {
+        self.disconnected_at.lock().await.is_some()
+    }
 }
 
 #[cfg(test)]
