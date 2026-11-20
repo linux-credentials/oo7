@@ -130,17 +130,19 @@ impl TryFrom<wire::OwnedVariant> for Key {
 mod tests {
     use super::*;
 
+    const PRIVATE_KEY: [u8; 128] = [
+        41, 20, 63, 236, 246, 132, 109, 70, 172, 121, 45, 66, 129, 21, 247, 91, 96, 217, 56, 201,
+        205, 56, 17, 178, 202, 81, 71, 104, 233, 89, 87, 32, 88, 146, 107, 224, 56, 103, 111, 74,
+        143, 80, 170, 40, 5, 52, 48, 90, 75, 71, 193, 224, 222, 57, 91, 81, 66, 1, 6, 88, 137, 66,
+        102, 207, 55, 95, 67, 92, 140, 227, 242, 153, 185, 195, 89, 236, 146, 242, 88, 215, 1, 7,
+        135, 254, 85, 165, 236, 110, 22, 79, 107, 254, 149, 164, 243, 94, 129, 198, 45, 208, 132,
+        166, 0, 153, 243, 160, 255, 188, 59, 216, 99, 221, 85, 162, 116, 210, 160, 117, 201, 39,
+        179, 123, 107, 8, 242, 139, 207, 250,
+    ];
+
     #[test]
     fn private_public_pair() {
-        let private_key = Key::new(vec![
-            41, 20, 63, 236, 246, 132, 109, 70, 172, 121, 45, 66, 129, 21, 247, 91, 96, 217, 56,
-            201, 205, 56, 17, 178, 202, 81, 71, 104, 233, 89, 87, 32, 88, 146, 107, 224, 56, 103,
-            111, 74, 143, 80, 170, 40, 5, 52, 48, 90, 75, 71, 193, 224, 222, 57, 91, 81, 66, 1, 6,
-            88, 137, 66, 102, 207, 55, 95, 67, 92, 140, 227, 242, 153, 185, 195, 89, 236, 146, 242,
-            88, 215, 1, 7, 135, 254, 85, 165, 236, 110, 22, 79, 107, 254, 149, 164, 243, 94, 129,
-            198, 45, 208, 132, 166, 0, 153, 243, 160, 255, 188, 59, 216, 99, 221, 85, 162, 116,
-            210, 160, 117, 201, 39, 179, 123, 107, 8, 242, 139, 207, 250,
-        ]);
+        let private_key = Key::new(PRIVATE_KEY.to_vec());
         let server_public_key = Key::new(vec![
             50, 233, 76, 88, 47, 206, 235, 107, 9, 232, 98, 14, 188, 214, 209, 77, 35, 66, 109,
             119, 24, 191, 120, 90, 242, 198, 240, 115, 200, 66, 51, 180, 8, 164, 89, 9, 229, 31,
@@ -168,6 +170,21 @@ mod tests {
         let aes_key = Key::generate_aes_key(&private_key, &server_public_key);
 
         assert_eq!(public_key.unwrap().as_ref(), expected_public_key);
+        assert_eq!(aes_key.unwrap().as_ref(), expected_aes_key);
+    }
+
+    #[test]
+    fn aes_key_with_leading_zero_in_shared_secret() {
+        // With this peer public key (179^2, a valid group element), the shared
+        // secret starts with a zero byte, which has to be kept for HKDF
+        let private_key = Key::new(PRIVATE_KEY.to_vec());
+        let server_public_key = Key::new(vec![125, 41]);
+        let expected_aes_key = &[
+            45, 9, 43, 36, 239, 251, 6, 77, 119, 146, 59, 198, 169, 6, 54, 11,
+        ];
+
+        let aes_key = Key::generate_aes_key(&private_key, &server_public_key);
+
         assert_eq!(aes_key.unwrap().as_ref(), expected_aes_key);
     }
 
