@@ -9,12 +9,12 @@ use oo7::{
 use tokio::sync::Mutex;
 use zbus::wire::{ObjectPath, OwnedObjectPath};
 
-use crate::{Service, collection::Collection, error::custom_service_error};
+use crate::{Service, collection::Collection, error::custom_service_error, storage::Record};
 
 #[derive(Clone)]
 pub struct Item {
     // Properties
-    pub(super) inner: Arc<Mutex<Option<oo7::file::Item>>>,
+    pub(super) inner: Arc<Mutex<Record>>,
     // Other attributes
     service: Service,
     collection_path: OwnedObjectPath,
@@ -119,7 +119,7 @@ impl Item {
         };
 
         let inner = self.require_unlocked().await?;
-        let secret = inner.as_ref().unwrap().as_unlocked().secret();
+        let secret = inner.unlocked().secret();
         let content_type = secret.content_type();
 
         tracing::debug!("Secret retrieved from the item: {}.", self.path);
@@ -163,9 +163,8 @@ impl Item {
         {
             let keyring = collection.keyring.write().await;
             let mut inner = self.require_unlocked().await?;
-            let inner = inner.as_mut().unwrap();
 
-            let mut item = inner.as_unlocked().clone();
+            let mut item = inner.unlocked().clone();
             match session.aes_key() {
                 Some(key) => {
                     let decrypted = oo7::crypto::decrypt(secret, &key, iv).map_err(|err| {
@@ -192,9 +191,7 @@ impl Item {
             }
             item.set_attributes(&attributes);
 
-            self.write(keyring.as_ref(), inner.as_unlocked(), &item)
-                .await?;
-            *inner.as_mut_unlocked() = item;
+            self.write(keyring.as_ref(), &mut inner, item).await?;
         }
 
         let signal_emitter = self.service.signal_emitter(&self.collection_path)?;
@@ -216,16 +213,14 @@ impl Item {
 
     #[zbus(property, name = "Locked")]
     pub async fn is_locked(&self) -> bool {
-        self.inner.lock().await.as_ref().unwrap().is_locked()
+        self.inner.lock().await.is_locked()
     }
 
     #[zbus(property, name = "Attributes")]
     pub async fn attributes(&self) -> Result<HashMap<String, String>, ServiceError> {
         let inner = self.require_unlocked().await?;
         Ok(inner
-            .as_ref()
-            .unwrap()
-            .as_unlocked()
+            .unlocked()
             .attributes()
             .iter()
             .map(|(k, v)| (k.to_owned(), v.to_string()))
@@ -241,13 +236,10 @@ impl Item {
         {
             let keyring = collection.keyring.write().await;
             let mut inner = self.require_unlocked().await?;
-            let inner = inner.as_mut().unwrap();
 
-            let mut item = inner.as_unlocked().clone();
+            let mut item = inner.unlocked().clone();
             item.set_attributes(&attributes);
-            self.write(keyring.as_ref(), inner.as_unlocked(), &item)
-                .await?;
-            *inner.as_mut_unlocked() = item;
+            self.write(keyring.as_ref(), &mut inner, item).await?;
         }
 
         let signal_emitter = self.service.signal_emitter(&self.collection_path)?;
@@ -264,7 +256,7 @@ impl Item {
     #[zbus(property, name = "Label")]
     pub async fn label(&self) -> Result<String, ServiceError> {
         let inner = self.require_unlocked().await?;
-        Ok(inner.as_ref().unwrap().as_unlocked().label().to_owned())
+        Ok(inner.unlocked().label().to_owned())
     }
 
     #[zbus(property, name = "Label")]
@@ -273,13 +265,10 @@ impl Item {
         {
             let keyring = collection.keyring.write().await;
             let mut inner = self.require_unlocked().await?;
-            let inner = inner.as_mut().unwrap();
 
-            let mut item = inner.as_unlocked().clone();
+            let mut item = inner.unlocked().clone();
             item.set_label(label);
-            self.write(keyring.as_ref(), inner.as_unlocked(), &item)
-                .await?;
-            *inner.as_mut_unlocked() = item;
+            self.write(keyring.as_ref(), &mut inner, item).await?;
         }
 
         let signal_emitter = self.service.signal_emitter(&self.collection_path)?;
@@ -296,25 +285,25 @@ impl Item {
     #[zbus(property, name = "Created")]
     pub async fn created_at(&self) -> Result<u64, ServiceError> {
         let inner = self.require_unlocked().await?;
-        Ok(inner.as_ref().unwrap().as_unlocked().created().as_secs())
+        Ok(inner.unlocked().created().as_secs())
     }
 
     #[zbus(property, name = "Modified")]
     pub async fn modified_at(&self) -> Result<u64, ServiceError> {
         let inner = self.require_unlocked().await?;
-        Ok(inner.as_ref().unwrap().as_unlocked().modified().as_secs())
+        Ok(inner.unlocked().modified().as_secs())
     }
 }
 
 impl Item {
-    pub fn new(
-        item: oo7::file::Item,
+    pub(crate) fn new(
+        item: Record,
         service: Service,
         collection_path: OwnedObjectPath,
         path: OwnedObjectPath,
     ) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(Some(item))),
+            inner: Arc::new(Mutex::new(item)),
             path,
             collection_path,
             service,
@@ -325,11 +314,9 @@ impl Item {
         &self.path
     }
 
-    async fn require_unlocked(
-        &self,
-    ) -> Result<tokio::sync::MutexGuard<'_, Option<oo7::file::Item>>, ServiceError> {
+    async fn require_unlocked(&self) -> Result<tokio::sync::MutexGuard<'_, Record>, ServiceError> {
         let guard = self.inner.lock().await;
-        if guard.as_ref().unwrap().is_locked() {
+        if guard.is_locked() {
             return Err(ServiceError::IsLocked(format!(
                 "Object `{}` is locked.",
                 self.path
@@ -350,15 +337,11 @@ impl Item {
             })
     }
 
-    /// Replace the stored copy of `old` with `new` in the keyring file.
-    ///
-    /// The caller holds the keyring for writing, so no other change can move
-    /// the stored item before it is replaced.
     async fn write(
         &self,
         keyring: Option<&Keyring>,
-        old: &UnlockedItem,
-        new: &UnlockedItem,
+        record: &mut Record,
+        new: UnlockedItem,
     ) -> Result<(), ServiceError> {
         let Some(Keyring::Unlocked(keyring)) = keyring else {
             return Err(ServiceError::IsLocked(format!(
@@ -367,21 +350,17 @@ impl Item {
             )));
         };
 
-        // A lookup by attributes can also match other items.
-        let index = keyring
-            .all_items()
+        if !record
+            .replace(keyring, new)
             .await
-            .map_err(|err| custom_service_error(&format!("Failed to read keyring items: {err}")))?
-            .iter()
-            .position(|item| item.as_ref().is_ok_and(|item| item == old))
-            .ok_or_else(|| {
-                ServiceError::NoSuchObject(format!("Item `{}` is not in the keyring.", self.path))
-            })?;
-
-        keyring
-            .replace_item_index(index, new)
-            .await
-            .map_err(|err| custom_service_error(&format!("Failed to write item: {err}")))
+            .map_err(|err| custom_service_error(&format!("Failed to write item: {err}")))?
+        {
+            return Err(ServiceError::NoSuchObject(format!(
+                "Item `{}` is not in the keyring.",
+                self.path
+            )));
+        }
+        Ok(())
     }
 
     pub(crate) async fn set_locked(
@@ -389,28 +368,15 @@ impl Item {
         locked: bool,
         keyring: &oo7::file::UnlockedKeyring,
     ) -> Result<(), ServiceError> {
-        let mut inner_guard = self.inner.lock().await;
-
-        if let Some(old_item) = inner_guard.take() {
-            let new_item = match (old_item, locked) {
-                (oo7::file::Item::Unlocked(unlocked), true) => {
-                    let locked_item = keyring.lock_item(unlocked).await.map_err(|err| {
-                        custom_service_error(&format!("Failed to lock item: {err}"))
-                    })?;
-                    oo7::file::Item::Locked(locked_item)
-                }
-                (oo7::file::Item::Locked(locked_item), false) => {
-                    let unlocked = keyring.unlock_item(locked_item).await.map_err(|err| {
-                        custom_service_error(&format!("Failed to unlock item: {err}"))
-                    })?;
-                    oo7::file::Item::Unlocked(unlocked)
-                }
-                (other, _) => other,
-            };
-            *inner_guard = Some(new_item);
-        }
-
-        drop(inner_guard);
+        self.inner
+            .lock()
+            .await
+            .set_locked(locked, keyring)
+            .await
+            .map_err(|err| {
+                let action = if locked { "lock" } else { "unlock" };
+                custom_service_error(&format!("Failed to {action} item: {err}"))
+            })?;
 
         let signal_emitter = self.service.signal_emitter(&self.path)?;
         self.locked_changed(&signal_emitter).await?;

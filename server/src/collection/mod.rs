@@ -22,7 +22,7 @@ use crate::{
     Service,
     error::{Error, custom_service_error},
     item,
-    storage::ItemQuery,
+    storage::{ItemQuery, Record},
 };
 
 #[derive(Clone)]
@@ -324,7 +324,7 @@ impl Collection {
         let item_path = if let Some(existing_items) = existing_items {
             let kept = &existing_items[0];
             let kept_path: OwnedObjectPath = kept.path().to_owned().into();
-            *kept.inner.lock().await = Some(new_file_item.into());
+            *kept.inner.lock().await = new_file_item.into();
 
             // Remove any duplicate matches beyond the first.
             if existing_items.len() > 1 {
@@ -573,12 +573,8 @@ impl Collection {
         let items = self.items.lock().await;
 
         for item_wrapper in items.iter() {
-            let inner = item_wrapper.inner.lock().await;
-            let Some(file_item) = inner.as_ref() else {
-                continue;
-            };
-
-            if query.matches(file_item) {
+            let record = item_wrapper.inner.lock().await;
+            if query.matches(&record) {
                 matching_items.push(item_wrapper.clone());
             }
         }
@@ -665,17 +661,19 @@ impl Collection {
         let keyring_items = {
             let keyring_guard = self.keyring.read().await;
             let keyring = keyring_guard.as_ref().unwrap();
-            keyring.items().await?
+            keyring
+                .items()
+                .await?
+                .into_iter()
+                .map(Record::from)
+                .collect()
         };
         self.dispatch_file_items(keyring_items).await
     }
 
     /// Register the given file items on the object server and notify
     /// clients.
-    pub async fn dispatch_file_items(
-        &self,
-        keyring_items: Vec<oo7::file::Item>,
-    ) -> Result<(), Error> {
+    pub(crate) async fn dispatch_file_items(&self, keyring_items: Vec<Record>) -> Result<(), Error> {
         tracing::debug!(
             "Dispatching {} items for collection `{}`.",
             keyring_items.len(),

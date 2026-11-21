@@ -7,7 +7,7 @@ use std::{
 
 use oo7::{Secret, file::UnlockedKeyring};
 
-use crate::error::Error;
+use crate::{error::Error, storage::Record};
 
 /// Returns the stamp file path for a migrated keyring file.
 pub fn stamp_path(path: &Path) -> PathBuf {
@@ -88,12 +88,12 @@ impl PendingMigration {
     /// The placeholder items of the legacy keyring, exposing its
     /// cleartext attributes so they can be searched while the keyring
     /// is locked.
-    pub async fn items(&self) -> Result<Vec<oo7::file::Item>, Error> {
+    pub async fn items(&self) -> Result<Vec<Record>, Error> {
         match self {
             Self::V0 { path, .. } => {
                 let content = tokio::fs::read(path).await?;
                 let keyring = oo7::file::api::LegacyKeyring::try_from(content.as_slice())?;
-                Ok(keyring.items())
+                Ok(keyring.items().into_iter().map(Record::from).collect())
             }
             #[cfg(feature = "kwallet_migration")]
             Self::KWallet { .. } => Ok(Vec::new()),
