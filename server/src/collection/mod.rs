@@ -12,7 +12,6 @@ use oo7::{
         ServiceError,
         api::{DBusSecretInner, Properties},
     },
-    file,
 };
 use tokio::sync::{Mutex, RwLock};
 use wire::{ObjectPath, OwnedObjectPath};
@@ -479,14 +478,13 @@ pub(crate) fn collection_path(label: &str) -> Result<OwnedObjectPath, wire::Erro
 }
 
 impl Collection {
-    pub async fn new(
+    pub(crate) async fn new(
         name: &str,
         label: &str,
         alias: &str,
         service: Service,
-        keyring: file::Keyring,
+        keyring: Keyring,
     ) -> Self {
-        let keyring = Keyring::V1(keyring);
         let (created, modified) = keyring.timestamps().await;
 
         Self {
@@ -707,8 +705,8 @@ impl Collection {
 
     /// Replace the keyring with a just-migrated one, dispatch its items
     /// and emit the corresponding change signals.
-    pub async fn apply_migrated_keyring(&self, keyring: file::Keyring) -> Result<(), Error> {
-        *self.keyring.write().await = Some(Keyring::V1(keyring));
+    pub(crate) async fn apply_migrated_keyring(&self, keyring: Keyring) -> Result<(), Error> {
+        *self.keyring.write().await = Some(keyring);
 
         // Drop the placeholder items, the migrated items take their paths
         self.clear_items().await?;

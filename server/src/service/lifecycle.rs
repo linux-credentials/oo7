@@ -1,7 +1,4 @@
-use oo7::{
-    Secret,
-    file::{Keyring, LockedKeyring, UnlockedKeyring},
-};
+use oo7::Secret;
 use tokio_stream::StreamExt;
 use zbus::{
     fdo::{RequestNameFlags, RequestNameReply},
@@ -13,7 +10,7 @@ use zbus::{
 use super::{Service, discovery, naming};
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 use crate::gnome::internal::InternalInterface;
-use crate::{collection::Collection, error::Error};
+use crate::{collection::Collection, error::Error, storage::Keyring};
 
 impl Service {
     pub async fn run(
@@ -137,7 +134,7 @@ impl Service {
                 name: "default".to_owned(),
                 label: "Login".to_owned(),
                 alias: oo7::dbus::Service::DEFAULT_COLLECTION.to_owned(),
-                keyring: Keyring::Unlocked(UnlockedKeyring::temporary(secret).await?),
+                keyring: Keyring::temporary(secret).await?,
                 pending_migration: None,
             }]
         } else {
@@ -185,13 +182,9 @@ impl Service {
             tracing::info!("No default collection found, creating 'Login' keyring");
 
             let keyring = if let Some(secret) = secret {
-                UnlockedKeyring::open_at(&self.data_dir, Self::LOGIN_ALIAS, Some(secret))
-                    .await
-                    .map(Keyring::Unlocked)
+                Keyring::open(&self.data_dir, Self::LOGIN_ALIAS, Some(secret)).await
             } else {
-                LockedKeyring::open_at(&self.data_dir, Self::LOGIN_ALIAS)
-                    .await
-                    .map(Keyring::Locked)
+                Keyring::open_locked(&self.data_dir, Self::LOGIN_ALIAS).await
             };
 
             let keyring = keyring.inspect_err(|e| {
@@ -247,7 +240,7 @@ impl Service {
             "session",
             oo7::dbus::Service::SESSION_COLLECTION,
             self.clone(),
-            Keyring::Unlocked(UnlockedKeyring::temporary(Secret::random().unwrap()).await?),
+            Keyring::temporary(Secret::random().unwrap()).await?,
         )
         .await;
         collections.insert(

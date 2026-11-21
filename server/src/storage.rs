@@ -11,6 +11,39 @@ pub(crate) enum Keyring {
 }
 
 impl Keyring {
+    pub async fn open(
+        data_dir: &Path,
+        name: &str,
+        secret: Option<Secret>,
+    ) -> Result<Self, file::Error> {
+        let keyring = file::UnlockedKeyring::open_at(data_dir, name, secret).await?;
+        Ok(Self::V1(keyring.into()))
+    }
+
+    pub async fn open_locked(data_dir: &Path, name: &str) -> Result<Self, file::Error> {
+        let keyring = file::LockedKeyring::open_at(data_dir, name).await?;
+        Ok(Self::V1(keyring.into()))
+    }
+
+    pub async fn load_locked(path: &Path) -> Result<Self, file::Error> {
+        let keyring = file::LockedKeyring::load(path).await?;
+        Ok(Self::V1(keyring.into()))
+    }
+
+    pub async fn temporary(secret: Secret) -> Result<Self, file::Error> {
+        let keyring = file::UnlockedKeyring::temporary(secret).await?;
+        Ok(Self::V1(keyring.into()))
+    }
+
+    pub async fn write(&self) -> Result<(), file::Error> {
+        self.unlocked_v1()?.write().await
+    }
+
+    #[cfg(feature = "kwallet_migration")]
+    pub async fn create_items(&self, items: Vec<file::ItemDefinition>) -> Result<(), file::Error> {
+        self.unlocked_v1()?.create_items(items).await
+    }
+
     pub fn is_locked(&self) -> bool {
         match self {
             Self::V1(keyring) => keyring.is_locked(),

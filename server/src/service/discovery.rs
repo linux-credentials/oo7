@@ -1,13 +1,11 @@
-use std::path::PathBuf;
+use std::path::Path;
 
-use oo7::{
-    Secret,
-    file::{Keyring, LockedKeyring},
-};
+use oo7::Secret;
 
 use crate::{
     error::Error,
     migration::{self, PendingMigration},
+    storage::Keyring,
 };
 
 const LOGIN_ALIAS: &str = "login";
@@ -30,7 +28,7 @@ fn capitalize(name: &str) -> String {
 
 /// Discover existing keyrings in the data directory
 pub(crate) async fn discover_keyrings(
-    data_dir: &PathBuf,
+    data_dir: &Path,
     secret: Option<Secret>,
 ) -> Result<Vec<LoadedKeyring>, Error> {
     let mut discovered = Vec::new();
@@ -115,8 +113,8 @@ pub(crate) async fn discover_keyrings(
 
 /// Load a single keyring from a file path
 async fn load_keyring(
-    data_dir: &PathBuf,
-    path: &std::path::Path,
+    data_dir: &Path,
+    path: &Path,
     name: &str,
     secret: Option<&Secret>,
 ) -> Result<LoadedKeyring, Error> {
@@ -130,14 +128,14 @@ async fn load_keyring(
     let label = capitalize(name);
 
     // Try to load the keyring
-    let (keyring, pending_migration) = match LockedKeyring::load(path).await {
+    let (keyring, pending_migration) = match Keyring::load_locked(path).await {
         Ok(locked_keyring) => {
             // Successfully loaded as v1 keyring
             if let Some(secret) = secret {
-                match locked_keyring.unlock(secret.clone()).await {
+                match locked_keyring.try_unlock(Some(secret.clone())).await {
                     Ok(unlocked) => {
                         tracing::info!("Unlocked keyring '{}' from {:?}", name, path);
-                        (Keyring::Unlocked(unlocked), None)
+                        (unlocked, None)
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -145,13 +143,12 @@ async fn load_keyring(
                             name,
                             e
                         );
-                        // Reload as locked since unlock consumed it
-                        (Keyring::Locked(LockedKeyring::load(path).await?), None)
+                        (locked_keyring, None)
                     }
                 }
             } else {
                 tracing::debug!("No secret provided, keeping keyring '{}' locked", name);
-                (Keyring::Locked(locked_keyring), None)
+                (locked_keyring, None)
             }
         }
         Err(oo7::file::Error::VersionMismatch(Some(version))) if version.first() == Some(&0) =>
@@ -178,7 +175,7 @@ async fn load_keyring(
                         name: name.to_owned(),
                         label,
                         alias,
-                        keyring: Keyring::Unlocked(unlocked),
+                        keyring: unlocked,
                         pending_migration: None,
                     });
                 }
@@ -196,8 +193,8 @@ async fn load_keyring(
                 name
             );
 
-            let locked = LockedKeyring::open_at(data_dir, name).await?;
-            (Keyring::Locked(locked), Some(migration))
+            let locked = Keyring::open_locked(data_dir, name).await?;
+            (locked, Some(migration))
         }
         // Plain legacy keyrings, written by gnome-keyring for an empty
         // password, don't have the binary file header. Their migration
@@ -214,10 +211,7 @@ async fn load_keyring(
                 label: label.clone(),
                 alias: alias.clone(),
             };
-            (
-                Keyring::Unlocked(migration.migrate(data_dir, secret).await?),
-                None,
-            )
+            (migration.migrate(data_dir, secret).await?, None)
         }
         Err(e) => {
             return Err(e.into());
@@ -236,7 +230,7 @@ async fn load_keyring(
 /// Discover KWallet keyrings for migration
 #[cfg(feature = "kwallet_migration")]
 async fn discover_kwallet_keyrings(
-    data_dir: &PathBuf,
+    data_dir: &Path,
     secret: Option<&Secret>,
     discovered: &mut Vec<LoadedKeyring>,
 ) {
@@ -293,7 +287,7 @@ async fn discover_kwallet_keyrings(
                         name: name.to_owned(),
                         label,
                         alias,
-                        keyring: Keyring::Unlocked(unlocked),
+                        keyring: unlocked,
                         pending_migration: None,
                     });
                     continue;
@@ -313,7 +307,7 @@ async fn discover_kwallet_keyrings(
             "Creating locked placeholder for KWallet keyring '{name}', will migrate on unlock",
         );
 
-        match LockedKeyring::open_at(data_dir, name).await {
+        match Keyring::open_locked(data_dir, name).await {
             Ok(locked) => {
                 tracing::debug!(
                     "Created locked placeholder for '{name}', adding to pending migrations",
@@ -322,7 +316,7 @@ async fn discover_kwallet_keyrings(
                     name: name.to_owned(),
                     label,
                     alias,
-                    keyring: Keyring::Locked(locked),
+                    keyring: locked,
                     pending_migration: Some(migration),
                 });
             }
