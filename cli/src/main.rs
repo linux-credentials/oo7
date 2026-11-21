@@ -452,6 +452,12 @@ enum Commands {
         file: PathBuf,
         #[arg(short, long, default_value_t, help = "Format of the legacy keyring")]
         format: MigrateFormat,
+        #[arg(
+            long,
+            value_name = "SECRET",
+            help = "The secret of the keyring file, use '-' to read it from stdin"
+        )]
+        secret: Option<String>,
     },
 
     #[command(
@@ -542,12 +548,18 @@ impl Commands {
             .await;
         }
 
+        if let Commands::Migrate {
+            file,
+            format,
+            secret,
+        } = &self
+        {
+            let secret = resolve_secret(secret.clone())?;
+            return Self::migrate(file.clone(), format.clone(), secret).await;
+        }
+
         // A secret of "-" is read from stdin
         let secret = resolve_secret(args.secret.take())?;
-
-        if matches!(self, Commands::Migrate { .. }) {
-            return self.migrate(secret).await;
-        }
 
         let service = Service::new().await?;
 
@@ -927,10 +939,11 @@ impl Commands {
         Ok(())
     }
 
-    async fn migrate(self, secret: Option<oo7::Secret>) -> Result<(), Error> {
-        let Self::Migrate { file, format } = self else {
-            unreachable!();
-        };
+    async fn migrate(
+        file: PathBuf,
+        format: MigrateFormat,
+        secret: Option<oo7::Secret>,
+    ) -> Result<(), Error> {
         if !file.exists() {
             return Err(Error::Owned(format!(
                 "File '{}' does not exist.",
