@@ -13,6 +13,7 @@ mod plasma;
 mod prompt;
 mod service;
 mod session;
+mod storage;
 #[cfg(test)]
 mod tests;
 

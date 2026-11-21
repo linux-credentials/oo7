@@ -1,6 +1,9 @@
 //! Keyring migration support for legacy formats
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use oo7::{Secret, file::UnlockedKeyring};
 
@@ -11,6 +14,23 @@ pub fn stamp_path(path: &Path) -> PathBuf {
     let mut stamped = path.as_os_str().to_owned();
     stamped.push(".migrated");
     PathBuf::from(stamped)
+}
+
+/// V0 placeholders store MD5 digests except for the generic schema fallback.
+pub(crate) fn placeholder_attributes(
+    attributes: &HashMap<String, String>,
+) -> HashMap<String, String> {
+    attributes
+        .iter()
+        .map(|(name, value)| {
+            let value = if name == oo7::XDG_SCHEMA_ATTRIBUTE && value == oo7::GENERIC_SCHEMA {
+                value.clone()
+            } else {
+                oo7::crypto::md5_hex(value)
+            };
+            (name.clone(), value)
+        })
+        .collect()
 }
 
 /// Pending keyring migration

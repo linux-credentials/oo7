@@ -22,6 +22,7 @@ use crate::{
     Service,
     error::{Error, custom_service_error},
     item,
+    storage::ItemQuery,
 };
 
 #[derive(Clone)]
@@ -262,7 +263,7 @@ impl Collection {
     ) -> Result<OwnedObjectPath, ServiceError> {
         let keyring_guard = self.keyring.read().await;
         let keyring = match keyring_guard.as_ref() {
-            Some(k) if !k.is_locked() => k.as_unlocked(),
+            Some(k) if !k.is_locked() => k,
             _ => return Err(ServiceError::IsLocked("Collection is locked".to_owned())),
         };
 
@@ -296,8 +297,7 @@ impl Collection {
             );
         }
 
-        let key = keyring
-            .key()
+        let query = ItemQuery::new(keyring, &attributes, true)
             .await
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
 
@@ -305,15 +305,14 @@ impl Collection {
         // first one in place, keeping its D-Bus object path valid for any
         // concurrent GetSecret callers.
         let existing_items = if replace {
-            let items = self
-                .search_items_with_key(&attributes, key.as_deref(), true)
-                .await?;
+            let items = self.matching_items(&query).await;
             if items.is_empty() { None } else { Some(items) }
         } else {
             None
         };
 
         let new_file_item = keyring
+            .as_unlocked()
             .create_item(label, &attributes, secret, existing_items.is_some())
             .await
             .map_err(|err| custom_service_error(&format!("Failed to create a new item {err}.")))?;
@@ -562,44 +561,14 @@ impl Collection {
         let Some(keyring) = keyring_guard.as_ref() else {
             return Ok(Vec::new());
         };
-        if keyring.is_locked() {
-            drop(keyring_guard);
-
-            // The placeholder items of a pending migration store their
-            // attribute values as MD5 digests; hash the searched values
-            // to match them. The generic schema fallback is compared
-            // as-is.
-            let hashed: HashMap<String, String> = attributes
-                .iter()
-                .map(|(key, value)| {
-                    if key.as_str() == oo7::XDG_SCHEMA_ATTRIBUTE
-                        && value.as_str() == oo7::GENERIC_SCHEMA
-                    {
-                        (key.clone(), value.clone())
-                    } else {
-                        (key.clone(), oo7::crypto::md5_hex(value))
-                    }
-                })
-                .collect();
-            return self.search_items_with_key(&hashed, None, false).await;
-        }
-        let key = keyring
-            .as_unlocked()
-            .key()
+        let query = ItemQuery::new(keyring, attributes, false)
             .await
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
         drop(keyring_guard);
-
-        self.search_items_with_key(attributes, key.as_deref(), false)
-            .await
+        Ok(self.matching_items(&query).await)
     }
 
-    async fn search_items_with_key(
-        &self,
-        attributes: &HashMap<String, String>,
-        key: Option<&oo7::Key>,
-        exact: bool,
-    ) -> Result<Vec<item::Item>, ServiceError> {
+    async fn matching_items(&self, query: &ItemQuery<'_>) -> Vec<item::Item> {
         let mut matching_items = Vec::new();
         let items = self.items.lock().await;
 
@@ -609,17 +578,12 @@ impl Collection {
                 continue;
             };
 
-            let matches = if exact {
-                file_item.matches_attributes_exact(attributes, key)
-            } else {
-                file_item.matches_attributes(attributes, key)
-            };
-            if matches {
+            if query.matches(file_item) {
                 matching_items.push(item_wrapper.clone());
             }
         }
 
-        Ok(matching_items)
+        matching_items
     }
 
     pub async fn item_from_path(&self, path: &ObjectPath<'_>) -> Option<item::Item> {
