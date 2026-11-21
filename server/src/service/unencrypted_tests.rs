@@ -44,12 +44,16 @@ async fn discover_unencrypted_keyrings() -> Result<(), Box<dyn std::error::Error
     );
 
     // Verify items are accessible
-    let keyring_guard = nopass_collection.keyring.read().await;
-    let unlocked = keyring_guard.as_ref().unwrap().as_unlocked();
-    let items = unlocked.search_items(&[("app", "test-unenc")]).await?;
+    let (items, _) = setup
+        .service_api
+        .search_items(&[("app", "test-unenc")])
+        .await?;
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0].label(), "Unencrypted Item");
-    assert_eq!(items[0].secret(), Secret::text("plain-secret"));
+    assert_eq!(items[0].label().await?, "Unencrypted Item");
+    assert_eq!(
+        items[0].secret(&setup.session).await?.value(),
+        b"plain-secret"
+    );
 
     Ok(())
 }
@@ -91,7 +95,7 @@ async fn complete_collection_creation_unencrypted() -> Result<(), Box<dyn std::e
 
     // Add an item and verify it works
     let keyring_guard = collection.keyring.read().await;
-    let unlocked = keyring_guard.as_ref().unwrap().as_unlocked();
+    let unlocked = keyring_guard.as_ref().unwrap();
     unlocked
         .create_item(
             "Test Item",
@@ -101,7 +105,8 @@ async fn complete_collection_creation_unencrypted() -> Result<(), Box<dyn std::e
         )
         .await?;
 
-    let items = unlocked.search_items(&[("created", "unenc-test")]).await?;
+    let persisted = UnlockedKeyring::load(unlocked.path().unwrap(), None).await?;
+    let items = persisted.search_items(&[("created", "unenc-test")]).await?;
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].secret(), Secret::text("test-value"));
 

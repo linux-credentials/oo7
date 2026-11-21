@@ -459,13 +459,14 @@ impl TestServiceSetup {
             .expect("Collection should exist");
 
         let keyring = collection.keyring.read().await;
-        let unlocked_keyring = keyring.as_ref().unwrap().as_unlocked();
 
         let server_item = collection
             .item_from_path(item.inner().path())
             .await
             .unwrap();
-        server_item.set_locked(true, unlocked_keyring).await?;
+        server_item
+            .set_locked(true, keyring.as_ref().unwrap())
+            .await?;
         Ok(())
     }
 }

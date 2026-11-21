@@ -1,4 +1,4 @@
-use oo7::{Secret, dbus::ServiceError, file::Keyring};
+use oo7::{Secret, dbus::ServiceError};
 use zbus::{
     proxy::Defaults,
     wire::{ObjectPath, OwnedObjectPath},
@@ -69,7 +69,7 @@ impl Service {
                         let keyring = collection.keyring.read().await;
                         match keyring.as_ref() {
                             Some(k) if !k.is_locked() => {
-                                item.set_locked(locked, k.as_unlocked()).await?;
+                                item.set_locked(locked, k).await?;
                                 without_prompt.push(resolved.clone());
                             }
                             _ => {
@@ -138,7 +138,7 @@ impl Service {
                 tracing::info!("Successfully migrated '{name}' during unlock");
 
                 collection
-                    .apply_migrated_keyring(Keyring::Unlocked(unlocked))
+                    .apply_migrated_keyring(unlocked)
                     .await
                     .map_err(|e| {
                         custom_service_error(&format!(
@@ -201,7 +201,7 @@ impl Service {
                         let keyring = collection.keyring.read().await;
                         match keyring.as_ref() {
                             Some(k) if !k.is_locked() => {
-                                let _ = item.set_locked(false, k.as_unlocked()).await;
+                                let _ = item.set_locked(false, k).await;
                             }
                             _ => {
                                 drop(keyring);
@@ -253,10 +253,7 @@ impl Service {
                     };
 
                     if let Some(collection) = placeholder {
-                        if let Err(e) = collection
-                            .apply_migrated_keyring(Keyring::Unlocked(unlocked))
-                            .await
-                        {
+                        if let Err(e) = collection.apply_migrated_keyring(unlocked).await {
                             tracing::error!(
                                 "Failed to dispatch items for migrated keyring '{name}': {e}",
                             );
@@ -276,18 +273,16 @@ impl Service {
                         let label = migration.label();
                         let alias = migration.alias();
 
-                        let collection = match self
-                            .register_collection(name, label, alias, Keyring::Unlocked(unlocked))
-                            .await
-                        {
-                            Ok((_, collection)) => collection,
-                            Err(e) => {
-                                tracing::error!(
-                                    "Failed to register migrated collection '{name}': {e}",
-                                );
-                                continue;
-                            }
-                        };
+                        let collection =
+                            match self.register_collection(name, label, alias, unlocked).await {
+                                Ok((_, collection)) => collection,
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to register migrated collection '{name}': {e}",
+                                    );
+                                    continue;
+                                }
+                            };
 
                         if let Err(e) = collection.dispatch_items().await {
                             tracing::error!(

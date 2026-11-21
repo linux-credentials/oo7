@@ -1,16 +1,39 @@
 //! Keyring migration support for legacy formats
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
-use oo7::{Secret, file::UnlockedKeyring};
+use oo7::Secret;
 
-use crate::error::Error;
+use crate::{
+    error::Error,
+    storage::{Keyring, Record},
+};
 
 /// Returns the stamp file path for a migrated keyring file.
 pub fn stamp_path(path: &Path) -> PathBuf {
     let mut stamped = path.as_os_str().to_owned();
     stamped.push(".migrated");
     PathBuf::from(stamped)
+}
+
+/// V0 placeholders store MD5 digests except for the generic schema fallback.
+pub(crate) fn placeholder_attributes(
+    attributes: &HashMap<String, String>,
+) -> HashMap<String, String> {
+    attributes
+        .iter()
+        .map(|(name, value)| {
+            let value = if name == oo7::XDG_SCHEMA_ATTRIBUTE && value == oo7::GENERIC_SCHEMA {
+                value.clone()
+            } else {
+                oo7::crypto::md5_hex(value)
+            };
+            (name.clone(), value)
+        })
+        .collect()
 }
 
 /// Pending keyring migration
@@ -68,12 +91,12 @@ impl PendingMigration {
     /// The placeholder items of the legacy keyring, exposing its
     /// cleartext attributes so they can be searched while the keyring
     /// is locked.
-    pub async fn items(&self) -> Result<Vec<oo7::file::Item>, Error> {
+    pub async fn items(&self) -> Result<Vec<Record>, Error> {
         match self {
             Self::V0 { path, .. } => {
                 let content = tokio::fs::read(path).await?;
                 let keyring = oo7::file::api::LegacyKeyring::try_from(content.as_slice())?;
-                Ok(keyring.items())
+                Ok(keyring.items().into_iter().map(Record::from).collect())
             }
             #[cfg(feature = "kwallet_migration")]
             Self::KWallet { .. } => Ok(Vec::new()),
@@ -83,14 +106,14 @@ impl PendingMigration {
     /// Attempt to migrate this keyring with the provided secret
     pub async fn migrate(
         &self,
-        data_dir: &PathBuf,
+        data_dir: &Path,
         secret: Option<&Secret>,
-    ) -> Result<UnlockedKeyring, Error> {
+    ) -> Result<Keyring, Error> {
         match self {
             Self::V0 { path, name, .. } => {
                 tracing::debug!("Migrating v0 keyring: {}", name);
 
-                let unlocked = UnlockedKeyring::open_at(data_dir, name, secret.cloned()).await?;
+                let unlocked = Keyring::open(data_dir, name, secret.cloned()).await?;
 
                 // Write migrated keyring
                 unlocked.write().await?;
@@ -125,8 +148,7 @@ impl PendingMigration {
                 tracing::info!("Parsed KWallet file '{}'", name);
 
                 // Create new oo7 keyring
-                let unlocked =
-                    UnlockedKeyring::open_at(data_dir, name, Some(secret.clone())).await?;
+                let unlocked = Keyring::open(data_dir, name, Some(secret.clone())).await?;
 
                 // Convert KWallet entries to oo7 items
                 let mut items = Vec::new();
