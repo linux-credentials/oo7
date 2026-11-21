@@ -2,14 +2,16 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use oo7::{
-    dbus::{ServiceError, api::DBusSecretInner},
-    file::{Keyring, UnlockedItem},
-};
+use oo7::dbus::{ServiceError, api::DBusSecretInner};
 use tokio::sync::Mutex;
 use zbus::wire::{ObjectPath, OwnedObjectPath};
 
-use crate::{Service, collection::Collection, error::custom_service_error, storage::Record};
+use crate::{
+    Service,
+    collection::Collection,
+    error::custom_service_error,
+    storage::{Keyring, Record},
+};
 
 #[derive(Clone)]
 pub struct Item {
@@ -191,7 +193,8 @@ impl Item {
             }
             item.set_attributes(&attributes);
 
-            self.write(keyring.as_ref(), &mut inner, item).await?;
+            self.write(keyring.as_ref(), &mut inner, item.into())
+                .await?;
         }
 
         let signal_emitter = self.service.signal_emitter(&self.collection_path)?;
@@ -239,7 +242,8 @@ impl Item {
 
             let mut item = inner.unlocked().clone();
             item.set_attributes(&attributes);
-            self.write(keyring.as_ref(), &mut inner, item).await?;
+            self.write(keyring.as_ref(), &mut inner, item.into())
+                .await?;
         }
 
         let signal_emitter = self.service.signal_emitter(&self.collection_path)?;
@@ -268,7 +272,8 @@ impl Item {
 
             let mut item = inner.unlocked().clone();
             item.set_label(label);
-            self.write(keyring.as_ref(), &mut inner, item).await?;
+            self.write(keyring.as_ref(), &mut inner, item.into())
+                .await?;
         }
 
         let signal_emitter = self.service.signal_emitter(&self.collection_path)?;
@@ -341,9 +346,9 @@ impl Item {
         &self,
         keyring: Option<&Keyring>,
         record: &mut Record,
-        new: UnlockedItem,
+        new: Record,
     ) -> Result<(), ServiceError> {
-        let Some(Keyring::Unlocked(keyring)) = keyring else {
+        let Some(keyring) = keyring.filter(|k| !k.is_locked()) else {
             return Err(ServiceError::IsLocked(format!(
                 "Cannot write item `{}` to a locked keyring.",
                 self.path
@@ -366,7 +371,7 @@ impl Item {
     pub(crate) async fn set_locked(
         &self,
         locked: bool,
-        keyring: &oo7::file::UnlockedKeyring,
+        keyring: &Keyring,
     ) -> Result<(), ServiceError> {
         self.inner
             .lock()

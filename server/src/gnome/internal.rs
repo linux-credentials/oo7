@@ -7,7 +7,6 @@ use oo7::{
         ServiceError,
         api::{DBusSecret, DBusSecretInner, Properties},
     },
-    file::Keyring,
 };
 use zbus::wire::{ObjectPath, OwnedObjectPath, OwnedVariant};
 
@@ -123,7 +122,7 @@ impl InternalInterface {
             .await?;
 
         let keyring_guard = collection_obj.keyring.read().await;
-        if let Some(Keyring::Unlocked(unlocked)) = keyring_guard.as_ref() {
+        if let Some(unlocked) = keyring_guard.as_ref().filter(|k| !k.is_locked()) {
             unlocked
                 .change_secret(new_secret)
                 .await
@@ -175,7 +174,7 @@ impl InternalInterface {
                     .ok_or_else(|| ServiceError::NoSuchObject(collection_path.to_string()))?;
 
                 let keyring_guard = collection.keyring.read().await;
-                if let Some(Keyring::Unlocked(unlocked)) = keyring_guard.as_ref() {
+                if let Some(unlocked) = keyring_guard.as_ref().filter(|k| !k.is_locked()) {
                     if let Some(new_secret) = new_secret {
                         unlocked.change_secret(new_secret).await.map_err(|err| {
                             custom_service_error(&format!("Failed to change secret: {err}"))

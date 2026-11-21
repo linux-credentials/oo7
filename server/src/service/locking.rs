@@ -69,7 +69,7 @@ impl Service {
                         let keyring = collection.keyring.read().await;
                         match keyring.as_ref() {
                             Some(k) if !k.is_locked() => {
-                                item.set_locked(locked, k.as_unlocked()).await?;
+                                item.set_locked(locked, k).await?;
                                 without_prompt.push(resolved.clone());
                             }
                             _ => {
@@ -201,7 +201,7 @@ impl Service {
                         let keyring = collection.keyring.read().await;
                         match keyring.as_ref() {
                             Some(k) if !k.is_locked() => {
-                                let _ = item.set_locked(false, k.as_unlocked()).await;
+                                let _ = item.set_locked(false, k).await;
                             }
                             _ => {
                                 drop(keyring);
