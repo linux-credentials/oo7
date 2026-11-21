@@ -187,3 +187,55 @@ async fn unlock_after_keyring_file_is_corrupted() -> Result<(), Box<dyn std::err
 async fn unlock_after_keyring_file_is_deleted() -> Result<(), Box<dyn std::error::Error>> {
     unlock_after_keyring_file_is_damaged(KeyringDamage::Deleted).await
 }
+
+#[tokio::test]
+async fn failed_item_unlock_preserves_collection_state() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+    let first = setup
+        .create_item("First", &[("id", "1")], "first", false)
+        .await?;
+    let last = setup
+        .create_item("Last", &[("id", "2")], "last", false)
+        .await?;
+    let collection = setup
+        .server
+        .collection_from_path(setup.collections[0].inner().path())
+        .await
+        .unwrap();
+    collection.set_locked(true, None).await?;
+
+    // Make just the last cached record unreadable with the collection key.
+    let other =
+        oo7::file::UnlockedKeyring::temporary(oo7::Secret::from("another-test-password")).await?;
+    let record = other
+        .create_item("Other", &[("id", "3")], "other", false)
+        .await?;
+    let foreign = oo7::file::Item::Locked(other.lock_item(record).await?);
+    let first = collection
+        .item_from_path(first.inner().path())
+        .await
+        .unwrap();
+    let last = collection
+        .item_from_path(last.inner().path())
+        .await
+        .unwrap();
+    let original = std::mem::replace(&mut *last.inner.lock().await, foreign.into());
+    assert!(
+        collection
+            .set_locked(false, setup.keyring_secret.clone())
+            .await
+            .is_err()
+    );
+    assert!(collection.is_locked().await);
+    assert!(first.is_locked().await);
+    assert!(last.is_locked().await);
+
+    *last.inner.lock().await = original;
+    collection
+        .set_locked(false, setup.keyring_secret.clone())
+        .await?;
+    assert!(!collection.is_locked().await);
+    assert!(!first.is_locked().await);
+    assert!(!last.is_locked().await);
+    Ok(())
+}

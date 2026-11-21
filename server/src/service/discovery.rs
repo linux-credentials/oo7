@@ -143,7 +143,7 @@ async fn load_keyring(
                             name,
                             e
                         );
-                        (locked_keyring, None)
+                        (Keyring::load_locked(path).await?, None)
                     }
                 }
             } else {

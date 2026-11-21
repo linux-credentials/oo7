@@ -213,14 +213,22 @@ impl Record {
         self.0.as_unlocked()
     }
 
-    pub async fn set_locked(&mut self, locked: bool, keyring: &Keyring) -> Result<(), file::Error> {
+    pub async fn with_lock_state(
+        &self,
+        locked: bool,
+        keyring: &Keyring,
+    ) -> Result<Option<Self>, file::Error> {
         let keyring = keyring.unlocked_v1()?;
-        self.0 = match (&self.0, locked) {
-            (file::Item::Unlocked(item), true) => keyring.lock_item(item.clone()).await?.into(),
-            (file::Item::Locked(item), false) => keyring.unlock_item(item.clone()).await?.into(),
-            _ => return Ok(()),
+        let item = match (&self.0, locked) {
+            (file::Item::Unlocked(item), true) => {
+                file::Item::Locked(keyring.lock_item(item.clone()).await?)
+            }
+            (file::Item::Locked(item), false) => {
+                file::Item::Unlocked(keyring.unlock_item(item.clone()).await?)
+            }
+            _ => return Ok(None),
         };
-        Ok(())
+        Ok(Some(Self(item)))
     }
 
     /// The caller holds the collection's write lock so the index stays valid.

@@ -373,16 +373,29 @@ impl Item {
         locked: bool,
         keyring: &Keyring,
     ) -> Result<(), ServiceError> {
-        self.inner
-            .lock()
-            .await
-            .set_locked(locked, keyring)
+        if let Some((mut current, next)) = self.prepare_lock_state(locked, keyring).await? {
+            *current = next;
+        }
+        self.notify_lock_state(locked).await
+    }
+
+    pub(crate) async fn prepare_lock_state(
+        &self,
+        locked: bool,
+        keyring: &Keyring,
+    ) -> Result<Option<(tokio::sync::MutexGuard<'_, Record>, Record)>, ServiceError> {
+        let current = self.inner.lock().await;
+        let next = current
+            .with_lock_state(locked, keyring)
             .await
             .map_err(|err| {
                 let action = if locked { "lock" } else { "unlock" };
                 custom_service_error(&format!("Failed to {action} item: {err}"))
             })?;
+        Ok(next.map(|next| (current, next)))
+    }
 
+    pub(crate) async fn notify_lock_state(&self, locked: bool) -> Result<(), ServiceError> {
         let signal_emitter = self.service.signal_emitter(&self.path)?;
         self.locked_changed(&signal_emitter).await?;
 

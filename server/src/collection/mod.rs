@@ -315,7 +315,6 @@ impl Collection {
             .create_item(label, &attributes, secret, existing_items.is_some())
             .await
             .map_err(|err| custom_service_error(&format!("Failed to create a new item {err}.")))?;
-        drop(keyring_guard);
 
         let signal_emitter = self.service.signal_emitter(&self.path)?;
         let object_server = self.service.object_server();
@@ -357,6 +356,7 @@ impl Collection {
             new_path
         };
 
+        drop(keyring_guard);
         self.update_modified().await?;
         self.items_changed(&signal_emitter).await?;
 
@@ -597,15 +597,30 @@ impl Collection {
         if let Some(keyring) = keyring_guard.as_ref()
             && keyring.is_locked() != locked
         {
-            if locked {
-                self.set_items_locked(true, keyring).await?;
-                *keyring_guard = keyring_guard.take().map(Keyring::lock);
+            let unlocked = if locked {
+                None
             } else {
-                let unlocked = keyring.try_unlock(secret).await.map_err(|err| {
+                Some(keyring.try_unlock(secret).await.map_err(|err| {
                     custom_service_error(&format!("Failed to unlock keyring: {err}"))
-                })?;
-                self.set_items_locked(false, &unlocked).await?;
-                *keyring_guard = Some(unlocked);
+                })?)
+            };
+            let item_keyring = unlocked.as_ref().unwrap_or(keyring);
+            let items = self.items.lock().await;
+            let mut changes = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                if let Some(change) = item.prepare_lock_state(locked, item_keyring).await? {
+                    changes.push(change);
+                }
+            }
+
+            // Commit all prepared records and the keyring before sending any
+            // signals.
+            *keyring_guard = unlocked.or_else(|| keyring_guard.take().map(Keyring::lock));
+            for (mut current, next) in changes {
+                *current = next;
+            }
+            for item in items.iter() {
+                item.notify_lock_state(locked).await?;
             }
         }
 
@@ -625,14 +640,6 @@ impl Collection {
             if locked { "locked" } else { "unlocked" }
         );
 
-        Ok(())
-    }
-
-    async fn set_items_locked(&self, locked: bool, keyring: &Keyring) -> Result<(), ServiceError> {
-        let items = self.items.lock().await;
-        for item in items.iter() {
-            item.set_locked(locked, keyring).await?;
-        }
         Ok(())
     }
 
