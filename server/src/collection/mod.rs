@@ -635,47 +635,44 @@ impl Collection {
     ) -> Result<(), ServiceError> {
         let mut keyring_guard = self.keyring.write().await;
 
-        if let Some(old_keyring) = keyring_guard.take() {
-            let new_keyring = match (old_keyring, locked) {
-                (Keyring::Unlocked(unlocked), true) => {
-                    let items = self.items.lock().await;
-                    for item in items.iter() {
-                        item.set_locked(locked, &unlocked).await?;
-                    }
-                    drop(items);
-
-                    Keyring::Locked(unlocked.lock())
-                }
-                (Keyring::Locked(locked_kr), false) => {
-                    let unlock_result = if let Some(secret) = secret {
-                        locked_kr.try_unlock(secret).await
+        if let Some(keyring) = keyring_guard.as_ref()
+            && keyring.is_locked() != locked
+        {
+            let unlocked = match keyring {
+                Keyring::Locked(keyring) => Some(
+                    if let Some(secret) = secret {
+                        keyring.try_unlock(secret).await
                     } else {
-                        locked_kr.try_unlock_unencrypted().await
-                    };
-
-                    let unlocked = match unlock_result {
-                        Ok(unlocked) => unlocked,
-                        Err(err) => {
-                            // Put the locked keyring back, it can be
-                            // unlocked again
-                            *keyring_guard = Some(Keyring::Locked(locked_kr));
-                            return Err(custom_service_error(&format!(
-                                "Failed to unlock keyring: {err}"
-                            )));
-                        }
-                    };
-
-                    let items = self.items.lock().await;
-                    for item in items.iter() {
-                        item.set_locked(locked, &unlocked).await?;
+                        keyring.try_unlock_unencrypted().await
                     }
-                    drop(items);
-
-                    Keyring::Unlocked(unlocked)
-                }
-                (other, _) => other,
+                    .map_err(|err| {
+                        custom_service_error(&format!("Failed to unlock keyring: {err}"))
+                    })?,
+                ),
+                Keyring::Unlocked(_) => None,
             };
-            *keyring_guard = Some(new_keyring);
+            let item_keyring = unlocked.as_ref().unwrap_or_else(|| keyring.as_unlocked());
+            let items = self.items.lock().await;
+            let mut changes = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                if let Some(change) = item.prepare_lock_state(locked, item_keyring).await? {
+                    changes.push(change);
+                }
+            }
+
+            // All conversions succeeded. Commit the keyring and cached items
+            // before emitting any lock-state notifications.
+            if let Some(unlocked) = unlocked {
+                *keyring_guard = Some(Keyring::Unlocked(unlocked));
+            } else if let Some(Keyring::Unlocked(keyring)) = keyring_guard.take() {
+                *keyring_guard = Some(Keyring::Locked(keyring.lock()));
+            }
+            for (mut current, next) in changes {
+                *current = Some(next);
+            }
+            for item in items.iter() {
+                item.notify_lock_state(locked).await?;
+            }
         }
 
         drop(keyring_guard);
