@@ -389,29 +389,41 @@ impl Item {
         locked: bool,
         keyring: &oo7::file::UnlockedKeyring,
     ) -> Result<(), ServiceError> {
-        let mut inner_guard = self.inner.lock().await;
-
-        if let Some(old_item) = inner_guard.take() {
-            let new_item = match (old_item, locked) {
-                (oo7::file::Item::Unlocked(unlocked), true) => {
-                    let locked_item = keyring.lock_item(unlocked).await.map_err(|err| {
-                        custom_service_error(&format!("Failed to lock item: {err}"))
-                    })?;
-                    oo7::file::Item::Locked(locked_item)
-                }
-                (oo7::file::Item::Locked(locked_item), false) => {
-                    let unlocked = keyring.unlock_item(locked_item).await.map_err(|err| {
-                        custom_service_error(&format!("Failed to unlock item: {err}"))
-                    })?;
-                    oo7::file::Item::Unlocked(unlocked)
-                }
-                (other, _) => other,
-            };
-            *inner_guard = Some(new_item);
+        if let Some((mut current, next)) = self.prepare_lock_state(locked, keyring).await? {
+            *current = Some(next);
         }
+        self.notify_lock_state(locked).await
+    }
 
-        drop(inner_guard);
+    pub(crate) async fn prepare_lock_state(
+        &self,
+        locked: bool,
+        keyring: &oo7::file::UnlockedKeyring,
+    ) -> Result<
+        Option<(
+            tokio::sync::MutexGuard<'_, Option<oo7::file::Item>>,
+            oo7::file::Item,
+        )>,
+        ServiceError,
+    > {
+        let current = self.inner.lock().await;
+        let next = match (current.as_ref(), locked) {
+            (Some(oo7::file::Item::Unlocked(item)), true) => keyring
+                .lock_item(item.clone())
+                .await
+                .map(oo7::file::Item::Locked)
+                .map_err(|err| custom_service_error(&format!("Failed to lock item: {err}")))?,
+            (Some(oo7::file::Item::Locked(item)), false) => keyring
+                .unlock_item(item.clone())
+                .await
+                .map(oo7::file::Item::Unlocked)
+                .map_err(|err| custom_service_error(&format!("Failed to unlock item: {err}")))?,
+            _ => return Ok(None),
+        };
+        Ok(Some((current, next)))
+    }
 
+    pub(crate) async fn notify_lock_state(&self, locked: bool) -> Result<(), ServiceError> {
         let signal_emitter = self.service.signal_emitter(&self.path)?;
         self.locked_changed(&signal_emitter).await?;
 
