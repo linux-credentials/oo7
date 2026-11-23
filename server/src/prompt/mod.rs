@@ -367,6 +367,15 @@ impl Prompt {
         }
     }
 
+    pub(crate) async fn emit_orphaned_completed(&self) -> Result<(), ServiceError> {
+        let signal_emitter = self.service.signal_emitter(self.path().to_owned())?;
+        let result = zbus::wire::Variant::new::<Vec<OwnedObjectPath>>(vec![])
+            .try_into_owned()
+            .unwrap();
+        Prompt::completed(&signal_emitter, true, result).await?;
+        Ok(())
+    }
+
     async fn emit_dismissed(&self) {
         if let Ok(signal_emitter) = self.service.signal_emitter(self.path().to_owned()) {
             let result = zbus::wire::Variant::new::<Vec<OwnedObjectPath>>(vec![])

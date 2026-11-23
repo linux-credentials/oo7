@@ -13,7 +13,7 @@ use zbus::{
 use super::{Service, discovery, naming};
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
 use crate::gnome::internal::InternalInterface;
-use crate::{collection::Collection, error::Error};
+use crate::{collection::Collection, error::Error, prompt::Prompt};
 
 impl Service {
     pub async fn run(
@@ -329,11 +329,9 @@ impl Service {
         Ok(())
     }
 
-    /// A client's unique name disappeared from the bus, mark its session
-    /// for cleanup. A well-known name being released does not mean the
-    /// client disconnected.
     pub(crate) async fn handle_owner_lost(&self, name: &str, old_owner: &UniqueName<'_>) {
         if name != old_owner.as_str() {
+            self.dismiss_orphaned_prompts(name).await;
             return;
         }
         if let Some(session) = self.session_from_sender(old_owner).await {
@@ -347,6 +345,53 @@ impl Service {
                 client_name,
                 session.path()
             );
+        }
+    }
+
+    /// Dismiss the prompts waiting on a prompter that left the bus.
+    async fn dismiss_orphaned_prompts(&self, name: &str) {
+        #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+        let is_gnome = name
+            == crate::gnome::prompter::GNOMEPrompterProxy::DESTINATION
+                .as_ref()
+                .map(zbus::names::BusName::as_str)
+                .unwrap_or_default();
+        #[cfg(not(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto")))]
+        let is_gnome = false;
+        #[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+        let is_plasma = name
+            == crate::plasma::prompter::PlasmaPrompterProxy::DESTINATION
+                .as_ref()
+                .map(zbus::names::BusName::as_str)
+                .unwrap_or_default();
+        #[cfg(not(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto")))]
+        let is_plasma = false;
+
+        if !is_gnome && !is_plasma {
+            return;
+        }
+
+        let orphaned: Vec<Prompt> = {
+            let prompts = self.prompts.lock().await;
+            prompts.values().cloned().collect()
+        };
+
+        for prompt in orphaned {
+            tracing::warn!(
+                "Prompter `{name}` disappeared, dismissing prompt `{}`",
+                prompt.path()
+            );
+            if let Err(e) = self
+                .object_server()
+                .remove::<Prompt, _>(prompt.path())
+                .await
+            {
+                tracing::debug!("Failed to remove prompt from object server: {e}");
+            }
+            self.remove_prompt(prompt.path()).await;
+            if let Err(e) = prompt.emit_orphaned_completed().await {
+                tracing::debug!("Failed to emit Completed on orphaned prompt: {e}");
+            }
         }
     }
 
