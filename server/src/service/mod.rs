@@ -19,7 +19,6 @@ use oo7::{
         Algorithm, ServiceError,
         api::{DBusSecretInner, Properties},
     },
-    file::{Keyring, UnlockedKeyring},
 };
 use tokio::sync::Mutex;
 use zbus::{
@@ -37,6 +36,7 @@ use crate::{
     migration::PendingMigration,
     prompt::{Prompt, PromptAction, PromptRole},
     session::{PeerInfo, Session},
+    storage::Keyring,
 };
 
 #[cfg(any(test, feature = "test-util"))]
@@ -713,7 +713,7 @@ impl Service {
         secret: Option<Secret>,
     ) -> Result<OwnedObjectPath, ServiceError> {
         // Create a persistent keyring with the provided secret
-        let keyring = UnlockedKeyring::open_at(&self.data_dir, &label.to_lowercase(), secret)
+        let keyring = Keyring::open(&self.data_dir, &label.to_lowercase(), secret)
             .await
             .map_err(|err| custom_service_error(&format!("Failed to create keyring: {err}")))?;
 
@@ -725,7 +725,7 @@ impl Service {
 
         let name = label.to_lowercase();
         let (path, _) = self
-            .register_collection(&name, label, alias, Keyring::Unlocked(keyring))
+            .register_collection(&name, label, alias, keyring)
             .await?;
         Ok(path)
     }

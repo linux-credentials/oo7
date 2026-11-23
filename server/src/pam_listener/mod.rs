@@ -394,7 +394,7 @@ impl PamListener {
 
             // Re-acquire the lock to get the unlocked keyring
             let keyring_guard = collection.keyring.read().await;
-            let Some(oo7::file::Keyring::Unlocked(uk)) = keyring_guard.as_ref() else {
+            let Some(uk) = keyring_guard.as_ref().filter(|k| !k.is_locked()) else {
                 tracing::warn!("Collection {} is not unlocked", collection.path());
                 continue;
             };
