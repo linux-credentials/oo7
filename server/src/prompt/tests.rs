@@ -1,3 +1,5 @@
+use zbus::proxy::Defaults;
+
 use crate::tests::TestServiceSetup;
 
 #[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
@@ -385,6 +387,101 @@ async fn unlock_with_cli_prompter_max_attempts() -> Result<(), Box<dyn std::erro
     assert!(
         setup.collections[0].is_locked().await?,
         "Collection should remain locked"
+    );
+
+    Ok(())
+}
+
+/// Dismissing prompts when their prompter disappears from the bus
+async fn prompter_disconnect_dismisses_prompts(
+    prompter_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+
+    setup.lock_collection(&setup.collections[0]).await?;
+
+    let (_unlocked, prompt_path) = setup
+        .server
+        .unlock(vec![setup.collections[0].inner().path().to_owned().into()])
+        .await?;
+    assert!(!prompt_path.is_empty(), "Should have a prompt path");
+
+    // The proxy's receive_completed would call Prompt() on the removed
+    // object, subscribe to the raw signal instead
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .interface("org.freedesktop.Secret.Prompt")
+        .member("Completed")
+        .path(prompt_path.clone())
+        .build()?;
+    let mut stream = zbus::MessageStream::for_match_rule(rule, &setup.client_conn, None).await?;
+
+    let old_owner = zbus::names::UniqueName::from_str_unchecked(":1.99");
+    setup
+        .server
+        .handle_owner_lost(prompter_name, &old_owner)
+        .await;
+
+    assert!(
+        setup.server.prompt(&prompt_path).await.is_none(),
+        "The orphaned prompt should be removed"
+    );
+
+    use tokio_stream::StreamExt;
+    let message = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+        .await
+        .expect("signal within timeout")
+        .expect("signal stream should not end")
+        .expect("signal should be a message, not an error");
+    let (dismissed, _) = message
+        .body()
+        .deserialize::<(bool, zbus::wire::OwnedVariant)>()?;
+    assert!(dismissed, "The completion should be a dismissal");
+
+    Ok(())
+}
+
+#[cfg(any(feature = "gnome_native_crypto", feature = "gnome_openssl_crypto"))]
+#[tokio::test]
+async fn gnome_prompter_disconnect_dismisses_prompts() -> Result<(), Box<dyn std::error::Error>> {
+    let name = crate::gnome::prompter::GNOMEPrompterProxy::DESTINATION
+        .as_ref()
+        .map(zbus::names::BusName::as_str)
+        .expect("GNOME prompter proxy has a destination");
+    prompter_disconnect_dismisses_prompts(name).await
+}
+
+#[cfg(any(feature = "plasma_native_crypto", feature = "plasma_openssl_crypto"))]
+#[tokio::test]
+async fn plasma_prompter_disconnect_dismisses_prompts() -> Result<(), Box<dyn std::error::Error>> {
+    let name = crate::plasma::prompter::PlasmaPrompterProxy::DESTINATION
+        .as_ref()
+        .map(zbus::names::BusName::as_str)
+        .expect("Plasma prompter proxy has a destination");
+    prompter_disconnect_dismisses_prompts(name).await
+}
+
+#[tokio::test]
+async fn non_prompter_name_release_keeps_prompts() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(true).await?;
+
+    setup.lock_collection(&setup.collections[0]).await?;
+
+    let (_unlocked, prompt_path) = setup
+        .server
+        .unlock(vec![setup.collections[0].inner().path().to_owned().into()])
+        .await?;
+    assert!(!prompt_path.is_empty(), "Should have a prompt path");
+
+    let old_owner = zbus::names::UniqueName::from_str_unchecked(":1.42");
+    setup
+        .server
+        .handle_owner_lost("org.example.Unrelated", &old_owner)
+        .await;
+
+    assert!(
+        setup.server.prompt(&prompt_path).await.is_some(),
+        "An unrelated name release should not dismiss prompts"
     );
 
     Ok(())
