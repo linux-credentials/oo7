@@ -223,7 +223,7 @@ async fn failed_item_unlock_preserves_collection_state() -> Result<(), Box<dyn s
     let collection_changes = setup.service_api.receive_collection_changed().await?;
     tokio::pin!(item_changes, collection_changes);
 
-    let original = last.inner.lock().await.replace(foreign);
+    let original = std::mem::replace(&mut *last.inner.lock().await, foreign.into());
     assert!(
         collection
             .set_locked(false, setup.keyring_secret.clone())

@@ -274,7 +274,7 @@ impl Service {
                         );
                         Vec::new()
                     });
-                    collection.dispatch_file_items(items).await?;
+                    collection.dispatch_records(items).await?;
                 }
                 None => collection.dispatch_items().await?,
             }
