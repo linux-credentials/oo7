@@ -12,7 +12,6 @@ use oo7::{
         ServiceError,
         api::{DBusSecretInner, Properties},
     },
-    file::Keyring,
 };
 use tokio::sync::{Mutex, RwLock};
 use wire::{ObjectPath, OwnedObjectPath};
@@ -22,7 +21,7 @@ use crate::{
     Service,
     error::{Error, custom_service_error},
     item,
-    storage::{ItemQuery, Record},
+    storage::{ItemQuery, Keyring, Record},
 };
 
 #[derive(Clone)]
@@ -118,7 +117,7 @@ impl Collection {
         let keyring_path = {
             let keyring_guard = self.keyring.read().await;
             let keyring = match keyring_guard.as_ref() {
-                Some(k) if !k.is_locked() => k.as_unlocked(),
+                Some(k) if !k.is_locked() => k,
                 _ => return Err(ServiceError::IsLocked("Collection is locked".to_owned())),
             };
             keyring.path().map(|p| p.to_path_buf())
@@ -297,7 +296,8 @@ impl Collection {
             );
         }
 
-        let query = ItemQuery::new(keyring, &attributes, true)
+        let query = keyring
+            .query(&attributes, true)
             .await
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
 
@@ -312,11 +312,9 @@ impl Collection {
         };
 
         let new_file_item = keyring
-            .as_unlocked()
             .create_item(label, &attributes, secret, existing_items.is_some())
             .await
             .map_err(|err| custom_service_error(&format!("Failed to create a new item {err}.")))?;
-        drop(keyring_guard);
 
         let signal_emitter = self.service.signal_emitter(&self.path)?;
         let object_server = self.service.object_server();
@@ -324,7 +322,7 @@ impl Collection {
         let item_path = if let Some(existing_items) = existing_items {
             let kept = &existing_items[0];
             let kept_path: OwnedObjectPath = kept.path().to_owned().into();
-            *kept.inner.lock().await = new_file_item.into();
+            *kept.inner.lock().await = new_file_item;
 
             // Remove any duplicate matches beyond the first.
             if existing_items.len() > 1 {
@@ -344,7 +342,7 @@ impl Collection {
             let new_path = OwnedObjectPath::try_from(format!("{}/{n_items}", self.path)).unwrap();
 
             let item = item::Item::new(
-                new_file_item.into(),
+                new_file_item,
                 self.service.clone(),
                 self.path.clone(),
                 new_path.clone(),
@@ -358,6 +356,7 @@ impl Collection {
             new_path
         };
 
+        drop(keyring_guard);
         self.update_modified().await?;
         self.items_changed(&signal_emitter).await?;
 
@@ -479,15 +478,14 @@ pub(crate) fn collection_path(label: &str) -> Result<OwnedObjectPath, wire::Erro
 }
 
 impl Collection {
-    pub async fn new(
+    pub(crate) async fn new(
         name: &str,
         label: &str,
         alias: &str,
         service: Service,
         keyring: Keyring,
     ) -> Self {
-        let modified = keyring.modified_time().await;
-        let created = keyring.created_time().await.unwrap_or(modified);
+        let (created, modified) = keyring.timestamps().await;
 
         Self {
             items: Default::default(),
@@ -561,7 +559,8 @@ impl Collection {
         let Some(keyring) = keyring_guard.as_ref() else {
             return Ok(Vec::new());
         };
-        let query = ItemQuery::new(keyring, attributes, false)
+        let query = keyring
+            .query(attributes, false)
             .await
             .map_err(|err| custom_service_error(&format!("Failed to derive key: {err}")))?;
         drop(keyring_guard);
@@ -598,20 +597,14 @@ impl Collection {
         if let Some(keyring) = keyring_guard.as_ref()
             && keyring.is_locked() != locked
         {
-            let unlocked = match keyring {
-                Keyring::Locked(keyring) => Some(
-                    if let Some(secret) = secret {
-                        keyring.try_unlock(secret).await
-                    } else {
-                        keyring.try_unlock_unencrypted().await
-                    }
-                    .map_err(|err| {
-                        custom_service_error(&format!("Failed to unlock keyring: {err}"))
-                    })?,
-                ),
-                Keyring::Unlocked(_) => None,
+            let unlocked = if locked {
+                None
+            } else {
+                Some(keyring.try_unlock(secret).await.map_err(|err| {
+                    custom_service_error(&format!("Failed to unlock keyring: {err}"))
+                })?)
             };
-            let item_keyring = unlocked.as_ref().unwrap_or_else(|| keyring.as_unlocked());
+            let item_keyring = unlocked.as_ref().unwrap_or(keyring);
             let items = self.items.lock().await;
             let mut changes = Vec::with_capacity(items.len());
             for item in items.iter() {
@@ -620,13 +613,9 @@ impl Collection {
                 }
             }
 
-            // All conversions succeeded. Commit the keyring and cached items
-            // before emitting any lock-state notifications.
-            if let Some(unlocked) = unlocked {
-                *keyring_guard = Some(Keyring::Unlocked(unlocked));
-            } else if let Some(Keyring::Unlocked(keyring)) = keyring_guard.take() {
-                *keyring_guard = Some(Keyring::Locked(keyring.lock()));
-            }
+            // Commit all prepared records and the keyring before sending any
+            // signals.
+            *keyring_guard = unlocked.or_else(|| keyring_guard.take().map(Keyring::lock));
             for (mut current, next) in changes {
                 *current = next;
             }
@@ -658,12 +647,7 @@ impl Collection {
         let records = {
             let keyring_guard = self.keyring.read().await;
             let keyring = keyring_guard.as_ref().unwrap();
-            keyring
-                .items()
-                .await?
-                .into_iter()
-                .map(Record::from)
-                .collect()
+            keyring.items().await?
         };
         self.dispatch_records(records).await
     }
@@ -725,7 +709,7 @@ impl Collection {
 
     /// Replace the keyring with a just-migrated one, dispatch its items
     /// and emit the corresponding change signals.
-    pub async fn apply_migrated_keyring(&self, keyring: Keyring) -> Result<(), Error> {
+    pub(crate) async fn apply_migrated_keyring(&self, keyring: Keyring) -> Result<(), Error> {
         *self.keyring.write().await = Some(keyring);
 
         // Drop the placeholder items, the migrated items take their paths
@@ -763,7 +747,7 @@ impl Collection {
 
         let keyring_guard = self.keyring.read().await;
         let keyring = match keyring_guard.as_ref() {
-            Some(k) if !k.is_locked() => k.as_unlocked(),
+            Some(k) if !k.is_locked() => k,
             _ => {
                 return Err(ServiceError::IsLocked(format!(
                     "Cannot delete an item `{path}` in a locked collection"

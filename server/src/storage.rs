@@ -2,10 +2,155 @@
 
 use std::{
     collections::HashMap,
+    path::Path,
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 
-use oo7::{Key, file};
+use oo7::{AsAttributes, Key, Secret, file};
+
+pub(crate) enum Keyring {
+    V1(file::Keyring),
+}
+
+impl Keyring {
+    pub async fn open(
+        data_dir: &Path,
+        name: &str,
+        secret: Option<Secret>,
+    ) -> Result<Self, file::Error> {
+        let keyring = file::UnlockedKeyring::open_at(data_dir, name, secret).await?;
+        Ok(Self::V1(keyring.into()))
+    }
+
+    pub async fn open_locked(data_dir: &Path, name: &str) -> Result<Self, file::Error> {
+        let keyring = file::LockedKeyring::open_at(data_dir, name).await?;
+        Ok(Self::V1(keyring.into()))
+    }
+
+    pub async fn load_locked(path: &Path) -> Result<Self, file::Error> {
+        let keyring = file::LockedKeyring::load(path).await?;
+        Ok(Self::V1(keyring.into()))
+    }
+
+    pub async fn temporary(secret: Secret) -> Result<Self, file::Error> {
+        let keyring = file::UnlockedKeyring::temporary(secret).await?;
+        Ok(Self::V1(keyring.into()))
+    }
+
+    pub async fn write(&self) -> Result<(), file::Error> {
+        self.unlocked_v1()?.write().await
+    }
+
+    #[cfg(feature = "kwallet_migration")]
+    pub async fn create_items(&self, items: Vec<file::ItemDefinition>) -> Result<(), file::Error> {
+        self.unlocked_v1()?.create_items(items).await
+    }
+
+    pub fn is_locked(&self) -> bool {
+        match self {
+            Self::V1(keyring) => keyring.is_locked(),
+        }
+    }
+
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Self::V1(keyring) => keyring.path(),
+        }
+    }
+
+    pub async fn timestamps(&self) -> (Duration, Duration) {
+        match self {
+            Self::V1(keyring) => {
+                let modified = keyring.modified_time().await;
+                (keyring.created_time().await.unwrap_or(modified), modified)
+            }
+        }
+    }
+
+    pub async fn validate_secret(&self, secret: &Secret) -> Result<bool, file::Error> {
+        match self {
+            Self::V1(keyring) => keyring.validate_secret(secret).await,
+        }
+    }
+
+    pub async fn validate_unencrypted(&self) -> Result<bool, file::Error> {
+        match self {
+            Self::V1(keyring) => keyring.validate_unencrypted().await,
+        }
+    }
+
+    pub async fn items(&self) -> Result<Vec<Record>, file::Error> {
+        match self {
+            Self::V1(keyring) => Ok(keyring
+                .items()
+                .await?
+                .into_iter()
+                .map(Record::from)
+                .collect()),
+        }
+    }
+
+    pub async fn query<'a>(
+        &self,
+        attributes: &'a HashMap<String, String>,
+        exact: bool,
+    ) -> Result<ItemQuery<'a>, oo7::crypto::Error> {
+        match self {
+            Self::V1(keyring) => ItemQuery::new(keyring, attributes, exact).await,
+        }
+    }
+
+    pub fn lock(self) -> Self {
+        match self {
+            Self::V1(file::Keyring::Unlocked(keyring)) => Self::V1(keyring.lock().into()),
+            locked => locked,
+        }
+    }
+
+    /// Try the supplied credential while keeping the locked keyring available
+    /// for retry.
+    pub async fn try_unlock(&self, secret: Option<Secret>) -> Result<Self, file::Error> {
+        match self {
+            Self::V1(keyring) => {
+                let locked = keyring.as_locked();
+                let unlocked = match secret {
+                    Some(secret) => locked.try_unlock(secret).await?,
+                    None => locked.try_unlock_unencrypted().await?,
+                };
+                Ok(Self::V1(unlocked.into()))
+            }
+        }
+    }
+
+    fn unlocked_v1(&self) -> Result<&file::UnlockedKeyring, file::Error> {
+        match self {
+            Self::V1(file::Keyring::Unlocked(keyring)) => Ok(keyring),
+            Self::V1(file::Keyring::Locked(_)) => Err(file::Error::Locked),
+        }
+    }
+
+    pub async fn change_secret(&self, secret: Secret) -> Result<(), file::Error> {
+        self.unlocked_v1()?.change_secret(secret).await
+    }
+
+    pub async fn create_item(
+        &self,
+        label: &str,
+        attributes: &impl AsAttributes,
+        secret: impl Into<Secret>,
+        replace: bool,
+    ) -> Result<Record, file::Error> {
+        self.unlocked_v1()?
+            .create_item(label, attributes, secret, replace)
+            .await
+            .map(Record::from)
+    }
+
+    pub async fn delete(&self, attributes: &impl AsAttributes) -> Result<(), file::Error> {
+        self.unlocked_v1()?.delete(attributes).await
+    }
+}
 
 /// A search or replacement can check every cached record with the same file
 /// key.
@@ -17,7 +162,7 @@ pub(crate) struct ItemQuery<'a> {
 }
 
 impl<'a> ItemQuery<'a> {
-    pub async fn new(
+    async fn new(
         keyring: &file::Keyring,
         attributes: &'a HashMap<String, String>,
         exact: bool,
@@ -105,8 +250,9 @@ impl Record {
     pub async fn with_lock_state(
         &self,
         locked: bool,
-        keyring: &file::UnlockedKeyring,
+        keyring: &Keyring,
     ) -> Result<Option<Self>, file::Error> {
+        let keyring = keyring.unlocked_v1()?;
         let item = match (&self.item, locked) {
             (file::Item::Unlocked(item), true) => {
                 file::Item::Locked(keyring.lock_item(item.clone()).await?)
@@ -121,19 +267,16 @@ impl Record {
 
     /// The caller holds the collection's write lock so the index stays valid.
     /// Match the whole record since other items can share its attributes.
-    pub async fn replace(
-        &mut self,
-        keyring: &file::UnlockedKeyring,
-        new: file::UnlockedItem,
-    ) -> Result<bool, file::Error> {
+    pub async fn replace(&mut self, keyring: &Keyring, new: Record) -> Result<bool, file::Error> {
+        let keyring = keyring.unlocked_v1()?;
         let index = keyring
             .all_items()
             .await?
             .iter()
             .position(|entry| entry.as_ref().is_ok_and(|item| item == self.unlocked()));
         let Some(index) = index else { return Ok(false) };
-        keyring.replace_item_index(index, &new).await?;
-        self.item = new.into();
+        keyring.replace_item_index(index, new.unlocked()).await?;
+        *self = new;
         Ok(true)
     }
 }
