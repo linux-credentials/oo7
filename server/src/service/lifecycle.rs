@@ -334,7 +334,7 @@ impl Service {
             self.dismiss_orphaned_prompts(name).await;
             return;
         }
-        if let Some(session) = self.session_from_sender(old_owner).await {
+        for session in self.sessions_from_sender(old_owner).await {
             let client_name = match session.peer_info() {
                 Some(info) => format!("{old_owner} ({info})"),
                 None => old_owner.to_string(),

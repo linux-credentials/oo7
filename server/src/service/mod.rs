@@ -609,6 +609,17 @@ impl Service {
         sessions.values().find(|s| s.sender() == sender).cloned()
     }
 
+    /// Every session a client opened, as one connection may hold several
+    pub(crate) async fn sessions_from_sender(&self, sender: &UniqueName<'_>) -> Vec<Session> {
+        let sessions = self.sessions.lock().await;
+
+        sessions
+            .values()
+            .filter(|s| s.sender() == sender)
+            .cloned()
+            .collect()
+    }
+
     pub async fn peer_display_name(&self, sender: &UniqueName<'_>) -> String {
         match self.session_from_sender(sender).await {
             Some(session) => match session.peer_info() {
