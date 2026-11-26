@@ -126,3 +126,39 @@ async fn owner_lost_marks_session_stale() -> Result<(), Box<dyn std::error::Erro
 
     Ok(())
 }
+
+// A client may open several sessions on one connection, e.g. libsecret
+// clients that open one per item they read. All of them go when it leaves.
+#[tokio::test]
+async fn owner_lost_marks_all_its_sessions_stale() -> Result<(), Box<dyn std::error::Error>> {
+    let setup = TestServiceSetup::plain_session(false).await?;
+
+    let (_, second) = setup.service_api.open_session(None).await?;
+    let mut sessions = Vec::new();
+    for path in [setup.session.inner().path(), second.inner().path()] {
+        let path = path.to_owned();
+        sessions.push(
+            setup
+                .server
+                .session(&path)
+                .await
+                .expect("session should exist"),
+        );
+    }
+    let sender = sessions[0].sender().to_owned();
+    assert_eq!(sessions[1].sender(), &sender);
+
+    setup
+        .server
+        .handle_owner_lost(sender.as_str(), &sender)
+        .await;
+    for session in &sessions {
+        assert!(
+            session.is_marked_stale().await,
+            "{} should be marked stale",
+            session.path()
+        );
+    }
+
+    Ok(())
+}
